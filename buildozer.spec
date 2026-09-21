@@ -17,7 +17,7 @@ source.dir = .
 source.include_exts = py,png,jpg,ttf,otf,ogg,wav,txt,json,ico,icns
 source.include_patterns = icons/*,sounds/*,fonts/*
 # Nada do que e so do computador entra no APK (scripts de build, site, workflows, saves de teste).
-source.exclude_dirs = website,.github,bin,.buildozer,.venv,dist,build,__pycache__
+source.exclude_dirs = website,.github,android,bin,.buildozer,.venv,dist,build,__pycache__
 source.exclude_patterns = build_exe.bat,build_linux_mac.sh,run_linux_mac.sh,*.spec,rules.txt,read-problems.md,savegame*.json,lucky_sahurs_*.json
 
 # Numero da versao do APK. Acompanhar as tags das Releases (v1.0.4 -> 1.0.4).
@@ -45,6 +45,9 @@ android.accept_sdk_license = True
 
 # O jogo desenha para um canvas fixo e faz smoothscale para o ecra: um unico SDL2 window chega.
 p4a.bootstrap = sdl2
+# Recipe propria do pygame (ver android/p4a-recipes/pygame): a do p4a esta presa a uma versao
+# que nao compila com o Python 3.11+.
+p4a.local_recipes = ./android/p4a-recipes
 
 [buildozer]
 log_level = 2
