@@ -478,13 +478,26 @@ class Game(
         self.draw()
         self._perf_prof.disable()
         if n == 449:
-            import io as _io
-            import pstats
-            buf = _io.StringIO()
-            pstats.Stats(self._perf_prof, stream=buf).sort_stats("tottime").print_stats(25)
-            for line in buf.getvalue().splitlines():
-                if line.strip():
-                    print("PROF " + line)
+            # Le-se o cProfile a mao: o modulo pstats nao vem no Python do Android, e importa-lo
+            # aqui rebentava com a app exatamente neste frame (fechava sem erro nenhum).
+            try:
+                entries = self._perf_prof.getstats()
+            except Exception as err:          # noqa: BLE001 - so medicao, nunca pode matar o jogo
+                print("PROF indisponivel: %r" % (err,))
+                return
+            rows = []
+            for e in entries:
+                code = e.code
+                if isinstance(code, str):
+                    name = code                  # funcao em C (blit, draw.rect...)
+                else:
+                    name = "%s:%d(%s)" % (os.path.basename(code.co_filename),
+                                          code.co_firstlineno, code.co_name)
+                rows.append((e.inlinetime, e.totaltime, e.callcount, name))
+            rows.sort(reverse=True)
+            print("PROF 300 frames: tottime cumtime calls funcao")
+            for inline, total, calls, name in rows[:25]:
+                print("PROF %8.3f %8.3f %7d %s" % (inline, total, calls, name))
 
     # ---------------------------------------------------------------- loop
     def run(self):
