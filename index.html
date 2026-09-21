@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#171827" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f6f3ec" media="(prefers-color-scheme: light)">
+<title>Lucky Sahurs</title>
+<meta name="description" content="Lucky Sahurs — an idle pet-collecting game full of Italian-brainrot chaos. Roll pets across 11 rarity tiers, rebirth for permanent power, and climb the leaderboard. Free, open source, for Windows, macOS and Linux.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Lucky Sahurs">
+<meta property="og:description" content="An idle pet-collecting game full of Italian-brainrot chaos. Roll, rebirth, repeat.">
+<meta property="og:image" content="../icons/tung.png">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="../icons/tung.png" type="image/png">
+<link rel="apple-touch-icon" href="../icons/tung.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ---------------------------------------------------------------- tokens (mirrors theme.py 1:1) */
+  :root{
+    --white:#ffffff; --black:#0c0c0e;
+    --good:#64e182; --bad:#eb5f5f;
+    --gold-border:#ffcd3c; --diamond-border:#96ebff;
+    --accent:#ffb830; --accent-hover:#ffd46e;
+    --border-w:4px; --border-w-sm:3px;
+    --radius-lg:20px; --radius-md:14px; --radius-sm:10px;
+
+    /* dark palette (theme.py _DARK) is the default, like the game's own default theme */
+    --outline:#060609;
+    --bg-top:#171827; --bg-bottom:#0c0d15;
+    --panel:#292a3b; --panel-light:#3b3d53; --panel-lighter:#52556e;
+    --grey:#cdd0e2; --grey-dim:#9295ac;
+    --on-bg:#f4f4f8; --on-bg-dim:#aeb1c8;
+    --stars-opacity:1;
+  }
+  :root[data-theme="light"]{
+    --outline:#08080a;
+    --bg-top:#f6f3ec; --bg-bottom:#e2ded4;
+    --panel:#222225; --panel-light:#343439; --panel-lighter:#4c4c53;
+    --grey:#c8c8d0; --grey-dim:#9898a0;
+    --on-bg:#1c1c22; --on-bg-dim:#5a5a63;
+    --stars-opacity:0;
+  }
+  /* system preference wins only when the visitor hasn't chosen a theme explicitly */
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]):not([data-theme="light"]){
+      --outline:#08080a;
+      --bg-top:#f6f3ec; --bg-bottom:#e2ded4;
+      --panel:#222225; --panel-light:#343439; --panel-lighter:#4c4c53;
+      --grey:#c8c8d0; --grey-dim:#9898a0;
+      --on-bg:#1c1c22; --on-bg-dim:#5a5a63;
+      --stars-opacity:0;
+    }
+  }
+
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto;} }
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:"Fredoka","Segoe UI",Verdana,Arial,"Helvetica Neue",sans-serif;
+    background:linear-gradient(180deg,var(--bg-top) 0%, var(--bg-bottom) 480px, var(--bg-bottom) 100%);
+    color:var(--on-bg);
+    min-height:100vh;
+    overflow-x:hidden;
+    position:relative;
+  }
+  h1,h2,h3,h4{font-family:"Fredoka",inherit;}
+  a{color:inherit;}
+  img{max-width:100%;display:block;}
+  .visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;}
+  :focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:4px;}
+
+  .skip-link{
+    position:absolute;left:12px;top:-60px;z-index:100;background:var(--accent);color:var(--black);
+    padding:10px 16px;border-radius:0 0 10px 10px;font-weight:700;text-decoration:none;transition:top .15s ease;
+  }
+  .skip-link:focus{top:0;}
+
+  #stars{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:var(--stars-opacity);transition:opacity .5s ease;}
+
+  .wrap{position:relative;z-index:1;max-width:1120px;margin:0 auto;padding:0 20px;}
+
+  /* ---------------------------------------------------------------- sticky nav */
+  .site-nav{
+    position:sticky;top:0;z-index:20;
+    background:color-mix(in srgb, var(--bg-bottom) 78%, transparent);
+    -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+    border-bottom:var(--border-w-sm) solid var(--outline);
+  }
+  .nav-inner{
+    max-width:1120px;margin:0 auto;padding:10px 20px;
+    display:flex;align-items:center;gap:18px;
+  }
+  .brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-weight:700;font-size:17px;color:var(--on-bg);margin-right:auto;}
+  .brand img{width:32px;height:32px;border-radius:8px;}
+  .nav-links{display:flex;gap:4px;flex-wrap:wrap;}
+  .nav-links a{
+    padding:8px 12px;border-radius:10px;font-size:14px;font-weight:600;text-decoration:none;
+    color:var(--on-bg-dim);
+  }
+  .nav-links a:hover{color:var(--on-bg);background:color-mix(in srgb, var(--panel) 40%, transparent);}
+  .icon-btn{
+    background:var(--panel);border:var(--border-w-sm) solid var(--outline);color:var(--white);
+    width:40px;height:40px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;flex:0 0 auto;
+  }
+  .icon-btn:hover{background:var(--panel-light);}
+  .nav-toggles{display:flex;gap:8px;margin-left:8px;}
+  @media (max-width:720px){ .nav-links{display:none;} }
+
+  /* ---------------------------------------------------------------- hero */
+  section{padding:64px 0;}
+  #hero{text-align:center;padding-top:64px;}
+  .badge{
+    display:inline-flex;align-items:center;gap:8px;background:var(--panel);border:var(--border-w-sm) solid var(--outline);
+    border-radius:999px;padding:7px 16px 7px 8px;font-size:13px;letter-spacing:.03em;
+    color:var(--accent);font-weight:700;margin-bottom:26px;
+  }
+  .badge img{width:20px;height:20px;border-radius:5px;}
+  .badge b{color:var(--white);}
+
+  .mascot{
+    width:168px;height:168px;margin:0 auto 8px;cursor:pointer;user-select:none;
+    filter:drop-shadow(0 12px 30px rgba(0,0,0,.35));
+    transition:transform .18s ease;
+  }
+  .mascot:hover{transform:translateY(-4px) rotate(-2deg);}
+  .mascot.wiggle{animation:wiggle .5s ease;}
+  @media (prefers-reduced-motion:no-preference){ .mascot.float{animation:float 4.5s ease-in-out infinite;} }
+  @keyframes float{0%,100%{transform:translateY(0);}50%{transform:translateY(-12px);}}
+  @keyframes wiggle{0%,100%{transform:rotate(0deg) scale(1);}25%{transform:rotate(-8deg) scale(1.05);}75%{transform:rotate(8deg) scale(1.05);}}
+
+  h1.title{
+    font-size:clamp(38px,7.6vw,72px);
+    margin:6px 0 14px;font-weight:700;letter-spacing:-.01em;color:var(--white);
+    -webkit-text-stroke:1.5px var(--outline);
+    text-shadow:0 3px 0 var(--outline), 0 8px 24px rgba(0,0,0,.35);
+  }
+  p.tagline{
+    font-size:clamp(16px,2.3vw,19px);color:var(--on-bg-dim);max-width:600px;margin:0 auto 32px;line-height:1.6;
+  }
+  .cta-row{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-bottom:14px;}
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;
+    padding:14px 24px;border-radius:var(--radius-md);border:var(--border-w-sm) solid var(--outline);
+    font-weight:700;font-size:15px;text-decoration:none;cursor:pointer;font-family:inherit;
+    transition:transform .15s ease, filter .15s ease;box-shadow:0 4px 0 rgba(0,0,0,.28);
+  }
+  .btn:hover{transform:translateY(-2px);}
+  .btn:active{transform:translateY(1px);box-shadow:0 2px 0 rgba(0,0,0,.28);}
+  .btn-primary{background:var(--accent);color:#241a00;}
+  .btn-primary:hover{filter:brightness(1.07);}
+  .btn-ghost{background:var(--panel);color:var(--white);}
+  .btn-ghost:hover{background:var(--panel-light);}
+  .hint{font-size:12.5px;color:var(--on-bg-dim);opacity:.85;}
+
+  /* ---------------------------------------------------------------- stat strip */
+  .stat-strip{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;
+    max-width:920px;margin:0 auto;
+  }
+  .stat{
+    background:var(--panel);border:var(--border-w-sm) solid var(--outline);border-radius:var(--radius-md);
+    padding:18px 10px;text-align:center;color:var(--white);
+  }
+  .stat strong{display:block;font-size:clamp(22px,4vw,30px);color:var(--accent);font-weight:700;}
+  .stat span{font-size:12px;color:var(--grey-dim);text-transform:uppercase;letter-spacing:.04em;}
+
+  h2.section-title{
+    font-size:clamp(25px,4vw,34px);font-weight:700;text-align:center;margin:0 0 8px;color:var(--white);
+    -webkit-text-stroke:1px var(--outline);
+    display:flex;align-items:center;justify-content:center;gap:10px;
+  }
+  h2.section-title img{width:32px;height:32px;}
+  p.section-sub{text-align:center;color:var(--on-bg-dim);max-width:600px;margin:0 auto 40px;font-size:15px;line-height:1.55;}
+
+  /* ---------------------------------------------------------------- roll demo */
+  .roll-card{
+    max-width:640px;margin:0 auto;background:var(--panel);border:var(--border-w) solid var(--outline);
+    border-radius:var(--radius-lg);padding:28px;text-align:center;
+  }
+  #rollStage{
+    min-height:132px;border-radius:var(--radius-md);border:var(--border-w-sm) dashed var(--panel-lighter);
+    display:flex;align-items:center;justify-content:center;margin-bottom:18px;padding:16px;
+    transition:background .2s ease, border-color .2s ease;
+  }
+  #rollStage.filled{border-style:solid;}
+  .result-name{font-size:22px;font-weight:700;margin:0 0 4px;}
+  .result-tier{font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:3px 10px;border-radius:999px;display:inline-block;margin-bottom:8px;}
+  .result-meta{font-size:13px;opacity:.85;display:flex;gap:14px;justify-content:center;flex-wrap:wrap;}
+  .result-placeholder{color:var(--grey-dim);font-size:14px;}
+  #rollBtn{width:100%;justify-content:center;font-size:17px;padding:16px;}
+  .roll-foot{display:flex;justify-content:space-between;margin-top:14px;font-size:12.5px;color:var(--grey-dim);flex-wrap:wrap;gap:6px;}
+  .roll-foot b{color:var(--grey);}
+  @keyframes pop{0%{transform:scale(.85);opacity:0;}60%{transform:scale(1.04);opacity:1;}100%{transform:scale(1);}}
+  @media (prefers-reduced-motion:no-preference){ #rollStage.filled .result-inner{animation:pop .32s ease;} }
+
+  /* ---------------------------------------------------------------- feature grid */
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;}
+  .card{background:var(--panel);border:var(--border-w-sm) solid var(--outline);border-radius:var(--radius-md);padding:22px;color:var(--white);}
+  .card img{width:40px;height:40px;margin-bottom:14px;}
+  .card h3{margin:0 0 8px;font-size:16.5px;font-weight:600;}
+  .card p{margin:0;color:var(--grey-dim);font-size:13.5px;line-height:1.55;}
+
+  /* ---------------------------------------------------------------- rarity / pets */
+  .tier-row{margin-bottom:14px;border-radius:var(--radius-md);overflow:hidden;border:var(--border-w-sm) solid var(--outline);}
+  .tier-head{padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:700;flex-wrap:wrap;}
+  .tier-head .t-name{font-size:15px;}
+  .tier-head .t-odds{font-size:12px;font-weight:600;opacity:.85;}
+  .tier-pets{background:var(--panel);display:flex;flex-wrap:wrap;gap:10px;padding:12px 16px;}
+  .pet-chip{
+    background:var(--panel-light);border:1px solid var(--panel-lighter);border-radius:var(--radius-sm);
+    padding:8px 12px;font-size:13px;color:var(--white);display:flex;align-items:center;gap:8px;
+  }
+  .pet-chip .p-income{color:var(--good);font-weight:700;font-size:12px;}
+  .pet-chip .p-tag{font-size:10.5px;color:var(--grey-dim);text-transform:uppercase;letter-spacing:.03em;border:1px solid var(--panel-lighter);border-radius:6px;padding:1px 6px;}
+
+  .mut-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:28px;}
+  .mut-card{background:var(--panel);border-radius:var(--radius-md);padding:18px;text-align:center;border:var(--border-w) solid var(--panel-lighter);}
+  .mut-card.golden{border-color:var(--gold-border);}
+  .mut-card.diamond{border-color:var(--diamond-border);}
+  .mut-card h4{margin:0 0 6px;font-size:16px;}
+  .mut-card.golden h4{color:var(--gold-border);}
+  .mut-card.diamond h4{color:var(--diamond-border);}
+  .mut-card p{margin:0;color:var(--grey-dim);font-size:13px;}
+
+  /* ---------------------------------------------------------------- traits */
+  .trait-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;}
+  .trait-chip{border-radius:var(--radius-md);padding:14px;border:var(--border-w-sm) solid var(--outline);}
+  .trait-chip h4{margin:0 0 4px;font-size:14.5px;}
+  .trait-chip .t-odds{font-size:11.5px;opacity:.8;margin-bottom:8px;}
+  .trait-chip .t-buff{font-size:13px;font-weight:700;}
+
+  /* ---------------------------------------------------------------- progression */
+  .prog-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;}
+  .prog-card{background:var(--panel);border:var(--border-w-sm) solid var(--outline);border-radius:var(--radius-md);padding:22px;color:var(--white);}
+  .prog-card h3{margin:0 0 10px;font-size:16.5px;display:flex;align-items:center;gap:8px;}
+  .prog-card h3 img{width:26px;height:26px;}
+  .prog-card ul{margin:0;padding-left:18px;color:var(--grey-dim);font-size:13.5px;line-height:1.7;}
+  .prog-card ul b{color:var(--grey);}
+  .chip-cloud{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
+  .chip-cloud span{background:var(--panel-light);border:1px solid var(--panel-lighter);border-radius:999px;padding:4px 10px;font-size:11.5px;color:var(--grey);}
+
+  /* ---------------------------------------------------------------- how to play */
+  .kbd-row{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:22px;}
+  kbd{
+    background:var(--panel-lighter);border:1px solid var(--outline);border-bottom-width:3px;border-radius:7px;
+    padding:4px 9px;font-family:inherit;font-size:12.5px;color:var(--white);font-weight:700;
+  }
+  .kbd-item{display:flex;align-items:center;gap:8px;background:var(--panel);border:var(--border-w-sm) solid var(--outline);border-radius:var(--radius-sm);padding:10px 14px;font-size:13px;color:var(--grey);}
+
+  /* ---------------------------------------------------------------- download */
+  .platform-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:26px;}
+  .platform{
+    background:var(--panel);border:var(--border-w-sm) solid var(--outline);border-radius:var(--radius-md);
+    padding:20px;text-align:center;color:var(--white);text-decoration:none;transition:transform .15s ease, background .15s ease;
+  }
+  .platform:hover{transform:translateY(-3px);background:var(--panel-light);}
+  .platform img{width:34px;height:34px;margin:0 auto 10px;}
+  .platform h4{margin:0 0 4px;font-size:14.5px;}
+  .platform span{color:var(--grey-dim);font-size:11.5px;}
+  .source-box{
+    background:var(--panel);border:var(--border-w-sm) solid var(--outline);border-radius:var(--radius-md);
+    padding:18px 20px;font-size:13.5px;color:var(--grey);
+  }
+  .source-box code{background:var(--panel-light);padding:2px 8px;border-radius:6px;font-size:.92em;color:var(--white);}
+  .note-row{display:flex;gap:10px;align-items:flex-start;margin-top:18px;background:var(--panel);border:var(--border-w-sm) solid var(--outline);border-radius:var(--radius-md);padding:14px 16px;}
+  .note-row img{width:22px;height:22px;flex:0 0 auto;margin-top:2px;}
+  .note-row p{margin:0;font-size:12.5px;color:var(--grey-dim);line-height:1.6;}
+
+  footer{text-align:center;padding:44px 20px 60px;color:var(--on-bg-dim);font-size:12.5px;border-top:var(--border-w-sm) solid var(--outline);margin-top:24px;line-height:1.8;}
+  footer a{color:var(--accent);text-decoration:none;font-weight:700;}
+  footer a:hover{text-decoration:underline;}
+  footer .credits{max-width:620px;margin:14px auto 0;opacity:.75;font-size:11.5px;}
+
+  @media (max-width:600px){
+    section{padding:44px 0;}
+    .cta-row .btn{width:100%;justify-content:center;}
+  }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main" data-i18n="a11y.skip">Skip to content</a>
+<canvas id="stars" aria-hidden="true"></canvas>
+
+<header class="site-nav">
+  <div class="nav-inner">
+    <a class="brand" href="#hero">
+      <img src="../icons/tung.png" width="256" height="256" alt="">
+      <span>Lucky Sahurs</span>
+    </a>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="#features" data-i18n="nav.features">Features</a>
+      <a href="#pets" data-i18n="nav.pets">Pets</a>
+      <a href="#traits" data-i18n="nav.traits">Traits</a>
+      <a href="#progression" data-i18n="nav.progression">Progression</a>
+      <a href="#download" data-i18n="nav.download">Download</a>
+    </nav>
+    <div class="nav-toggles">
+      <button class="icon-btn" id="langToggle" type="button" aria-label="Switch language">PT</button>
+      <button class="icon-btn" id="themeToggle" type="button" aria-label="Cycle theme">🖥️</button>
+      <a class="icon-btn" href="https://github.com/gomesnun/lucky-sahurs" aria-label="GitHub repository" title="GitHub">★</a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap">
+    <section id="hero">
+      <div class="badge">
+        <img src="../icons/tung.png" width="256" height="256" alt="">
+        <span data-i18n="hero.badge">Free &amp; open source</span>&nbsp;·&nbsp;<b data-version-badge>v1.0.3</b>
+      </div>
+      <img class="mascot float" id="mascotImg" src="../icons/tung.png" width="256" height="256"
+           alt="Tung Tung Tung Sahur, the Lucky Sahurs mascot">
+      <h1 class="title">Lucky Sahurs</h1>
+      <p class="tagline" data-i18n="hero.tagline">
+        An idle pet-collecting game built on pure Italian-brainrot chaos. Roll for pets from
+        Common to Transcendent, stack income, rebirth for permanent power, and climb the leaderboard — solo, on any desktop.
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-primary" id="smartDownload" href="https://github.com/gomesnun/lucky-sahurs/releases/latest">
+          <span data-dl-label data-i18n="hero.cta.download">⬇ Download latest release</span>
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/gomesnun/lucky-sahurs">
+          <span data-i18n="hero.cta.source">★ View source on GitHub</span>
+        </a>
+      </div>
+      <p class="hint" data-i18n="hero.hint">Windows · macOS (Apple Silicon &amp; Intel) · Linux — auto-detected above</p>
+    </section>
+
+    <section id="stats" aria-label="Game numbers">
+      <div class="stat-strip">
+        <div class="stat"><strong data-count="11">0</strong><span data-i18n="stats.tiers">Rarity tiers</span></div>
+        <div class="stat"><strong data-count="22">0</strong><span data-i18n="stats.pets">Collectible pets</span></div>
+        <div class="stat"><strong data-count="12">0</strong><span data-i18n="stats.traits">Traits</span></div>
+        <div class="stat"><strong data-count="11">0</strong><span data-i18n="stats.milestones">Milestone tracks</span></div>
+        <div class="stat"><strong data-suffix="B" data-count="500">0</strong><span data-i18n="stats.odds">Rarest odds (1-in-500B)</span></div>
+      </div>
+    </section>
+
+    <section id="roll" aria-label="Roll simulator">
+      <h2 class="section-title"><img src="../icons/dice.png" width="256" height="256" alt="">
+        <span data-i18n="roll.title">Try your luck</span></h2>
+      <p class="section-sub" data-i18n="roll.sub">
+        A real client-side simulator using the exact rarity weights and mutation odds from the game's own code —
+        fresh-save odds, no luck upgrades.
+      </p>
+      <div class="roll-card">
+        <div id="rollStage" aria-live="polite">
+          <p class="result-placeholder" id="rollPlaceholder" data-i18n="roll.placeholder">Press ROLL to see what you get.</p>
+        </div>
+        <button class="btn btn-primary" id="rollBtn" type="button">
+          <span data-i18n="roll.button">🎲 ROLL</span>
+        </button>
+        <div class="roll-foot">
+          <span data-i18n="roll.count.label">Rolls this session: <b id="rollCount">0</b></span>
+          <span id="rollBestWrap" hidden><span data-i18n="roll.best.label">All-time best:</span> <b id="rollBest">—</b></span>
+        </div>
+      </div>
+    </section>
+
+    <section id="features">
+      <h2 class="section-title" data-i18n="features.title">What's in the box</h2>
+      <p class="section-sub" data-i18n="features.sub">A full idle-game loop, hand built in Python + pygame.</p>
+      <div class="grid">
+        <div class="card">
+          <img src="../icons/dice.png" width="256" height="256" alt="">
+          <h3 data-i18n="features.gacha.title">Pet gacha</h3>
+          <p data-i18n="features.gacha.body">11 rarity tiers, from a 1-in-2 Common up to a 1-in-500-billion Transcendent. Every pet has its own income and a shot at a rare mutation.</p>
+        </div>
+        <div class="card">
+          <img src="../icons/rebirth.png" width="256" height="256" alt="">
+          <h3 data-i18n="features.rebirth.title">Rebirths</h3>
+          <p data-i18n="features.rebirth.body">Cash out your run for permanent money and luck multipliers, then start again stronger — the core loop that keeps every run escalating.</p>
+        </div>
+        <div class="card">
+          <img src="../icons/tree.png" width="256" height="256" alt="">
+          <h3 data-i18n="features.upgrades.title">Upgrade tree</h3>
+          <p data-i18n="features.upgrades.body">Sink earnings into money, luck and auto-roll-speed upgrades that scale your whole run, level by level.</p>
+        </div>
+        <div class="card">
+          <img src="../icons/trait.png" width="256" height="256" alt="">
+          <h3 data-i18n="features.traits.title">Traits</h3>
+          <p data-i18n="features.traits.body">12 equippable traits, from a common Lucky to the 1-in-8-million Omnipotent, reshaping money, luck and mutation odds.</p>
+        </div>
+        <div class="card">
+          <img src="../icons/milestones.png" width="256" height="256" alt="">
+          <h3 data-i18n="features.milestones.title">Milestones</h3>
+          <p data-i18n="features.milestones.body">11 long-term tracks — rolls, coins earned, playtime and more — each handing out permanent bonuses as you climb.</p>
+        </div>
+        <div class="card">
+          <img src="../icons/leaderboard.png" width="256" height="256" alt="">
+          <h3 data-i18n="features.leaderboard.title">Online leaderboard</h3>
+          <p data-i18n="features.leaderboard.body">Sign in to sync your save to the cloud and see how your stash stacks up against everyone else.</p>
+        </div>
+        <div class="card">
+          <img src="../icons/daily.png" width="256" height="256" alt="">
+          <h3 data-i18n="features.daily.title">Daily missions</h3>
+          <p data-i18n="features.daily.body">Fresh objectives every day, paid out in trait charges — always a reason to open the game.</p>
+        </div>
+        <div class="card">
+          <img src="../icons/saves.png" width="256" height="256" alt="">
+          <h3 data-i18n="features.saves.title">Cloud saves</h3>
+          <p data-i18n="features.saves.body">Three local save slots plus optional account sync, so your progress survives a reinstall or a new machine.</p>
+        </div>
+        <div class="card">
+          <img src="../icons/updatelog.png" width="256" height="256" alt="">
+          <h3 data-i18n="features.update.title">Self-updating</h3>
+          <p data-i18n="features.update.body">The built executable checks GitHub on launch (and every 30 minutes) and offers to update — never blocking without a confirmed newer version.</p>
+        </div>
+        <div class="card">
+          <img src="../icons/clock.png" width="256" height="256" alt="">
+          <h3 data-i18n="features.offline.title">Offline earnings</h3>
+          <p data-i18n="features.offline.body">Come back to 30% of your income for up to 8 hours away — upgradeable on both fronts.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="pets">
+      <h2 class="section-title"><img src="../icons/index.png" width="256" height="256" alt="">
+        <span data-i18n="pets.title">The full pet index</span></h2>
+      <p class="section-sub" data-i18n="pets.sub">
+        Every tier, every pet, and the base rarity behind it — straight from the game's own tables.
+      </p>
+      <div id="tierList"></div>
+
+      <div class="mut-row">
+        <div class="mut-card golden">
+          <h4 data-i18n="pets.golden.title">✨ Golden mutation</h4>
+          <p data-i18n="pets.golden.body">3× income · up to a 25% chance per roll once unlocked and fully upgraded.</p>
+        </div>
+        <div class="mut-card diamond">
+          <h4 data-i18n="pets.diamond.title">💎 Diamond mutation</h4>
+          <p data-i18n="pets.diamond.body">9× income · up to a 9% chance per roll once unlocked and fully upgraded — always rarer than Golden.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="traits">
+      <h2 class="section-title"><img src="../icons/trait.png" width="256" height="256" alt="">
+        <span data-i18n="traits.title">Traits</span></h2>
+      <p class="section-sub" data-i18n="traits.sub">
+        Rolled with trait charges earned from regular rolls. Only the equipped trait grants its buffs —
+        rarer traits stack money, luck, mutation and auto-roll-speed bonuses at once.
+      </p>
+      <div class="trait-grid" id="traitGrid"></div>
+    </section>
+
+    <section id="progression">
+      <h2 class="section-title" data-i18n="progression.title">Long-term progression</h2>
+      <p class="section-sub" data-i18n="progression.sub">The numbers behind rebirths and milestones.</p>
+      <div class="prog-grid">
+        <div class="prog-card">
+          <h3><img src="../icons/rebirth.png" width="256" height="256" alt="">
+            <span data-i18n="progression.rebirth.title">Rebirths</span></h3>
+          <ul>
+            <li data-i18n="progression.rebirth.l1"><b>500,000</b> coins for the first rebirth, ×3.2 cost each time after</li>
+            <li data-i18n="progression.rebirth.l2">+7% money/sec and +4% luck on Rare+ pets, <b>per rebirth, forever</b></li>
+            <li data-i18n="progression.rebirth.l3">Unlocks the <b>Auto Roller</b> at 2 rebirths</li>
+          </ul>
+        </div>
+        <div class="prog-card">
+          <h3><img src="../icons/milestones.png" width="256" height="256" alt="">
+            <span data-i18n="progression.milestones.title">Milestones</span></h3>
+          <p style="margin:0 0 6px;color:var(--grey-dim);font-size:13.5px;" data-i18n="progression.milestones.body">11 tracked stats, each with up to 15 tiers of permanent rewards:</p>
+          <div class="chip-cloud" id="milestoneChips"></div>
+        </div>
+        <div class="prog-card">
+          <h3><img src="../icons/stats.png" width="256" height="256" alt="">
+            <span data-i18n="progression.stats.title">Stack it all</span></h3>
+          <ul>
+            <li data-i18n="progression.stats.l1">Upgrades, traits, milestones and rebirths all multiply <b>together</b></li>
+            <li data-i18n="progression.stats.l2">A Golden, Diamond and Rainbow Roll bonus can line up at once — luck <b>adds</b>, it doesn't just multiply one bonus</li>
+            <li data-i18n="progression.stats.l3">Fully maxed: 25% Golden chance, 9% Diamond chance, every rarity boosted</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="howto">
+      <h2 class="section-title"><img src="../icons/options.png" width="256" height="256" alt="">
+        <span data-i18n="howto.title">How to play</span></h2>
+      <p class="section-sub" data-i18n="howto.sub">Mouse-only rolling, keyboard shortcuts for everything else.</p>
+      <div class="kbd-row">
+        <span class="kbd-item"><kbd>U</kbd> <span data-i18n="howto.k.u">Upgrades</span></span>
+        <span class="kbd-item"><kbd>I</kbd> <span data-i18n="howto.k.i">Index</span></span>
+        <span class="kbd-item"><kbd>M</kbd> <span data-i18n="howto.k.m">Milestones</span></span>
+        <span class="kbd-item"><kbd>B</kbd> <span data-i18n="howto.k.b">Bag</span></span>
+        <span class="kbd-item"><kbd>F11</kbd> <span data-i18n="howto.k.f11">Fullscreen</span></span>
+        <span class="kbd-item"><kbd>ESC</kbd> <span data-i18n="howto.k.esc">Back / close</span></span>
+      </div>
+      <p class="section-sub" style="margin-top:20px;" data-i18n="howto.foot">
+        Side buttons open Index / Upgrades / Milestones / Daily on the right and Bag / Rebirth / Traits on the left.
+        The top bar covers Stats and Options — including the Windows default / Dark / Light theme switch and the
+        English ⇄ Português toggle this page borrows the labels from.
+      </p>
+    </section>
+
+    <section id="download">
+      <h2 class="section-title"><img src="../icons/tung.png" width="256" height="256" alt="">
+        <span data-i18n="download.title">Play anywhere</span></h2>
+      <p class="section-sub" data-i18n="download.sub">
+        One codebase, three platforms. GitHub Actions builds every release automatically — current release
+        <b data-version-badge>v1.0.3</b>.
+      </p>
+      <div class="platform-row">
+        <a class="platform" href="https://github.com/gomesnun/lucky-sahurs/releases/latest">
+          <img src="../icons/tung.png" width="256" height="256" alt="">
+          <h4>Windows</h4><span>Lucky-Sahurs-Windows.exe</span>
+        </a>
+        <a class="platform" href="https://github.com/gomesnun/lucky-sahurs/releases/latest">
+          <img src="../icons/tung.png" width="256" height="256" alt="">
+          <h4>macOS · Apple Silicon</h4><span>Lucky-Sahurs-macOS-AppleSilicon.zip</span>
+        </a>
+        <a class="platform" href="https://github.com/gomesnun/lucky-sahurs/releases/latest">
+          <img src="../icons/tung.png" width="256" height="256" alt="">
+          <h4>macOS · Intel</h4><span>Lucky-Sahurs-macOS-Intel.zip</span>
+        </a>
+        <a class="platform" href="https://github.com/gomesnun/lucky-sahurs/releases/latest">
+          <img src="../icons/tung.png" width="256" height="256" alt="">
+          <h4>Linux</h4><span>Lucky-Sahurs-Linux.tar.gz</span>
+        </a>
+      </div>
+      <div class="source-box">
+        <span data-i18n="download.source.title"><b>Run from source instead:</b></span><br>
+        <code>pip install pygame-ce</code> → <code>python main.py</code>
+        <span data-i18n="download.source.or">— or on Linux/macOS:</span> <code>./run_linux_mac.sh</code>
+      </div>
+      <div class="note-row">
+        <img src="../icons/alert.png" width="256" height="256" alt="">
+        <p data-i18n="download.note">
+          Updates are mandatory once installed: the game checks GitHub on launch and offers <b>Update now</b> or
+          <b>close</b> — it only ever skips the check when it can't confirm a newer version, never blocking blind.
+        </p>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <div class="wrap">
+      <p data-i18n="footer.made">Made with pygame · <span data-i18n-html="footer.lang">English &amp; Português supported in-game</span></p>
+      <p><a href="https://github.com/gomesnun/lucky-sahurs">github.com/gomesnun/lucky-sahurs</a></p>
+      <p class="credits" data-i18n="footer.credits">
+        Sounds via Freesound.org — shinephoenixstormcrow / rhodesmas, mokasza, EminYILDIRIM, benzix2 (CC0) and holizna (CC0),
+        used under CC BY 3.0 / CC BY 4.0. Heading font: Fredoka by the Fredoka Project Authors, SIL Open Font License 1.1.
+      </p>
+    </div>
+  </footer>
+</main>
+
+<script>
+(function(){
+'use strict';
+var doc = document, root = doc.documentElement;
+var reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+
+/* ================================================================ formatting (ported from core/formatting.py) */
+var SUFFIXES = ["", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc"];
+function formatNumber(n){
+  n = Number(n);
+  var sign = n < 0 ? '-' : '';
+  n = Math.abs(n);
+  if(n < 1000){
+    if(n < 10 && n !== Math.trunc(n)) return sign + n.toFixed(1);
+    return sign + Math.round(n).toFixed(0);
+  }
+  var idx = 0;
+  while(n >= 1000 && idx < SUFFIXES.length - 1){ n /= 1000; idx++; }
+  return sign + n.toFixed(2) + SUFFIXES[idx];
+}
+function formatOneIn(chance, lang){
+  if(!chance || chance <= 0) return '—';
+  var x = formatNumber(Math.round(1 / chance));
+  return (lang === 'pt' ? '1 em ' : '1 in ') + x;
+}
+
+/* ================================================================ theme (CSS drives the actual switch) */
+var THEME_KEY = 'luckySahurs.theme';
+var themeBtn = doc.getElementById('themeToggle');
+function themeIcon(mode){ return mode === 'dark' ? '🌙' : (mode === 'light' ? '☀️' : '🖥️'); }
+function applyThemeMode(mode){
+  if(mode === 'dark' || mode === 'light'){ root.setAttribute('data-theme', mode); }
+  else { root.removeAttribute('data-theme'); mode = 'system'; }
+  if(themeBtn){ themeBtn.textContent = themeIcon(mode); themeBtn.setAttribute('aria-label', 'Theme: ' + mode); }
+  lsSet(THEME_KEY, mode);
+}
+applyThemeMode(lsGet(THEME_KEY) || 'system');
+if(themeBtn){
+  themeBtn.addEventListener('click', function(){
+    var cur = root.getAttribute('data-theme') || 'system';
+    applyThemeMode(cur === 'system' ? 'dark' : (cur === 'dark' ? 'light' : 'system'));
+  });
+}
+
+/* ================================================================ starfield (dark theme only, via CSS opacity) */
+(function(){
+  var c = doc.getElementById('stars');
+  if(!c || !c.getContext) return;
+  var ctx = c.getContext('2d');
+  var stars = [];
+  function resize(){
+    c.width = window.innerWidth;
+    c.height = doc.body.scrollHeight;
+    stars.length = 0;
+    var n = Math.min(500, Math.floor((c.width * c.height) / 9000));
+    for(var i = 0; i < n; i++){
+      stars.push({x:Math.random()*c.width, y:Math.random()*c.height, r:Math.random()*1.3+.3, s:Math.random()*0.02+0.006, p:Math.random()*Math.PI*2});
+    }
+    draw(0);
+  }
+  function draw(t){
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.fillStyle = '#ffffff';
+    for(var i = 0; i < stars.length; i++){
+      var st = stars[i];
+      var a = reduceMotion ? 0.6 : 0.35 + 0.65 * Math.abs(Math.sin(st.p + t * st.s));
+      ctx.globalAlpha = a;
+      ctx.beginPath();
+      ctx.arc(st.x, st.y, st.r, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    if(!reduceMotion) requestAnimationFrame(draw);
+  }
+  try{
+    window.addEventListener('resize', resize);
+    new ResizeObserver(resize).observe(doc.body);
+  }catch(e){ window.addEventListener('resize', resize); }
+  resize();
+})();
+
+/* ================================================================ count-up stats */
+(function(){
+  var els = Array.prototype.slice.call(doc.querySelectorAll('[data-count]'));
+  if(!els.length) return;
+  function run(el){
+    var target = parseFloat(el.getAttribute('data-count')) || 0;
+    var suffix = el.getAttribute('data-suffix') || '';
+    if(reduceMotion){ el.textContent = target + suffix; return; }
+    var start = null, dur = 900;
+    function step(ts){
+      if(start === null) start = ts;
+      var p = Math.min(1, (ts - start) / dur);
+      var eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = Math.round(target * eased) + suffix;
+      if(p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+  if('IntersectionObserver' in window){
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        if(entry.isIntersecting){ run(entry.target); io.unobserve(entry.target); }
+      });
+    }, {threshold:0.4});
+    els.forEach(function(el){ io.observe(el); });
+  } else {
+    els.forEach(run);
+  }
+})();
+
+/* ================================================================ game data (mirrors core/pets.py, core/traits.py, core/milestones.py) */
+var TIERS = [
+  {key:'comum',       en:'Common',       pt:'Comum',        color:'#ebebeb', color2:null,      text:'#0c0c0e', oneIn:2,             income:1},
+  {key:'incomum',     en:'Uncommon',     pt:'Incomum',      color:'#3cbe5a', color2:null,      text:'#0c0c0e', oneIn:4,             income:4},
+  {key:'raro',        en:'Rare',         pt:'Raro',         color:'#2d78e6', color2:null,      text:'#ffffff', oneIn:15,            income:15},
+  {key:'epico',       en:'Epic',         pt:'Épico',        color:'#963cdc', color2:null,      text:'#ffffff', oneIn:80,            income:60},
+  {key:'lendario',    en:'Legendary',    pt:'Lendário',     color:'#e6c323', color2:null,      text:'#0c0c0e', oneIn:800,           income:300},
+  {key:'mitico',      en:'Mythic',       pt:'Mítico',       color:'#dc2d2d', color2:null,      text:'#ffffff', oneIn:10000,         income:1800},
+  {key:'exotico',     en:'Exotic',       pt:'Exótico',      color:'#e68c1e', color2:'#3cbe5a', text:'#ffffff', oneIn:150000,        income:12000},
+  {key:'secreto',     en:'Secret',       pt:'Secreto',      color:'#0e0e10', color2:'#f5f5f5', text:'#ffffff', oneIn:2500000,       income:90000},
+  {key:'divino',      en:'Divine',       pt:'Divino',       color:'#f091be', color2:'#ffffff', text:'#50123a', oneIn:50000000,      income:750000},
+  {key:'cosmico',     en:'Cosmic',       pt:'Cósmico',      color:'#603ae0', color2:'#0e0830', text:'#ffffff', oneIn:3000000000,    income:8000000},
+  {key:'transcendente',en:'Transcendent',pt:'Transcendente',color:'#ffe278', color2:'#78ebff', text:'#0c0c0e', oneIn:500000000000, income:90000000}
+];
+var TIER_INDEX = {}; TIERS.forEach(function(t,i){ TIER_INDEX[t.key] = i; });
+var PET_DEFS = [
+  ['comum','Trippi Troppi'], ['incomum','Bombombini Gusini'], ['raro','Frigo Camelo'],
+  ['epico','Chimpanzini Bananini'], ['lendario','Ballerina Cappuccina'], ['mitico','Bombardiro Crocodilo'],
+  ['exotico','Tralalero Tralala'], ['secreto','Saturno Saturnita'], ['divino','Tung Tung Tung Sahur'],
+  ['comum','Lirili Larila'], ['incomum','Cappuccino Assassino'], ['raro','Brr Brr Patapim'],
+  ['epico','Glorbo Fruttodrillo'], ['lendario','Trulimero Trulicina'], ['mitico','Brri Brri Bicus Dicus Bombicus'],
+  ['exotico','Orcalero Orcala'], ['secreto','Graipuss Medussi'], ['divino','La Vacca Saturno Saturnita'],
+  ['cosmico','Girafa Celestre'], ['transcendente','Dragon Cannelloni'],
+  ['cosmico','Tralaledon'], ['transcendente','Ganganzelli Trulala']
+];
+var SECOND_PET_SHARE = 1/3, SECOND_PET_INCOME_MULT = 1.5;
+var PETS = PET_DEFS.map(function(def){
+  var tier = TIERS[TIER_INDEX[def[0]]];
+  return {tierKey:def[0], tierIdx:TIER_INDEX[def[0]], name:def[1], tier:tier};
+});
+PETS.forEach(function(p, i){
+  var sameTier = PETS.map(function(x,j){return x.tierIdx===p.tierIdx?j:-1;}).filter(function(j){return j>=0;});
+  p.nPets = sameTier.length;
+  var isSecond = sameTier.length === 2 && i === sameTier[1];
+  p.share = sameTier.length === 2 ? (isSecond ? SECOND_PET_SHARE : 1 - SECOND_PET_SHARE) : 1;
+  p.income = p.tier.income * (isSecond ? SECOND_PET_INCOME_MULT : 1);
+  p.isSecond = isSecond;
+  p.weight = p.share / p.tier.oneIn;
+});
+var TOTAL_WEIGHT = PETS.reduce(function(s,p){ return s + p.weight; }, 0);
+
+var MUTATIONS = {normal:{mult:1,en:'',pt:''}, golden:{mult:3,en:'Golden',pt:'Dourado'}, diamond:{mult:9,en:'Diamond',pt:'Diamante'}};
+var GOLDEN_BASE = 0.02, DIAMOND_BASE = 0.0025; /* fresh-unlock rates from core/pets.py, no upgrades applied */
+
+var TRAITS = [
+  {name:'Lucky',        oneIn:3,       money:0.05},
+  {name:'Sharp-Eyed',   oneIn:8,       money:0.08},
+  {name:'Instinctive',  oneIn:20,      money:0.12},
+  {name:'Visionary',    oneIn:60,      money:0.16},
+  {name:'Prodigious',   oneIn:200,     money:0.22},
+  {name:'Radiant',      oneIn:800,     money:0.30},
+  {name:'Ascendant',    oneIn:3000,    money:0.40},
+  {name:'Stellar',      oneIn:12000,   money:0.55},
+  {name:'Absolute',     oneIn:60000,   money:0.75},
+  {name:'Luck Deity',   oneIn:300000,  money:1.00},
+  {name:'Immortal',     oneIn:1500000, money:1.35},
+  {name:'Omnipotent',   oneIn:8000000, money:1.75}
+];
+/* TRAIT_BUFF_SCALE.money = 0.6 in core/balance.py — applied once here, same as the game does at import time */
+TRAITS.forEach(function(t){ t.money = Math.round(t.money * 0.6 * 100) / 100; });
+var TRAIT_COLORS = ['#6e8291','#3c96c3','#3773e1','#6e4bdc','#a537d2','#dc4ba0','#c83c2d','#e69628','#f0cd3c','#fafafa','#28d7c3','#16142299'];
+
+var MILESTONES = [
+  {key:'rolls', en:'Total Rolls', pt:'Total de Rolls'},
+  {key:'traits_rolled', en:'Traits Rolled', pt:'Atributos Obtidos'},
+  {key:'golden_rolled', en:'Golden Pets Rolled', pt:'Pets Dourados Obtidos'},
+  {key:'diamond_rolled', en:'Diamond Pets Rolled', pt:'Pets de Diamante Obtidos'},
+  {key:'secret_rolled', en:'Secret Pets Rolled', pt:'Pets Secretos Obtidos'},
+  {key:'divine_rolled', en:'Divine Pets Rolled', pt:'Pets Divinos Obtidos'},
+  {key:'cosmic_rolled', en:'Cosmic Pets Rolled', pt:'Pets Cósmicos Obtidos'},
+  {key:'transcendent_rolled', en:'Transcendent Pets Rolled', pt:'Pets Transcendentes Obtidos'},
+  {key:'indexed_pets', en:'Indexed Pets', pt:'Pets Indexados'},
+  {key:'coins', en:'Total Coins Earned', pt:'Moedas Totais Ganhas'},
+  {key:'playtime', en:'Playtime', pt:'Tempo de Jogo'}
+];
+
+/* ================================================================ i18n */
+var I18N = {
+  en: {
+    'a11y.skip':'Skip to content',
+    'nav.features':'Features','nav.pets':'Pets','nav.traits':'Traits','nav.progression':'Progression','nav.download':'Download',
+    'hero.badge':'Free & open source',
+    'hero.tagline':"An idle pet-collecting game built on pure Italian-brainrot chaos. Roll for pets from Common to Transcendent, stack income, rebirth for permanent power, and climb the leaderboard — solo, on any desktop.",
+    'hero.cta.download':'⬇ Download latest release','hero.cta.source':'★ View source on GitHub',
+    'hero.hint':'Windows · macOS (Apple Silicon & Intel) · Linux — auto-detected above',
+    'dl.primary':'⬇ Download latest release',
+    'stats.tiers':'Rarity tiers','stats.pets':'Collectible pets','stats.traits':'Traits','stats.milestones':'Milestone tracks','stats.odds':'Rarest odds (1-in-500B)',
+    'roll.title':'Try your luck',
+    'roll.sub':"A real client-side simulator using the exact rarity weights and mutation odds from the game's own code — fresh-save odds, no luck upgrades.",
+    'roll.placeholder':'Press ROLL to see what you get.',
+    'roll.button':'🎲 ROLL',
+    'roll.count.label':'Rolls this session: {n}',
+    'roll.best.label':'All-time best:',
+    'roll.income':'income/sec','roll.chance':'chance',
+    'features.title':"What's in the box",'features.sub':'A full idle-game loop, hand built in Python + pygame.',
+    'features.gacha.title':'Pet gacha','features.gacha.body':'11 rarity tiers, from a 1-in-2 Common up to a 1-in-500-billion Transcendent. Every pet has its own income and a shot at a rare mutation.',
+    'features.rebirth.title':'Rebirths','features.rebirth.body':'Cash out your run for permanent money and luck multipliers, then start again stronger — the core loop that keeps every run escalating.',
+    'features.upgrades.title':'Upgrade tree','features.upgrades.body':'Sink earnings into money, luck and auto-roll-speed upgrades that scale your whole run, level by level.',
+    'features.traits.title':'Traits','features.traits.body':'12 equippable traits, from a common Lucky to the 1-in-8-million Omnipotent, reshaping money, luck and mutation odds.',
+    'features.milestones.title':'Milestones','features.milestones.body':'11 long-term tracks — rolls, coins earned, playtime and more — each handing out permanent bonuses as you climb.',
+    'features.leaderboard.title':'Online leaderboard','features.leaderboard.body':'Sign in to sync your save to the cloud and see how your stash stacks up against everyone else.',
+    'features.daily.title':'Daily missions','features.daily.body':'Fresh objectives every day, paid out in trait charges — always a reason to open the game.',
+    'features.saves.title':'Cloud saves','features.saves.body':'Three local save slots plus optional account sync, so your progress survives a reinstall or a new machine.',
+    'features.update.title':'Self-updating','features.update.body':"The built executable checks GitHub on launch (and every 30 minutes) and offers to update — never blocking without a confirmed newer version.",
+    'features.offline.title':'Offline earnings','features.offline.body':'Come back to 30% of your income for up to 8 hours away — upgradeable on both fronts.',
+    'pets.title':'The full pet index','pets.sub':"Every tier, every pet, and the base rarity behind it — straight from the game's own tables.",
+    'pets.golden.title':'✨ Golden mutation','pets.golden.body':'3× income · up to a 25% chance per roll once unlocked and fully upgraded.',
+    'pets.diamond.title':'💎 Diamond mutation','pets.diamond.body':'9× income · up to a 9% chance per roll once unlocked and fully upgraded — always rarer than Golden.',
+    'pets.tag.second':'2nd pet · rarer','pets.baseOdds':'Base rarity: {x}',
+    'traits.title':'Traits','traits.sub':'Rolled with trait charges earned from regular rolls. Only the equipped trait grants its buffs — rarer traits stack money, luck, mutation and auto-roll-speed bonuses at once.',
+    'progression.title':'Long-term progression','progression.sub':'The numbers behind rebirths and milestones.',
+    'progression.rebirth.title':'Rebirths',
+    'progression.rebirth.l1':'<b>500,000</b> coins for the first rebirth, ×3.2 cost each time after',
+    'progression.rebirth.l2':'+7% money/sec and +4% luck on Rare+ pets, <b>per rebirth, forever</b>',
+    'progression.rebirth.l3':'Unlocks the <b>Auto Roller</b> at 2 rebirths',
+    'progression.milestones.title':'Milestones','progression.milestones.body':'11 tracked stats, each with up to 15 tiers of permanent rewards:',
+    'progression.stats.title':'Stack it all',
+    'progression.stats.l1':'Upgrades, traits, milestones and rebirths all multiply <b>together</b>',
+    'progression.stats.l2':"A Golden, Diamond and Rainbow Roll bonus can line up at once — luck <b>adds</b>, it doesn't just multiply one bonus",
+    'progression.stats.l3':'Fully maxed: 25% Golden chance, 9% Diamond chance, every rarity boosted',
+    'howto.title':'How to play','howto.sub':'Mouse-only rolling, keyboard shortcuts for everything else.',
+    'howto.k.u':'Upgrades','howto.k.i':'Index','howto.k.m':'Milestones','howto.k.b':'Bag','howto.k.f11':'Fullscreen','howto.k.esc':'Back / close',
+    'howto.foot':'Side buttons open Index / Upgrades / Milestones / Daily on the right and Bag / Rebirth / Traits on the left. The top bar covers Stats and Options — including the Windows default / Dark / Light theme switch and the English ⇄ Português toggle this page borrows the labels from.',
+    'download.title':'Play anywhere','download.sub':'One codebase, three platforms. GitHub Actions builds every release automatically — current release {v}.',
+    'download.source.title':'Run from source instead:','download.source.or':'— or on Linux/macOS:',
+    'download.note':"Updates are mandatory once installed: the game checks GitHub on launch and offers <b>Update now</b> or <b>close</b> — it only ever skips the check when it can't confirm a newer version, never blocking blind.",
+    'footer.made':'Made with pygame ·',
+    'footer.lang':'English &amp; Português supported in-game',
+    'footer.credits':'Sounds via Freesound.org — shinephoenixstormcrow / rhodesmas, mokasza, EminYILDIRIM, benzix2 (CC0) and holizna (CC0), used under CC BY 3.0 / CC BY 4.0. Heading font: Fredoka by the Fredoka Project Authors, SIL Open Font License 1.1.',
+    'download.for':'Download for '
+  },
+  pt: {
+    'a11y.skip':'Saltar para o conteúdo',
+    'nav.features':'Funcionalidades','nav.pets':'Pets','nav.traits':'Atributos','nav.progression':'Progressão','nav.download':'Descarregar',
+    'hero.badge':'Grátis e open source',
+    'hero.tagline':'Um jogo idle de coleção de pets em puro caos "Italian brainrot". Faz roll de pets do Comum ao Transcendente, acumula rendimento, renasce para poder permanente e sobe no ranking — sozinho, em qualquer computador.',
+    'hero.cta.download':'⬇ Descarregar a última versão','hero.cta.source':'★ Ver código no GitHub',
+    'hero.hint':'Windows · macOS (Apple Silicon e Intel) · Linux — detetado automaticamente acima',
+    'dl.primary':'⬇ Descarregar a última versão',
+    'stats.tiers':'Raridades','stats.pets':'Pets coleccionáveis','stats.traits':'Atributos','stats.milestones':'Categorias de metas','stats.odds':'Chance mais rara (1 em 500 mil milhões)',
+    'roll.title':'Testa a tua sorte',
+    'roll.sub':'Um simulador real, no browser, com os mesmos pesos de raridade e chances de mutação do código do jogo — chances de conta nova, sem melhorias de sorte.',
+    'roll.placeholder':'Carrega em ROLL para ver o que sai.',
+    'roll.button':'🎲 ROLL',
+    'roll.count.label':'Rolls nesta sessão: {n}',
+    'roll.best.label':'Melhor de sempre:',
+    'roll.income':'rendimento/seg','roll.chance':'chance',
+    'features.title':'O que o jogo tem','features.sub':'Um loop idle completo, feito à mão em Python + pygame.',
+    'features.gacha.title':'Gacha de pets','features.gacha.body':'11 raridades, de um Comum (1 em 2) a um Transcendente (1 em 500 mil milhões). Cada pet tem o seu rendimento e chance de mutação rara.',
+    'features.rebirth.title':'Renascimentos','features.rebirth.body':'Troca o teu progresso por multiplicadores permanentes de dinheiro e sorte, e recomeça mais forte — o loop principal que faz cada run escalar.',
+    'features.upgrades.title':'Árvore de melhorias','features.upgrades.body':'Investe o dinheiro em melhorias de dinheiro, sorte e velocidade do auto-roll que escalam a run toda, nível a nível.',
+    'features.traits.title':'Atributos','features.traits.body':'12 atributos equipáveis, do comum Lucky ao Omnipotent (1 em 8 milhões), que mudam dinheiro, sorte e chance de mutação.',
+    'features.milestones.title':'Metas','features.milestones.body':'11 categorias de longo prazo — rolls, moedas ganhas, tempo de jogo e mais — cada uma a dar bónus permanentes à medida que sobes.',
+    'features.leaderboard.title':'Ranking online','features.leaderboard.body':'Inicia sessão para sincronizar o save na cloud e ver como te comparas com todos os outros.',
+    'features.daily.title':'Missões diárias','features.daily.body':'Objetivos novos todos os dias, pagos em cargas de atributo — sempre um motivo para abrir o jogo.',
+    'features.saves.title':'Saves na cloud','features.saves.body':'Três slots de save locais mais sincronização opcional por conta, para o progresso sobreviver a uma reinstalação ou a um computador novo.',
+    'features.update.title':'Atualização automática','features.update.body':'O executável verifica o GitHub ao abrir (e de 30 em 30 minutos) e propõe atualizar — nunca bloqueia sem confirmar que há mesmo uma versão mais recente.',
+    'features.offline.title':'Ganhos offline','features.offline.body':'Volta com 30% do teu rendimento por até 8 horas fora — as duas coisas dão para melhorar.',
+    'pets.title':'O índice completo de pets','pets.sub':'Todas as raridades, todos os pets, e a raridade-base de cada um — direto das tabelas do jogo.',
+    'pets.golden.title':'✨ Mutação Dourada','pets.golden.body':'3× rendimento · até 25% de chance por roll, com tudo desbloqueado e ao máximo.',
+    'pets.diamond.title':'💎 Mutação Diamante','pets.diamond.body':'9× rendimento · até 9% de chance por roll, com tudo desbloqueado e ao máximo — sempre mais rara que a Dourada.',
+    'pets.tag.second':'2.º pet · mais raro','pets.baseOdds':'Raridade-base: {x}',
+    'traits.title':'Atributos','traits.sub':'Obtidos com cargas de atributo ganhas em rolls normais. Só o atributo equipado dá os seus bónus — os mais raros acumulam dinheiro, sorte, mutação e velocidade do auto ao mesmo tempo.',
+    'progression.title':'Progressão a longo prazo','progression.sub':'Os números por trás dos renascimentos e das metas.',
+    'progression.rebirth.title':'Renascimentos',
+    'progression.rebirth.l1':'<b>500 000</b> moedas para o primeiro renascimento, ×3,2 de custo a cada vez',
+    'progression.rebirth.l2':'+7% dinheiro/seg e +4% de sorte em pets Raros+, <b>por renascimento, para sempre</b>',
+    'progression.rebirth.l3':'Desbloqueia o <b>Auto Roller</b> a partir de 2 renascimentos',
+    'progression.milestones.title':'Metas','progression.milestones.body':'11 estatísticas seguidas, cada uma com até 15 níveis de recompensas permanentes:',
+    'progression.stats.title':'Tudo se acumula',
+    'progression.stats.l1':'Melhorias, atributos, metas e renascimentos multiplicam-se <b>todos juntos</b>',
+    'progression.stats.l2':'Um bónus Dourado, Diamante e Rainbow Roll podem coincidir — a sorte <b>soma-se</b>, não multiplica só um bónus',
+    'progression.stats.l3':'Com tudo ao máximo: 25% de chance Dourada, 9% Diamante, todas as raridades reforçadas',
+    'howto.title':'Como jogar','howto.sub':'O roll é só com o rato; o resto tem atalhos de teclado.',
+    'howto.k.u':'Melhorias','howto.k.i':'Índice','howto.k.m':'Metas','howto.k.b':'Mochila','howto.k.f11':'Ecrã inteiro','howto.k.esc':'Voltar / fechar',
+    'howto.foot':'Os botões laterais abrem Índice / Melhorias / Metas / Diárias à direita e Mochila / Renascimento / Atributos à esquerda. A barra superior tem Estatísticas e Opções — incluindo o tema Padrão do Windows / Escuro / Claro e o alternador Português ⇄ English de onde esta página tirou os termos.',
+    'download.title':'Joga em qualquer sítio','download.sub':'Um só código, três sistemas. O GitHub Actions cria cada versão automaticamente — versão atual {v}.',
+    'download.source.title':'Ou corre a partir do código-fonte:','download.source.or':'— ou no Linux/macOS:',
+    'download.note':'A atualização é obrigatória depois de instalado: o jogo verifica o GitHub ao abrir e propõe <b>Atualizar agora</b> ou <b>fechar</b> — só salta a verificação quando não consegue confirmar uma versão mais recente, nunca bloqueia às cegas.',
+    'footer.made':'Feito com pygame ·',
+    'footer.lang':'Jogo disponível em Português e English',
+    'footer.credits':'Sons via Freesound.org — shinephoenixstormcrow / rhodesmas, mokasza, EminYILDIRIM, benzix2 (CC0) e holizna (CC0), usados sob CC BY 3.0 / CC BY 4.0. Tipo de letra dos títulos: Fredoka, dos Fredoka Project Authors, licença SIL Open Font License 1.1.',
+    'download.for':'Descarregar para '
+  }
+};
+
+var LANG_KEY = 'luckySahurs.lang';
+var currentLang = 'en';
+function detectLang(){
+  var saved = lsGet(LANG_KEY);
+  if(saved === 'en' || saved === 'pt') return saved;
+  return (navigator.language || '').toLowerCase().indexOf('pt') === 0 ? 'pt' : 'en';
+}
+function t(key){ return (I18N[currentLang] && I18N[currentLang][key]) || I18N.en[key] || key; }
+
+function applyLang(lang){
+  currentLang = (lang === 'pt') ? 'pt' : 'en';
+  var dict = I18N[currentLang];
+  doc.querySelectorAll('[data-i18n]').forEach(function(el){
+    var v = dict[el.getAttribute('data-i18n')];
+    if(v != null) el.textContent = v;
+  });
+  doc.querySelectorAll('[data-i18n-html]').forEach(function(el){
+    var v = dict[el.getAttribute('data-i18n-html')];
+    if(v != null) el.innerHTML = v;
+  });
+  root.setAttribute('lang', currentLang);
+  var langBtn = doc.getElementById('langToggle');
+  if(langBtn){ langBtn.textContent = currentLang === 'en' ? 'PT' : 'EN'; langBtn.setAttribute('aria-label', currentLang === 'en' ? 'Mudar para Português' : 'Switch to English'); }
+  lsSet(LANG_KEY, currentLang);
+  renderTiers();
+  renderTraits();
+  renderMilestoneChips();
+  updateRollCount();
+  renderLastRoll();
+}
+var langToggle = doc.getElementById('langToggle');
+if(langToggle){ langToggle.addEventListener('click', function(){ applyLang(currentLang === 'en' ? 'pt' : 'en'); }); }
+
+/* ================================================================ pet index render */
+function renderTiers(){
+  var host = doc.getElementById('tierList');
+  if(!host) return;
+  host.innerHTML = '';
+  TIERS.forEach(function(tier){
+    var row = doc.createElement('div');
+    row.className = 'tier-row';
+    var bg = tier.color2 ? ('linear-gradient(90deg,' + tier.color + ',' + tier.color2 + ')') : tier.color;
+    var head = doc.createElement('div');
+    head.className = 'tier-head';
+    head.style.background = bg;
+    head.style.color = tier.text;
+    var nameEl = doc.createElement('span');
+    nameEl.className = 't-name';
+    nameEl.textContent = tier[currentLang];
+    var oddsEl = doc.createElement('span');
+    oddsEl.className = 't-odds';
+    oddsEl.textContent = t('pets.baseOdds').replace('{x}', formatOneIn(1/tier.oneIn, currentLang));
+    head.appendChild(nameEl); head.appendChild(oddsEl);
+    var body = doc.createElement('div');
+    body.className = 'tier-pets';
+    PETS.filter(function(p){ return p.tierIdx === TIER_INDEX[tier.key]; }).forEach(function(p){
+      var chip = doc.createElement('span');
+      chip.className = 'pet-chip';
+      var nm = doc.createElement('span');
+      nm.textContent = p.name;
+      chip.appendChild(nm);
+      if(p.isSecond){
+        var tag = doc.createElement('span');
+        tag.className = 'p-tag';
+        tag.textContent = t('pets.tag.second');
+        chip.appendChild(tag);
+      }
+      var inc = doc.createElement('span');
+      inc.className = 'p-income';
+      inc.textContent = '$' + formatNumber(p.income) + '/s';
+      chip.appendChild(inc);
+      body.appendChild(chip);
+    });
+    row.appendChild(head); row.appendChild(body);
+    host.appendChild(row);
+  });
+}
+
+function renderTraits(){
+  var host = doc.getElementById('traitGrid');
+  if(!host) return;
+  host.innerHTML = '';
+  TRAITS.forEach(function(tr, i){
+    var chip = doc.createElement('div');
+    chip.className = 'trait-chip';
+    var color = TRAIT_COLORS[i] || '#3b3d53';
+    chip.style.background = 'color-mix(in srgb, ' + color + ' 22%, var(--panel))';
+    chip.style.borderColor = color;
+    var h = doc.createElement('h4'); h.textContent = tr.name; h.style.color = color;
+    var odds = doc.createElement('div'); odds.className = 't-odds'; odds.textContent = formatOneIn(1/tr.oneIn, currentLang);
+    var buff = doc.createElement('div'); buff.className = 't-buff'; buff.textContent = '+' + Math.round(tr.money*100) + '% ' + (currentLang==='pt' ? 'dinheiro' : 'money');
+    chip.appendChild(h); chip.appendChild(odds); chip.appendChild(buff);
+    host.appendChild(chip);
+  });
+}
+
+function renderMilestoneChips(){
+  var host = doc.getElementById('milestoneChips');
+  if(!host) return;
+  host.innerHTML = '';
+  MILESTONES.forEach(function(m){
+    var span = doc.createElement('span');
+    span.textContent = m[currentLang];
+    host.appendChild(span);
+  });
+}
+
+/* ================================================================ roll simulator (mirrors core/pets.py roll()) */
+var rollCount = 0;
+var lastRoll = null;
+var BEST_KEY = 'luckySahurs.bestRoll';
+
+function pickPet(){
+  var roll = Math.random() * TOTAL_WEIGHT;
+  var cum = 0;
+  for(var i = 0; i < PETS.length; i++){
+    cum += PETS[i].weight;
+    if(roll <= cum) return PETS[i];
+  }
+  return PETS[PETS.length - 1];
+}
+function pickMutation(){
+  if(Math.random() < DIAMOND_BASE) return 'diamond';
+  if(Math.random() < GOLDEN_BASE) return 'golden';
+  return 'normal';
+}
+function mutationChance(mut){
+  if(mut === 'diamond') return DIAMOND_BASE;
+  if(mut === 'golden') return (1 - DIAMOND_BASE) * GOLDEN_BASE;
+  return (1 - DIAMOND_BASE) * (1 - GOLDEN_BASE);
+}
+function scoreOf(pet, mut){
+  return pet.tierIdx * 10 + (mut === 'diamond' ? 2 : mut === 'golden' ? 1 : 0);
+}
+
+function playSound(name){
+  try{
+    var a = new Audio('../sounds/' + name);
+    a.volume = 0.55;
+    a.play().catch(function(){});
+  }catch(e){}
+}
+
+function renderLastRoll(){
+  var stage = doc.getElementById('rollStage');
+  if(!stage || !lastRoll) return;
+  var pet = lastRoll.pet, mut = lastRoll.mut;
+  var bg = pet.tier.color2 ? ('linear-gradient(135deg,' + pet.tier.color + ',' + pet.tier.color2 + ')') : pet.tier.color;
+  var chance = (pet.weight / TOTAL_WEIGHT) * mutationChance(mut);
+  var mutLabel = MUTATIONS[mut][currentLang];
+  var income = pet.income * MUTATIONS[mut].mult;
+  stage.style.background = bg;
+  stage.style.color = pet.tier.text;
+  stage.className = 'filled';
+  var borderColor = mut === 'golden' ? '#ffcd3c' : (mut === 'diamond' ? '#96ebff' : 'transparent');
+  stage.style.boxShadow = mut !== 'normal' ? ('inset 0 0 0 3px ' + borderColor) : 'none';
+  stage.innerHTML =
+    '<div class="result-inner">' +
+      '<div class="result-tier" style="background:rgba(0,0,0,.18)">' + pet.tier[currentLang] + (mutLabel ? ' · ' + mutLabel : '') + '</div>' +
+      '<p class="result-name">' + pet.name + '</p>' +
+      '<div class="result-meta">' +
+        '<span>$' + formatNumber(income) + '/s ' + t('roll.income') + '</span>' +
+        '<span>' + formatOneIn(chance, currentLang) + ' ' + t('roll.chance') + '</span>' +
+      '</div>' +
+    '</div>';
+}
+
+function updateRollCount(){
+  var el = doc.getElementById('rollCount');
+  if(el) el.textContent = String(rollCount);
+  var bestWrap = doc.getElementById('rollBestWrap');
+  var bestEl = doc.getElementById('rollBest');
+  var stored = lsGet(BEST_KEY);
+  if(stored && bestEl && bestWrap){
+    try{
+      var best = JSON.parse(stored);
+      var tier = TIERS[best.tierIdx];
+      bestEl.textContent = tier[currentLang] + (best.mut !== 'normal' ? ' · ' + MUTATIONS[best.mut][currentLang] : '') + ' — ' + best.name;
+      bestWrap.hidden = false;
+    }catch(e){ bestWrap.hidden = true; }
+  }
+}
+
+var rollBtn = doc.getElementById('rollBtn');
+if(rollBtn){
+  rollBtn.addEventListener('click', function(){
+    var pet = pickPet();
+    var mut = pickMutation();
+    lastRoll = {pet:pet, mut:mut};
+    rollCount++;
+    playSound('click.ogg');
+    if(pet.tierIdx >= TIER_INDEX['lendario'] || mut !== 'normal'){
+      setTimeout(function(){ playSound('achievement.ogg'); }, 120);
+    }
+    renderLastRoll();
+    updateRollCount();
+    try{
+      var stored = lsGet(BEST_KEY);
+      var prevBest = stored ? JSON.parse(stored) : null;
+      var bestScore = prevBest ? scoreOf({tierIdx:prevBest.tierIdx}, prevBest.mut) : -1;
+      if(scoreOf(pet, mut) > bestScore){
+        lsSet(BEST_KEY, JSON.stringify({tierIdx:pet.tierIdx, mut:mut, name:pet.name}));
+        updateRollCount();
+      }
+    }catch(e){}
+  });
+}
+
+/* ================================================================ mascot easter egg */
+var mascot = doc.getElementById('mascotImg');
+if(mascot){
+  mascot.addEventListener('click', function(){
+    playSound('click.ogg');
+    if(!reduceMotion){
+      mascot.classList.remove('wiggle');
+      void mascot.offsetWidth;
+      mascot.classList.add('wiggle');
+    }
+  });
+}
+
+/* ================================================================ smart download (GitHub Releases API, best-effort) */
+(function(){
+  var REPO = 'gomesnun/lucky-sahurs';
+  var primaryBtn = doc.getElementById('smartDownload');
+  var versionBadges = doc.querySelectorAll('[data-version-badge]');
+  function detectOS(){
+    var platform = navigator.platform || '';
+    var ua = navigator.userAgent || '';
+    if(/Mac/i.test(platform)) return /iPhone|iPad|iPod/i.test(ua) ? null : 'mac-arm';
+    if(/Win/i.test(platform)) return 'windows';
+    if(/Linux/i.test(platform) && !/Android/i.test(ua)) return 'linux';
+    return null;
+  }
+  var ASSET_MATCH = {
+    windows: /Windows.*\.exe$/i,
+    'mac-arm': /macOS-AppleSilicon.*\.zip$/i,
+    linux: /Linux.*\.tar\.gz$/i
+  };
+  var LABEL_EN = {windows:'Windows', 'mac-arm':'macOS', linux:'Linux'};
+  var LABEL_PT = {windows:'Windows', 'mac-arm':'macOS', linux:'Linux'};
+  fetch('https://api.github.com/repos/' + REPO + '/releases/latest')
+    .then(function(r){ if(!r.ok) throw new Error('bad status'); return r.json(); })
+    .then(function(data){
+      if(data && data.tag_name){
+        versionBadges.forEach(function(el){ el.textContent = data.tag_name; });
+      }
+      var os = detectOS();
+      if(os && primaryBtn && data && data.assets){
+        var re = ASSET_MATCH[os];
+        var found = data.assets.filter(function(a){ return re.test(a.name); })[0];
+        if(found){
+          primaryBtn.setAttribute('href', found.browser_download_url);
+          var labelEl = primaryBtn.querySelector('[data-dl-label]');
+          var label = t('download.for') + (currentLang === 'pt' ? LABEL_PT[os] : LABEL_EN[os]);
+          if(labelEl) labelEl.textContent = label;
+        }
+      }
+    })
+    .catch(function(){ /* offline / rate-limited: static fallback link already in the HTML */ });
+})();
+
+/* ================================================================ boot */
+renderTiers();
+renderTraits();
+renderMilestoneChips();
+applyLang(detectLang());
+})();
+</script>
+</body>
+</html>
