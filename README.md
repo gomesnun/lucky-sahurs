@@ -49,49 +49,19 @@ Pick your platform. Fastest path is the prebuilt download; no Python needed.
 
 ### 🪟 Windows
 
-**Option A — download (recommended)**
 1. Open the [latest release](https://github.com/gomesnun/lucky-sahurs/releases/latest).
 2. Download `Lucky-Sahurs-Windows.exe`.
 3. Double-click it. SmartScreen may warn about an unknown publisher → **More info → Run anyway** (the build is unsigned).
 
-**Option B — run from source**
-1. Install [Python 3.10+](https://www.python.org/downloads/) — tick **Add Python to PATH** during setup.
-2. In this folder, open a terminal and run:
-   ```bat
-   pip install -r requirements.txt
-   python main.py
-   ```
-
-**Option C — build your own `.exe`**
-1. Double-click `build_exe.bat`.
-2. Wait 1–2 minutes.
-3. Result: `dist\Lucky Sahurs.exe` — a single file you can send to friends.
 
 ### 🍎 macOS (Apple Silicon &amp; Intel)
 
-**Option A — download (recommended)**
 1. Open the [latest release](https://github.com/gomesnun/lucky-sahurs/releases/latest).
 2. Download `Lucky-Sahurs-macOS-AppleSilicon.zip` (M1/M2/M3/M4) or `Lucky-Sahurs-macOS-Intel.zip`.
 3. Unzip it, then **right-click the app → Open** the first time (the app is unsigned, so a plain double-click is blocked).
 
-**Option B — run from source**
-1. Install Python 3: `brew install python` (or from python.org).
-2. In this folder:
-   ```bash
-   chmod +x run_linux_mac.sh
-   ./run_linux_mac.sh
-   ```
-   First launch creates a `.venv` and installs `pygame-ce` automatically.
-
-**Option C — build your own `.app`**
-```bash
-./build_linux_mac.sh
-```
-Result: `dist/Lucky Sahurs.app`. Zip it to share it.
-
 ### 🐧 Linux
 
-**Option A — download (recommended)**
 1. Open the [latest release](https://github.com/gomesnun/lucky-sahurs/releases/latest).
 2. Download the Linux `.tar.gz` and extract it.
 3. Make it runnable and start it:
@@ -101,56 +71,7 @@ Result: `dist/Lucky Sahurs.app`. Zip it to share it.
    ```
    The binary needs **glibc ≥ 2.39** (Ubuntu 24.04+, Fedora 40+, Mint 22+, Arch). On older distros use Option B.
 
-**Option B — run from source**
-1. Ensure Python 3 and venv support: `sudo apt install python3 python3-venv` (Debian/Ubuntu).
-2. In this folder:
-   ```bash
-   chmod +x run_linux_mac.sh
-   ./run_linux_mac.sh
-   ```
-
-**Option C — build your own binary**
-```bash
-./build_linux_mac.sh
-```
-Result: `dist/Lucky Sahurs` (single file).
-
-> PyInstaller cannot cross-compile: each platform's executable must be built on that platform (or by CI, below).
-
 ---
-
-## Releasing (maintainers)
-
-`.github/workflows/build.yml` builds all four targets on GitHub's runners and attaches them to a Release:
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-5–10 minutes later, Windows `.exe`, Linux `.tar.gz` and both macOS `.zip` files are on the Releases page.
-To only test a build without publishing: **Actions → Build Lucky Sahurs → Run workflow** (files land under *Artifacts*).
-
----
-
-## Project layout
-
-```
-main.py          entry point + game loop
-config.py        tunables, paths, constants
-core/            game rules — pets, rarities, traits, upgrades, rebirths, milestones, economy
-ui/              pygame screens and panels (title, game, shop, pets, leaderboard, options…)
-online/          Firebase auth, cloud saves, leaderboard, updater
-icons/ sounds/ fonts/   assets bundled into the executables
-website/         the landing page + roll simulator
-rules.txt        Firestore security rules
-```
-
----
-
-## Tech
-
-Python 3 · [pygame-ce](https://pyga.me/) · PyInstaller · Firebase (Auth + Firestore) · GitHub Actions.
 
 ## License
 
