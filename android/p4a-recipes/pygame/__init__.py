@@ -12,9 +12,16 @@ Toda a API usada pelo jogo existe nos dois.
 
 from os.path import join
 
+import sh
 from pythonforandroid.recipes.pygame import Pygame2Recipe
 from pythonforandroid.toolchain import current_directory, shprint
-import sh
+
+# Linha do modulo "surface" no Setup do Android, tal como vem no pygame 2.6.1.
+SURFACE_LINE = "surface src_c/surface.c src_c/alphablit.c src_c/surface_fill.c"
+# Os blitters SIMD faltam nessa linha. No arm64 o pygame liga-os na mesma (o simd_blitters.h ativa o
+# PG_ENABLE_ARM_NEON, que traduz o SSE2 para NEON), e sem eles o import do pygame.display rebenta com
+# 'cannot locate symbol "alphablit_alpha_sse2_argb_surf_alpha"'.
+SIMD_SOURCES = "src_c/simd_blitters_sse2.c src_c/simd_blitters_avx2.c"
 
 
 class PygameRecentRecipe(Pygame2Recipe):
@@ -23,11 +30,14 @@ class PygameRecentRecipe(Pygame2Recipe):
     hostpython_prerequisites = ["setuptools", "cython>=3.1"]
 
     def prebuild_arch(self, arch):
-        # O Cython 3.1 recusa atribuir ao __dict__ de uma cdef class (passou a trata-lo sozinho).
-        # O jogo nao usa o pygame.sprite, mas o _sprite faz parte do Setup do Android e tem de compilar.
         with current_directory(self.get_build_dir(arch.arch)):
+            # O Cython 3.1 recusa atribuir ao __dict__ de uma cdef class (passou a trata-lo sozinho).
+            # O jogo nao usa o pygame.sprite, mas o _sprite faz parte do Setup do Android e tem de compilar.
             shprint(sh.sed, "-i", "/^        self\\.__dict__ = {}$/d",
                     join("src_c", "cython", "pygame", "_sprite.pyx"))
+            shprint(sh.sed, "-i",
+                    "s|^{}|{} {}|".format(SURFACE_LINE, SURFACE_LINE, SIMD_SOURCES),
+                    join("buildconfig", "Setup.Android.SDL2.in"))
         super().prebuild_arch(arch)
 
 
