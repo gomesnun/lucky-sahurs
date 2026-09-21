@@ -1,0 +1,590 @@
+"""
+LUCKY SAHURS  -  v7
+===================
+Roll pets, equip them to earn money, buy upgrades and collect traits.
+
+How to play:
+    Click the ROLL button to roll a pet (rolling is mouse-only).
+    Side buttons: Index / Upgrades / Milestones / Daily (right side), Bag / Rebirth / Traits (left side).
+    Top bar: Stats (rolls, slots, playtime...) and Options.
+
+Shortcuts:
+    U / I / M / B -> open the Upgrades / Index / Milestones / Bag panels
+    F11           -> toggle fullscreen / windowed
+    ESC           -> close panels / Traits page / Stats / Options, or go back in the menus
+
+How to run:
+    pip install pygame
+    python main.py
+
+Para criar o .exe (para mandar aos amigos): duplo clique em build_exe.bat
+(instala o pygame + pyinstaller e cria dist\\Lucky Sahurs.exe).
+
+Progress is stored in savegame_slot1.json / slot2 / slot3 in the same folder as main.py
+(an old savegame.json is copied to Slot 1 automatically).
+Settings (sound, volume, animations, fullscreen) are stored in lucky_sahurs_settings.json.
+
+Icons: the PNGs in the "icons" folder are used for the side buttons, the money in the top bar, the
+Stats / Options / Leaderboard / Saves buttons, the red "!!" on the Rebirth button (alert.png) and the
+mascot on the main menu (tung.png). Delete or replace any of them - a missing file falls back to the
+drawn icon (or simply to no icon).
+
+Sounds: the files in the "sounds" folder are the click / upgrade / achievement / rebirth sounds and the
+background music (music.ogg). Their credits are in sounds/CREDITS.txt and in the Credits button of the
+main menu. Replace or delete any file (a missing file falls back to a generated beep / no music).
+
+Optional font: drop a .ttf / .otf file (e.g. "Lilita One" or "Fredoka" from Google Fonts)
+inside a folder called "fonts" next to main.py and the game uses it for every text.
+
+MAPA DOS FICHEIROS
+------------------
+main.py                 este ficheiro: junta tudo na classe Game e tem o ciclo principal
+build_exe.bat           cria o executável (.exe) com o PyInstaller
+config.py               constantes gerais (janela, versão, pastas de saves)
+theme.py                cores do estilo cartoon
+storage.py              saves locais (slots) e definições
+
+core/                   as regras do jogo (não desenham nada)
+    game_state.py       GameState = o save completo (junta os ficheiros abaixo)
+    pets.py             pets, raridades, mutações, chances e roll
+    traits.py           traits
+    upgrades.py         upgrades e os Golden / Diamond / Rainbow Roll
+    milestones.py       metas e recompensas
+    economy.py          dinheiro por segundo, multiplicadores, auto-roll
+    rebirths.py         rebirths: reset de dinheiro/upgrades por bónus permanente
+    daily_missions.py   missões diárias (3 por dia, recompensa em cargas de trait)
+    offline.py          ganhos offline (30% do rendimento, máx. 8 h)
+    formatting.py       formatar números, chances e tempo
+
+online/                 conta e cloud
+    firebase.py         cliente do Firebase (contas + Firestore) e Worker de fundo
+    cloud_cache.py      sessão guardada, cache local dos saves da conta
+    cloud.py            lógica online do jogo (login, sincronizar, leaderboard)
+
+ui/                     tudo o que se vê / ouve
+    fonts.py, drawing.py, widgets.py        peças de desenho e texto
+    icons.py                                carrega os PNG da pasta icons/ (com fallback)
+    base.py, cards.py                       botões, scrollbar, cartões dos pets e traits
+    audio.py                                som e música (ficheiros da pasta sounds/)
+    title_saves.py                          ecrãs do título e dos saves
+    game_screen.py, gameplay.py             ecrã principal e roll / auto-roll / partículas
+    pets_panel.py                           Index e Bag (Equipados / Inventory)
+    upgrades_panel.py, milestones_panel.py  Upgrade Tree e Milestones
+    traits_panel.py, options_panel.py       página de Traits e Options
+    rebirth_panel.py, daily_panel.py        página de Rebirths e painel de Missões Diárias
+    account_panel.py, leaderboard_panel.py  conta e leaderboard
+    credits_panel.py                        página de Credits (sons e música)
+"""
+
+
+import os
+import sys
+import time
+import traceback
+import pygame
+
+from config import AUTOSAVE_INTERVAL, FPS, GAME_TITLE, SAVE_DIR, VIRTUAL_H, VW_MAX, VW_MIN
+from core.game_state import GameState
+from i18n import set_language, tr
+from online.cloud import CloudMixin
+from storage import load_settings, migrate_legacy_save, save_settings
+from theme import BG_BOTTOM, BG_TOP
+from ui.account_panel import AccountPanelMixin
+from ui.audio import AudioMixin
+from ui.base import UIBaseMixin
+from ui.cards import CardsMixin
+from ui.credits_panel import CreditsPanelMixin
+from ui.daily_panel import DailyPanelMixin
+from ui.drawing import make_vertical_gradient
+from ui.fonts import make_font
+from ui.icons import set_window_icon
+from ui.game_screen import GameScreenMixin
+from ui.gameplay import GameplayMixin
+from ui.leaderboard_panel import LeaderboardPanelMixin
+from ui.milestones_panel import MilestonesPanelMixin
+from ui.options_panel import OptionsPanelMixin
+from ui.pets_panel import PetsPanelMixin
+from ui.rebirth_panel import RebirthPanelMixin
+from ui.title_saves import TitleSavesMixin
+from ui.traits_panel import TraitsPanelMixin
+from ui.updatelog_panel import UpdateLogPanelMixin
+from ui.upgrades_panel import UpgradesPanelMixin
+from ui.widgets import SlidePanel
+
+
+class Game(
+    AudioMixin,             # som
+    UIBaseMixin,            # botões, scrollbar, ícones, toasts
+    CardsMixin,             # cartões dos pets e das traits
+    TitleSavesMixin,        # ecrãs do título e dos saves
+    GameScreenMixin,        # ecrã principal (topo, botões laterais, carta, stats)
+    GameplayMixin,          # roll manual / automático, animações, partículas
+    OptionsPanelMixin,      # Options
+    UpgradesPanelMixin,     # Upgrade Tree
+    MilestonesPanelMixin,   # Milestones
+    PetsPanelMixin,         # Index e Bag (Inventory)
+    TraitsPanelMixin,       # página de Traits
+    RebirthPanelMixin,      # página de Rebirths
+    DailyPanelMixin,        # painel das Missões Diárias
+    CloudMixin,             # conta na cloud, sincronização, leaderboard (lógica)
+    AccountPanelMixin,      # ecrã de conta
+    LeaderboardPanelMixin,  # ecrã da leaderboard
+    CreditsPanelMixin,      # página de Credits (sons e música)
+    UpdateLogPanelMixin,    # página de Update Log (novidades do jogo)
+):
+    """O jogo: junta todas as peças (som, ecrãs, painéis, online) e tem o ciclo principal."""
+
+    def __init__(self):
+        self.settings = load_settings()
+        set_language(self.settings.get("language"))       # idioma do jogo (English / Português): ver i18n.py
+
+        try:
+            pygame.mixer.pre_init(22050, -16, 2, 512)
+        except pygame.error:
+            pass
+        pygame.init()
+        pygame.display.set_caption(GAME_TITLE)
+        set_window_icon()               # o Tung (icons/tung.png) no lugar do ícone por defeito do pygame
+        self.mixer_ok = self.init_mixer()
+
+        self.font_tiny = make_font(13, outline=1)
+        self.font_tiny_b = make_font(12, outline=1, heavy=True)      # cartões pequenos do Inventory
+        self.font_small = make_font(15, outline=1)
+        self.font_small_b = make_font(15, outline=1, heavy=True)
+        self.font_med = make_font(19, outline=2, heavy=True)
+        self.font_big = make_font(27, outline=2, heavy=True)
+        self.font_huge = make_font(40, outline=3, heavy=True)
+        self.font_title = make_font(96, outline=5, heavy=True)
+
+        migrate_legacy_save()
+        self.state = GameState()          # estado "vazio" enquanto estás no menu
+        self.screen_mode = "title"        # "title" | "saves" | "game"
+        self.slot_info = {}
+        self.delete_confirm_slot = None
+        self.delete_confirm_timer = 0.0
+
+        self.fullscreen = bool(self.settings.get("fullscreen", True))
+        self.screen = None
+        self.canvas = None
+        self.bg_surface = None
+        self.vw = 1422
+        self.set_fullscreen(self.fullscreen, announce=False)
+
+        self.options_open = False
+        self.stats_open = False
+        self.credits_open = False
+        self.update_log_open = False
+        self.reset_options_dropdown()       # sliders / menus Volume e SFX das Options (ui/options_panel.py)
+
+        self.reset_ui()
+
+        self.toast_text = None
+        self.toast_timer = 0.0
+        self.toast_kind = None          # None = aviso normal; "trait" = cargas de trait (acumulam)
+        self.trait_toast_count = 0
+
+        self.frame_dt = 1.0 / FPS
+        self.roll_rate = 0.0            # rolls por segundo (medidos), suavizados
+        self._rate_prev = None
+        self.bar_display = {}           # barras Golden/Diamond/Rainbow: enchimento mostrado (0..1)
+        self.bar_continuous = {}        # True = roll tão rápido que a barra fica sempre cheia
+
+        self.autosave_timer = 0.0
+        self.buttons = []
+        self.nav_mode = False           # True enquanto se registam botões de navegação (topo / laterais)
+        self.clip_stack = []
+        self.clock = pygame.time.Clock()
+
+        self.dragging_scrollbar = None  # key da scrollbar a ser arrastada (ver ui/base.py draw_scrollbar)
+        self.scrollbar_hits = {}        # registadas de novo a cada frame, só as que estão visíveis
+
+        self.sounds = {}
+        self.last_sfx = {}
+        self.build_sounds()
+        self.start_music()
+        self.apply_volume()
+
+        self.init_online()
+
+    def reset_ui(self):
+        """Volta a pôr painéis, scrolls e animações no estado inicial (novo save / voltar ao menu)."""
+        self.right_panel = SlidePanel("right")
+        self.left_panel = SlidePanel("left")
+        self.index_tab = "normal"
+        self.bag_view = "equipped"       # Bag: "equipped" (pets equipados) ou "inventory" (todos os pets)
+        self.inv_sort = "money"          # Inventory: ordenar por money / rarity / mutation / quantity
+        self.inv_high_first = True       # Inventory: do maior para o menor (False = do menor para o maior)
+        self.inv_mut = "all"             # Inventory: filtro de mutação ("all", "normal", "golden", "diamond")
+        self.inv_tier = None             # Inventory: filtro de raridade (índice do tier; None = todas)
+        self.traits_open = False
+        self.traits_scroll = 0.0
+        self.traits_max_scroll = 0.0
+        self.traits_list_rect = pygame.Rect(0, 0, 0, 0)
+        self.rebirth_open = False
+        self.rebirth_confirm = False
+        self.rebirth_confirm_timer = 0.0
+        self.rebirth_scroll = 0.0                     # lista de recompensas da página de Rebirth
+        self.rebirth_max_scroll = 0.0
+        self.rebirth_list_rect = pygame.Rect(0, 0, 0, 0)
+        self.milestones_selected_category = None
+        self.tree_selected_category = None
+        self.roll_anim_start = 0.0
+        self.particles = []
+        self.auto_accum = 0.0
+        self.right_rect = pygame.Rect(0, 0, 0, 0)
+        self.left_rect = pygame.Rect(0, 0, 0, 0)
+
+    @property
+    def animations(self):
+        return self.settings.get("animations", True)
+
+    # ---------------------------------------------------------------- ecrã
+    def set_fullscreen(self, fs, announce=True):
+        try:
+            if fs:
+                self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+            else:
+                info = pygame.display.Info()
+                w = int(min(1500, max(1000, info.current_w * 0.8)))
+                h = int(w * 9 / 16)
+                self.screen = pygame.display.set_mode((w, h), pygame.RESIZABLE)
+        except pygame.error:
+            self.screen = pygame.display.set_mode((1280, 720), pygame.RESIZABLE)
+            fs = False
+        self.fullscreen = fs
+        self.settings["fullscreen"] = fs
+        self.recompute_layout()
+
+    def toggle_fullscreen(self):
+        self.set_fullscreen(not self.fullscreen)
+        save_settings(self.settings)
+        self.show_toast(tr("Fullscreen on") if self.fullscreen else tr("Windowed mode"))
+
+    def recompute_layout(self):
+        real_w, real_h = self.screen.get_size()
+        real_w = max(320, real_w)
+        real_h = max(240, real_h)
+        # a largura virtual segue o formato do ecrã -> a imagem preenche tudo, sem barras pretas
+        vw = int(round(VIRTUAL_H * real_w / float(real_h)))
+        self.vw = max(VW_MIN, min(VW_MAX, vw))
+        self.canvas = pygame.Surface((self.vw, VIRTUAL_H))
+        self.bg_surface = make_vertical_gradient(self.vw, VIRTUAL_H, BG_TOP, BG_BOTTOM)
+        self.scale_x = real_w / float(self.vw)
+        self.scale_y = real_h / float(VIRTUAL_H)
+        self.right_w = int(min(470, self.vw * 0.34))
+        self.left_w = int(min(370, self.vw * 0.28))
+
+    def screen_to_canvas(self, pos):
+        return (pos[0] / self.scale_x, pos[1] / self.scale_y)
+
+    def mouse_canvas(self):
+        return self.screen_to_canvas(pygame.mouse.get_pos())
+
+    # ---------------------------------------------------------------- scrollbars arrastáveis
+    def scroll_from_track(self, key, canvas_y):
+        """Converte uma posição do rato (eixo Y, coordenadas do canvas) num valor de scroll,
+        para a scrollbar identificada por 'key' (ver ui/base.py draw_scrollbar)."""
+        hit = self.scrollbar_hits.get(key)
+        if hit is None:
+            return None
+        track, max_scroll, bar_h = hit
+        span = track.height - bar_h
+        if span <= 0 or max_scroll <= 0:
+            return 0.0
+        frac = (canvas_y - track.top - bar_h / 2.0) / float(span)
+        return max(0.0, min(max_scroll, frac * max_scroll))
+
+    def apply_scroll(self, key, value):
+        """Aplica um valor de scroll absoluto ao painel/lista certo, conforme a 'key' da scrollbar."""
+        if key == "right":
+            self.right_panel.set_scroll_abs(value)
+        elif key == "left":
+            self.left_panel.set_scroll_abs(value)
+        elif key == "traits":
+            self.traits_scroll = max(0.0, min(self.traits_max_scroll, value))
+        elif key == "rebirth":
+            self.rebirth_scroll = max(0.0, min(self.rebirth_max_scroll, value))
+        elif key == "leaderboard":
+            self.lb_scroll = max(0.0, min(self.lb_max_scroll, value))
+
+    def start_scrollbar_drag(self, canvas_pos):
+        """Clique dentro da barra de uma scrollbar visível -> começa a arrastar. Devolve True se apanhou alguma."""
+        for key, (track, _max_scroll, _bar_h) in self.scrollbar_hits.items():
+            if track.collidepoint(canvas_pos):
+                self.dragging_scrollbar = key
+                value = self.scroll_from_track(key, canvas_pos[1])
+                if value is not None:
+                    self.apply_scroll(key, value)
+                return True
+        return False
+
+    def close_overlays(self):
+        """Fecha Options / Stats / Traits / Rebirth / Leaderboard (o que estiver aberto)."""
+        if self.options_open:
+            self.close_options()
+        self.stats_open = False
+        self.credits_open = False
+        self.update_log_open = False
+        self.traits_open = False
+        self.rebirth_open = False
+        self.rebirth_confirm = False
+        self.leaderboard_open = False
+
+    def close_overlay_on_outside_click(self):
+        """Clique fora da página de Leaderboard / Options / Stats / Traits / Rebirth -> fecha-a."""
+        if self.leaderboard_open:
+            self.close_leaderboard()
+        elif self.options_open:
+            self.close_options()
+        elif self.stats_open:
+            self.close_stats()
+        elif self.credits_open:
+            self.close_credits()
+        elif self.update_log_open:
+            self.close_update_log()
+        elif self.traits_open and self.screen_mode == "game":
+            self.close_traits()
+        elif self.rebirth_open and self.screen_mode == "game":
+            self.close_rebirth()
+        else:
+            return
+        self.play("click")
+
+    # ---------------------------------------------------------------- loop
+    def run(self):
+        running = True
+        while running:
+            dt = min(0.1, self.clock.tick(FPS) / 1000.0)
+            self.worker.poll()          # entrega os resultados de rede (login, saves, leaderboard...) pendentes
+            running = self.handle_events()
+
+            if self.screen_mode == "game":
+                gain = self.state.income_per_second() * dt
+                self.state.coins += gain
+                self.state.total_coins_earned += gain
+                self.state.playtime += dt
+                self.state.last_seen = time.time()      # mantido fresco para os ganhos offline da próxima vez
+                self.update_auto(dt)
+                self.update_roll_rate(dt)
+                self.check_milestones()
+                self.state.ensure_daily_missions()      # troca as missões sozinho se o dia mudou
+                self.right_panel.update(dt)
+                self.left_panel.update(dt)
+
+                self.autosave_timer += dt
+                if self.autosave_timer >= AUTOSAVE_INTERVAL:
+                    self.autosave_timer = 0.0
+                    self.state.save()
+
+                self.tick_online(dt)
+
+            else:
+                self._rate_prev = None
+                self.roll_rate = 0.0
+
+            if self.delete_confirm_slot is not None:
+                self.delete_confirm_timer -= dt
+                if self.delete_confirm_timer <= 0:
+                    self.delete_confirm_slot = None
+
+            if self.rebirth_confirm:
+                self.rebirth_confirm_timer -= dt
+                if self.rebirth_confirm_timer <= 0:
+                    self.rebirth_confirm = False
+
+            self.update_animations(dt)
+            self.frame_dt = dt
+            self.draw()
+
+        self.flush_cloud_blocking()
+        self.state.save()
+        save_settings(self.settings)
+        pygame.quit()
+        sys.exit()
+
+    # ---------------------------------------------------------------- eventos
+    def handle_events(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return False
+
+            elif event.type == pygame.VIDEORESIZE and not self.fullscreen:
+                try:
+                    self.screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
+                except pygame.error:
+                    pass
+                self.recompute_layout()
+
+            elif event.type == pygame.KEYDOWN:
+                if self.screen_mode == "account" and self.handle_account_key(event):
+                    pass
+                elif event.key == pygame.K_F11 or (
+                        event.key == pygame.K_f and (event.mod & (pygame.KMOD_META | pygame.KMOD_CTRL))):
+                    self.toggle_fullscreen()
+                elif event.key == pygame.K_ESCAPE:
+                    if self.screen_mode == "account":
+                        self.close_account()
+                    elif self.leaderboard_open:
+                        self.close_leaderboard()
+                    elif self.options_open:
+                        self.close_options()
+                    elif self.stats_open:
+                        self.close_stats()
+                    elif self.credits_open:
+                        self.close_credits()
+                    elif self.update_log_open:
+                        self.close_update_log()
+                    elif self.screen_mode == "saves":
+                        self.back_to_title()
+                    elif self.screen_mode == "title":
+                        pass
+                    elif self.traits_open:
+                        self.traits_open = False
+                    elif self.rebirth_open:
+                        self.close_rebirth()
+                    elif self.right_panel.is_open:
+                        self.right_panel.close()
+                    elif self.left_panel.is_open:
+                        self.left_panel.close()
+                elif (self.options_open or self.stats_open or self.traits_open or self.rebirth_open
+                      or self.screen_mode != "game"):
+                    pass
+                elif event.key in (pygame.K_u, pygame.K_t):
+                    self.open_right_panel("tree")
+                elif event.key == pygame.K_i:
+                    self.open_right_panel("index")
+                elif event.key == pygame.K_b:
+                    self.open_left_panel("bag")
+                elif event.key == pygame.K_m:
+                    self.open_right_panel("milestones")
+
+            elif event.type == pygame.TEXTINPUT:
+                if self.screen_mode == "account" and self.acc_focus:
+                    f = self.acc_fields.get(self.acc_focus)
+                    if f:
+                        f.add(event.text)
+
+            elif event.type == pygame.MOUSEWHEEL:
+                if self.screen_mode != "game" or self.options_open or self.stats_open:
+                    continue
+                pos = self.mouse_canvas()
+                step = -event.y * 60
+                if self.traits_open and self.traits_list_rect.collidepoint(pos):
+                    self.traits_scroll = max(0.0, min(self.traits_max_scroll, self.traits_scroll + step))
+                elif self.rebirth_open and self.rebirth_list_rect.collidepoint(pos):
+                    self.rebirth_scroll = max(0.0, min(self.rebirth_max_scroll, self.rebirth_scroll + step))
+                elif self.right_panel.visible and self.right_rect.collidepoint(pos):
+                    self.right_panel.add_scroll(step)
+                elif self.left_panel.visible and self.left_rect.collidepoint(pos):
+                    self.left_panel.add_scroll(step)
+
+            elif event.type == pygame.MOUSEMOTION:
+                if self.dragging_slider:
+                    self.set_slider_from_pos(self.dragging_slider, self.screen_to_canvas(event.pos))
+                elif self.dragging_scrollbar:
+                    canvas_pos = self.screen_to_canvas(event.pos)
+                    value = self.scroll_from_track(self.dragging_scrollbar, canvas_pos[1])
+                    if value is None:
+                        self.dragging_scrollbar = None    # o painel fechou-se a meio do arrasto
+                    else:
+                        self.apply_scroll(self.dragging_scrollbar, value)
+
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                if self.dragging_slider:
+                    self.dragging_slider = None
+                    save_settings(self.settings)
+                    self.play("click")          # serve de "amostra" do novo volume
+                self.dragging_scrollbar = None
+
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                canvas_pos = self.screen_to_canvas(event.pos)
+                if self.options_open:
+                    hit = next((name for name, r in self.slider_hits.items() if r.collidepoint(canvas_pos)), None)
+                    if hit:
+                        self.dragging_slider = hit
+                        self.set_slider_from_pos(hit, canvas_pos)
+                        continue
+                if self.start_scrollbar_drag(canvas_pos):
+                    continue
+                handled = False
+                for rect, callback, sfx, _nav in reversed(self.buttons):
+                    if rect.collidepoint(canvas_pos):
+                        if sfx:
+                            self.play(sfx)
+                        callback()
+                        handled = True
+                        break
+                if not handled:
+                    self.close_overlay_on_outside_click()
+        return True
+
+    def draw(self):
+        self.canvas.blit(self.bg_surface, (0, 0))
+        self.buttons = []
+        self.nav_mode = False
+        self.clip_stack = []
+        self.scrollbar_hits = {}
+        self.canvas.set_clip(None)
+        mouse_pos = self.mouse_canvas()
+
+        if self.screen_mode == "title":
+            self.draw_title(mouse_pos)
+            self.draw_toast()
+        elif self.screen_mode == "saves":
+            self.draw_saves(mouse_pos)
+            self.draw_toast()
+        elif self.screen_mode == "account":
+            self.draw_account(mouse_pos)
+            self.draw_toast()
+        else:
+            self.draw_game_screen(mouse_pos)
+
+        if self.stats_open:
+            self.begin_modal()
+            self.draw_stats(mouse_pos)
+
+        if self.options_open:
+            self.begin_modal()
+            self.draw_options(mouse_pos)
+
+        if self.leaderboard_open:
+            self.begin_modal()
+            self.draw_leaderboard(mouse_pos)
+
+        if self.credits_open:
+            self.begin_modal()
+            self.draw_credits(mouse_pos)
+
+        if self.update_log_open:
+            self.begin_modal()
+            self.draw_update_log(mouse_pos)
+
+        real_size = self.screen.get_size()
+        if self.animations:
+            scaled = pygame.transform.smoothscale(self.canvas, real_size)
+        else:
+            scaled = pygame.transform.scale(self.canvas, real_size)
+        self.screen.blit(scaled, (0, 0))
+        pygame.display.flip()
+
+    def quit_game(self):
+        self.flush_cloud_blocking()
+        self.state.save()
+        save_settings(self.settings)
+        pygame.quit()
+        sys.exit()
+
+
+if __name__ == "__main__":
+    try:
+        Game().run()
+    except SystemExit:
+        raise
+    except Exception:
+        # com o .exe (sem consola) os erros não se veem: ficam escritos em crash_log.txt ao lado dos saves
+        try:
+            with open(os.path.join(SAVE_DIR, "crash_log.txt"), "w", encoding="utf-8") as f:
+                f.write(traceback.format_exc())
+        except OSError:
+            pass
+        raise

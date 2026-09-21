@@ -1,0 +1,34 @@
+LUCKY SAHURS - SOUND CREDITS
+============================
+All sounds come from Freesound.org. Files were converted to .ogg (and one was shortened, see below).
+
+Level Up 01  (file: 320655__rhodesmas__level-up-01.mp3)
+    by shinephoenixstormcrow (converted from the original by rhodesmas: https://freesound.org/s/320655/)
+    https://freesound.org/s/337049/
+    License: Attribution 3.0 (CC BY 3.0) - https://creativecommons.org/licenses/by/3.0/
+    Used for: buying upgrades  (sounds/upgrade.ogg)
+
+Level Up 01
+    by mokasza
+    https://freesound.org/s/810753/
+    License: Attribution 4.0 (CC BY 4.0) - https://creativecommons.org/licenses/by/4.0/
+    Used for: milestones / achievements  (sounds/achievement.ogg)
+
+Holy Protection Skill Buff
+    by EminYILDIRIM
+    https://freesound.org/s/621206/
+    License: Attribution 4.0 (CC BY 4.0) - https://creativecommons.org/licenses/by/4.0/
+    Used for: rebirth  (sounds/rebirth.ogg)
+    Changes: only the first 1.5 seconds are used (with a short fade-out) and it is a little louder.
+
+UI Button Click
+    by benzix2
+    https://freesound.org/s/467951/
+    License: CC0 (public domain) - no credit needed, credited anyway.
+    Used for: button clicks  (sounds/click.ogg)
+
+Lofi Hiphop Melody Loop 99 BPM
+    by holizna
+    https://freesound.org/s/629155/
+    License: CC0 (public domain) - no credit needed, credited anyway.
+    Used for: background music  (sounds/music.ogg, converted from a .wav)
