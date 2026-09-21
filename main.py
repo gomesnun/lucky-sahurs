@@ -216,6 +216,8 @@ class Game(
         self._perf_draw = 0.0
         self._perf_elapsed = 0.0
         self._perf_frames = 0
+        self._perf_window = 0
+        self._perf_prof = None
 
         self.dragging_scrollbar = None  # key da scrollbar a ser arrastada (ver ui/base.py draw_scrollbar)
         self.scrollbar_hits = {}        # registadas de novo a cada frame, só as que estão visíveis
@@ -449,6 +451,28 @@ class Game(
             return
         self.play("click")
 
+    def _perf_profile_draw(self):
+        """Desenha e, entre o frame 150 e o 450, mede com o cProfile onde e que o tempo se vai.
+        O resultado sai uma unica vez para o logcat, com as 25 funcoes mais caras."""
+        n = self._perf_frames
+        if n < 150 or n >= 450:
+            self.draw()
+            return
+        if self._perf_prof is None:
+            import cProfile
+            self._perf_prof = cProfile.Profile()
+        self._perf_prof.enable()
+        self.draw()
+        self._perf_prof.disable()
+        if n == 449:
+            import io as _io
+            import pstats
+            buf = _io.StringIO()
+            pstats.Stats(self._perf_prof, stream=buf).sort_stats("tottime").print_stats(25)
+            for line in buf.getvalue().splitlines():
+                if line.strip():
+                    print("PROF " + line)
+
     # ---------------------------------------------------------------- loop
     def run(self):
         running = True
@@ -497,15 +521,16 @@ class Game(
             self.frame_dt = dt
             if PERF_LOG:
                 t0 = time.perf_counter()
-                self.draw()
+                self._perf_profile_draw()
                 self._perf_draw += time.perf_counter() - t0
                 self._perf_frames += 1
+                self._perf_window += 1
                 self._perf_elapsed += dt
                 if self._perf_elapsed >= 2.0:
-                    n = max(1, self._perf_frames)
+                    n = max(1, self._perf_window)
                     print("PERF fps=%.1f draw=%.1fms" % (n / self._perf_elapsed, 1000.0 * self._perf_draw / n))
                     self._perf_draw = self._perf_elapsed = 0.0
-                    self._perf_frames = 0
+                    self._perf_window = 0
             else:
                 self.draw()
 
