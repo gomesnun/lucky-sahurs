@@ -8,7 +8,7 @@ import pygame
 from config import VIRTUAL_H
 from i18n import tr
 from theme import BAD, GREY, GREY_DIM, PANEL, PANEL_LIGHT, WHITE
-from ui.drawing import draw_panel
+from ui.drawing import dim_overlay, draw_panel
 from ui.fonts import wrap_text
 
 # (versão, data, linhas de descrição) - a mais recente primeiro. Vazio por agora.
@@ -36,9 +36,7 @@ class UpdateLogPanelMixin:
             self.open_update_log()
 
     def draw_update_log(self, mouse_pos):
-        overlay = pygame.Surface((self.vw, VIRTUAL_H), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 170))
-        self.canvas.blit(overlay, (0, 0))
+        self.canvas.blit(dim_overlay(self.vw, VIRTUAL_H, 170), (0, 0))
 
         # ---- medidas: tudo calculado a partir do tamanho real das fontes (nada de números "à sorte") ----
         panel_w = 580

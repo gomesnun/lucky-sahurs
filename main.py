@@ -93,6 +93,10 @@ import theme
 from config import (AUTOSAVE_INTERVAL, FPS, GAME_TITLE, IS_ANDROID, SAVE_DIR, TOUCH_DRAG_SLOP,
                     VIRTUAL_H, VW_MAX, VW_MIN)
 from core.game_state import GameState
+
+# Medicao de desempenho: no Android escreve os FPS no logcat de 2 em 2 segundos (e a unica forma de
+# medir no telemovel); no computador so com a variavel de ambiente LUCKY_SAHURS_PERF=1.
+PERF_LOG = IS_ANDROID or bool(os.environ.get("LUCKY_SAHURS_PERF"))
 from i18n import set_language, tr
 from online.cloud import CloudMixin
 from storage import load_settings, migrate_legacy_save, save_settings
@@ -207,6 +211,11 @@ class Game(
         self.nav_mode = False           # True enquanto se registam botões de navegação (topo / laterais)
         self.clip_stack = []
         self.clock = pygame.time.Clock()
+        # Medicao de desempenho: LUCKY_SAHURS_PERF=1 faz o jogo escrever os FPS e o tempo de desenho.
+        # No Android isso sai no logcat ("adb logcat -s python"), que e a unica forma de medir no telemovel.
+        self._perf_draw = 0.0
+        self._perf_elapsed = 0.0
+        self._perf_frames = 0
 
         self.dragging_scrollbar = None  # key da scrollbar a ser arrastada (ver ui/base.py draw_scrollbar)
         self.scrollbar_hits = {}        # registadas de novo a cada frame, só as que estão visíveis
@@ -486,7 +495,19 @@ class Game(
 
             self.update_animations(dt)
             self.frame_dt = dt
-            self.draw()
+            if PERF_LOG:
+                t0 = time.perf_counter()
+                self.draw()
+                self._perf_draw += time.perf_counter() - t0
+                self._perf_frames += 1
+                self._perf_elapsed += dt
+                if self._perf_elapsed >= 2.0:
+                    n = max(1, self._perf_frames)
+                    print("PERF fps=%.1f draw=%.1fms" % (n / self._perf_elapsed, 1000.0 * self._perf_draw / n))
+                    self._perf_draw = self._perf_elapsed = 0.0
+                    self._perf_frames = 0
+            else:
+                self.draw()
 
         self.save_everything()
         pygame.quit()

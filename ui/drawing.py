@@ -72,13 +72,38 @@ def ease_out_cubic(t):
     return 1 - (1 - t) ** 3
 
 
+_SHADOW_CACHE = {}
+_DIM_CACHE = {}
+
+
+def dim_overlay(w, h, alpha):
+    """O veu escuro por tras das paginas (Options, Stats, Traits...). E sempre igual: guarda-se
+    em cache em vez de criar uma superficie do tamanho do ecra a cada frame."""
+    key = (w, h, alpha)
+    surf = _DIM_CACHE.get(key)
+    if surf is None:
+        surf = pygame.Surface((w, h), pygame.SRCALPHA)
+        surf.fill((0, 0, 0, alpha))
+        _DIM_CACHE.clear()
+        _DIM_CACHE[key] = surf
+    return surf
+
+
 def draw_panel(canvas, rect, color=None, radius=14, shadow=True, border=None):
     """Painel com contorno preto grosso. border=None -> 4px nos painéis com sombra, 3px nos outros."""
     if color is None:
         color = PANEL           # lido aqui (e nao no def) para acompanhar o modo claro / escuro
     if shadow:
-        shadow_surf = pygame.Surface((rect.width + 14, rect.height + 14), pygame.SRCALPHA)
-        pygame.draw.rect(shadow_surf, (0, 0, 0, 80), (7, 11, rect.width, rect.height), border_radius=radius)
+        # A sombra e sempre a mesma imagem para o mesmo tamanho: criar a superficie e redesenhar o
+        # rectangulo a cada frame custava caro (ha dezenas de paineis por frame). Fica em cache.
+        key = (rect.width, rect.height, radius)
+        shadow_surf = _SHADOW_CACHE.get(key)
+        if shadow_surf is None:
+            shadow_surf = pygame.Surface((rect.width + 14, rect.height + 14), pygame.SRCALPHA)
+            pygame.draw.rect(shadow_surf, (0, 0, 0, 80), (7, 11, rect.width, rect.height), border_radius=radius)
+            if len(_SHADOW_CACHE) > 400:
+                _SHADOW_CACHE.clear()
+            _SHADOW_CACHE[key] = shadow_surf
         canvas.blit(shadow_surf, (rect.x - 7, rect.y - 7))
     pygame.draw.rect(canvas, color, rect, border_radius=radius)
     bw = border if border is not None else (BORDER_W if shadow else BORDER_W_SMALL)
@@ -108,6 +133,8 @@ def _vshift_variants(surf, steps):
 def clear_drawing_caches():
     """Chamado ao trocar de tema: os sprites guardados em cache foram desenhados com as cores antigas."""
     _VSHIFT_CACHE.clear()
+    _SHADOW_CACHE.clear()
+    _DIM_CACHE.clear()
 
 
 def blit_smooth_y(canvas, key, build, x, y):

@@ -14,7 +14,7 @@ from theme import (
     GOLD_BORDER, GOOD, GREY, OUTLINE,
     PANEL, PANEL_LIGHT, PANEL_LIGHTER, PAUSED_RED, WHITE,
 )
-from ui.drawing import (
+from ui.drawing import (dim_overlay,
     bar_fill_surface, draw_panel, draw_rainbow_border, draw_state_border,
     rainbow_glow_surface, rarity_glow,
 )
@@ -129,9 +129,7 @@ class GameScreenMixin:
     def draw_stats(self, mouse_pos):
         # Só os botões de navegação (Stats/Options no topo, Bag/Traits/Index/Tree/Milestones
         # ao lado) continuam clicáveis por baixo; o resto fica bloqueado (ver begin_modal).
-        overlay = pygame.Surface((self.vw, VIRTUAL_H), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 170))
-        self.canvas.blit(overlay, (0, 0))
+        self.canvas.blit(dim_overlay(self.vw, VIRTUAL_H, 170), (0, 0))
 
         st = self.state
         total_ms = sum(len(d["tiers"]) for d in MILESTONE_DEFS.values())

@@ -10,7 +10,7 @@ from theme import (
     GOOD, GREY, PANEL, PANEL_LIGHT,
     PANEL_LIGHTER, WHITE,
 )
-from ui.drawing import draw_panel
+from ui.drawing import dim_overlay, draw_panel
 from ui.fonts import fit_text, wrap_text
 
 
@@ -49,9 +49,7 @@ class TraitsPanelMixin:
     def draw_traits_page(self, mouse_pos):
         # Só os botões de navegação (Stats/Options no topo e os laterais) ficam clicáveis por
         # baixo (ver begin_modal); tudo fica escurecido pelo overlay, incluindo os botões laterais.
-        overlay = pygame.Surface((self.vw, VIRTUAL_H), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 170))
-        self.canvas.blit(overlay, (0, 0))
+        self.canvas.blit(dim_overlay(self.vw, VIRTUAL_H, 170), (0, 0))
 
         # deixa espaço dos dois lados para os botões laterais e os nomes deles (MILESTONES...)
         # e começa por baixo da barra do topo, para não tapar os botões Stats / Options

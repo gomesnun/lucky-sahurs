@@ -8,7 +8,7 @@ from i18n import get_language, language_name, next_language, set_language, tr
 from storage import SFX_CATEGORIES, save_settings
 from theme import ACCENT, BAD, GREY, GREY_DIM, OUTLINE, PANEL, PANEL_LIGHT, PANEL_LIGHTER, WHITE
 from ui.audio import SLIDER_KNOB_R
-from ui.drawing import draw_panel, ease_out_cubic
+from ui.drawing import dim_overlay, draw_panel, ease_out_cubic
 from ui.fonts import fit_text, wrap_text
 
 DROP_H = 150            # altura do menu que expande (Volume ou SFX) quando está todo aberto
@@ -152,9 +152,7 @@ class OptionsPanelMixin:
     # ---------------------------------------------------------------- opções
     def draw_options(self, mouse_pos):
         # Idem: só os botões de navegação ficam clicáveis por baixo (ver begin_modal).
-        overlay = pygame.Surface((self.vw, VIRTUAL_H), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 170))
-        self.canvas.blit(overlay, (0, 0))
+        self.canvas.blit(dim_overlay(self.vw, VIRTUAL_H, 170), (0, 0))
 
         self.update_options_dropdown(self.frame_dt)
         self.slider_hits = {}          # voltam a ser registados abaixo, só se o menu Volume estiver aberto
