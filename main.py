@@ -477,27 +477,59 @@ class Game(
             pass
 
     def _perf_blit_bench(self):
-        """Mede o custo bruto de um blit neste aparelho, sem o jogo pelo meio: e a unica forma de
-        saber se os ~80 ms por frame sao mesmo o preco dos pixeis ou se ha aqui algo estragado."""
+        """Mede o custo bruto dos varios tipos de blit neste aparelho. No telemovel um blit opaco
+        custa 0.007 ms e um com alfa por pixel custa 3.6 ms (500x mais): e ai que se vao os ~80 ms
+        por frame. Isto compara os caminhos possiveis para escolher com numeros, nao a adivinhar."""
         import time as _t
-        out = ["BENCH canvas=%dx%d is_screen=%s" % (self.canvas.get_width(), self.canvas.get_height(),
-                                                    self.canvas is self.screen)]
-        opaque = pygame.Surface((200, 80)).convert()
-        alpha = pygame.Surface((200, 80), pygame.SRCALPHA).convert_alpha()
-        alpha.fill((255, 0, 0, 128))
-        big = pygame.Surface(self.canvas.get_size()).convert()
-        for name, surf, count in (("opaco_200x80", opaque, 200),
-                                  ("alpha_200x80", alpha, 200),
-                                  ("opaco_ecra_inteiro", big, 20)):
+
+        def ms(surf, dest, count=100):
+            dest.blit(surf, (0, 0))                      # o primeiro pode pagar conversoes
             t0 = _t.perf_counter()
             for _ in range(count):
-                self.canvas.blit(surf, (0, 0))
-            dt = (_t.perf_counter() - t0) / count
-            out.append("BENCH %-20s %7.3f ms/blit" % (name, dt * 1000.0))
+                dest.blit(surf, (0, 0))
+            return (_t.perf_counter() - t0) / count * 1000.0
+
+        w, h = 200, 80
+        offscreen = pygame.Surface(self.canvas.get_size()).convert()
+        offscreen_alpha = pygame.Surface(self.canvas.get_size(), pygame.SRCALPHA).convert_alpha()
+
+        def make_alpha():
+            s = pygame.Surface((w, h), pygame.SRCALPHA)
+            pygame.draw.rect(s, (200, 60, 60, 255), s.get_rect(), border_radius=12)
+            return s
+
+        raw_alpha = make_alpha()
+        conv_alpha = make_alpha().convert_alpha()
+        opaque = make_alpha().convert()
+        keyed = make_alpha().convert()
+        keyed.set_colorkey((0, 0, 0))
+
+        out = ["BENCH canvas=%dx%d is_screen=%s screen_masks=%s"
+               % (self.canvas.get_width(), self.canvas.get_height(),
+                  self.canvas is self.screen, self.screen.get_masks())]
+        for name, surf, dest in (
+                ("opaco -> ecra", opaque, self.canvas),
+                ("opaco -> offscreen", opaque, offscreen),
+                ("colorkey -> ecra", keyed, self.canvas),
+                ("colorkey -> offscreen", keyed, offscreen),
+                ("alfa cru -> ecra", raw_alpha, self.canvas),
+                ("alfa convertido -> ecra", conv_alpha, self.canvas),
+                ("alfa convertido -> offscreen", conv_alpha, offscreen),
+                ("alfa conv -> offscreen alfa", conv_alpha, offscreen_alpha)):
+            out.append("BENCH %-30s %8.3f ms" % (name, ms(surf, dest)))
+
         t0 = _t.perf_counter()
         for _ in range(50):
-            pygame.draw.rect(self.canvas, (10, 20, 30), pygame.Rect(0, 0, 200, 80), border_radius=12)
-        out.append("BENCH %-20s %7.3f ms" % ("rect_redondo_200x80", (_t.perf_counter() - t0) / 50 * 1000.0))
+            pygame.draw.rect(self.canvas, (10, 20, 30), pygame.Rect(0, 0, w, h), border_radius=12)
+        out.append("BENCH %-30s %8.3f ms" % ("draw.rect redondo no ecra", (_t.perf_counter() - t0) / 50 * 1000.0))
+        t0 = _t.perf_counter()
+        for _ in range(50):
+            pygame.draw.rect(offscreen, (10, 20, 30), pygame.Rect(0, 0, w, h), border_radius=12)
+        out.append("BENCH %-30s %8.3f ms" % ("draw.rect redondo offscreen", (_t.perf_counter() - t0) / 50 * 1000.0))
+
+        txt = self.font_med.render("Teste 123", True, (255, 255, 255))
+        out.append("BENCH %-30s %8.3f ms  (%dx%d)"
+                   % ("texto -> ecra", ms(txt, self.canvas), txt.get_width(), txt.get_height()))
         self._perf_write(out)
 
     def _perf_profile_draw(self):
