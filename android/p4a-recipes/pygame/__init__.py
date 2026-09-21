@@ -12,6 +12,8 @@ from pythonforandroid.recipes.pygame import Pygame2Recipe
 
 class PygameRecentRecipe(Pygame2Recipe):
     version = "2.6.1"
+    # O setup.py do pygame gera codigo com o Cython: sem ele para "You need cython".
+    hostpython_prerequisites = ["setuptools", "cython"]
 
 
 recipe = PygameRecentRecipe()
