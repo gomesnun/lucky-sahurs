@@ -178,6 +178,7 @@ class Game(
         self.fullscreen = bool(self.settings.get("fullscreen", True))
         self.screen = None
         self.canvas = None
+        self.gpu_scaled = False
         self.bg_surface = None
         self.vw = 1422
         self.set_fullscreen(self.fullscreen, announce=False)
@@ -261,7 +262,21 @@ class Game(
     def set_fullscreen(self, fs, announce=True):
         if IS_ANDROID:
             # O Android só tem ecrã inteiro (a orientação e a barra de estado ficam no buildozer.spec).
-            self.screen = pygame.display.set_mode((0, 0))
+            if not self.gpu_scaled:
+                # Primeiro abre-se o ecrã como ele é, só para saber o tamanho real e o formato.
+                real = pygame.display.set_mode((0, 0))
+                rw, rh = max(320, real.get_width()), max(240, real.get_height())
+                vw = int(round(VIRTUAL_H * rw / float(rh)))
+                vw = max(VW_MIN, min(VW_MAX, vw))
+                # Depois pede-se esse tamanho com SCALED: o SDL passa a desenhar numa imagem pequena e
+                # é a GPU que a estica até ao ecrã. Sem isto, era o CPU a esticar ~2.6 milhões de píxeis
+                # a cada frame (com um transform.scale), que é o que punha o jogo a 15 FPS no telemóvel.
+                # O SDL também já converte sozinho a posição dos toques para estas coordenadas.
+                try:
+                    self.screen = pygame.display.set_mode((vw, VIRTUAL_H), pygame.SCALED | pygame.FULLSCREEN)
+                    self.gpu_scaled = True
+                except pygame.error:
+                    self.screen = real          # sem SCALED: fica o caminho antigo, mais lento
             self.fullscreen = True
             self.recompute_layout()
             return
@@ -292,7 +307,11 @@ class Game(
         # a largura virtual segue o formato do ecrã -> a imagem preenche tudo, sem barras pretas
         vw = int(round(VIRTUAL_H * real_w / float(real_h)))
         self.vw = max(VW_MIN, min(VW_MAX, vw))
-        self.canvas = pygame.Surface((self.vw, VIRTUAL_H))
+        if self.gpu_scaled and (real_w, real_h) == (self.vw, VIRTUAL_H):
+            # Com SCALED o "ecrã" já tem o tamanho de desenho: pinta-se lá diretamente, sem cópia nenhuma.
+            self.canvas = self.screen
+        else:
+            self.canvas = pygame.Surface((self.vw, VIRTUAL_H))
         self.bg_surface = make_game_background(self.vw, VIRTUAL_H, theme.BG_TOP, theme.BG_BOTTOM, dark=theme.DARK_MODE)
         self.scale_x = real_w / float(self.vw)
         self.scale_y = real_h / float(VIRTUAL_H)
@@ -676,14 +695,15 @@ class Game(
         if self.update_modal_active():          # "Nova versão disponível": por cima de tudo, bloqueia o resto
             self.draw_update_modal(mouse_pos)
 
-        real_size = self.screen.get_size()
-        # O smoothscale de um ecrã inteiro custa caro no telemóvel (e a diferença nem se vê num ecrã
-        # tão pequeno), por isso no Android é sempre o scale simples.
-        if self.animations and not IS_ANDROID:
-            scaled = pygame.transform.smoothscale(self.canvas, real_size)
-        else:
-            scaled = pygame.transform.scale(self.canvas, real_size)
-        self.screen.blit(scaled, (0, 0))
+        if self.canvas is not self.screen:
+            real_size = self.screen.get_size()
+            # O smoothscale de um ecrã inteiro custa caro no telemóvel (e a diferença nem se vê num ecrã
+            # tão pequeno), por isso no Android é sempre o scale simples.
+            if self.animations and not IS_ANDROID:
+                scaled = pygame.transform.smoothscale(self.canvas, real_size)
+            else:
+                scaled = pygame.transform.scale(self.canvas, real_size)
+            self.screen.blit(scaled, (0, 0))
         pygame.display.flip()
 
     def save_everything(self):
