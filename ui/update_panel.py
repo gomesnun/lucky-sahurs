@@ -88,12 +88,9 @@ class UpdatePanelMixin:
 
     def upd_finish(self, plan):
         """Descarregou e preparou tudo: guarda o jogo, pede ao ajudante que troque o programa e reabra, e fecha."""
-        try:
-            self.flush_cloud_blocking()
-            self.state.save()
-            save_settings(self.settings)
-        except Exception:
-            pass
+        self.flush_cloud_blocking()
+        self.state.save()
+        save_settings(self.settings)
         try:
             updater.launch(plan)
         except Exception as e:

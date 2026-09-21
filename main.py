@@ -507,6 +507,7 @@ class Game(
                     elif self.left_panel.is_open:
                         self.left_panel.close()
                 elif (self.options_open or self.stats_open or self.traits_open or self.rebirth_open
+                      or self.leaderboard_open or self.credits_open or self.update_log_open
                       or self.screen_mode != "game"):
                     pass
                 elif event.key in (pygame.K_u, pygame.K_t):
@@ -525,7 +526,9 @@ class Game(
                         f.add(event.text)
 
             elif event.type == pygame.MOUSEWHEEL:
-                if self.screen_mode != "game" or self.options_open or self.stats_open or self.update_modal_active():
+                if (self.screen_mode != "game" or self.options_open or self.stats_open
+                        or self.leaderboard_open or self.credits_open or self.update_log_open
+                        or self.update_modal_active()):
                     continue
                 pos = self.mouse_canvas()
                 step = -event.y * 60

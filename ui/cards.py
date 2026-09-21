@@ -162,7 +162,8 @@ class CardsMixin:
         locked    pet ainda não apanhado (Index): fundo escuro com a cor da raridade e um '?' no lugar do nome
 
         O resultado fica em cache (só se refaz se mudar o texto, o tamanho ou o tema): não o alteres."""
-        key = (rarity["pet"], mutation, w, h, tuple(tuple(tuple(c) for c in p) for p in plates), footer_h, locked)
+        key = (rarity["pet"], mutation, tr(rarity["name"]), w, h,
+               tuple(tuple(tuple(c) for c in p) for p in plates), footer_h, locked)
         surf = _CARD_CACHE.get(key)
         if surf is not None:
             return surf
