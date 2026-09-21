@@ -17,7 +17,8 @@ from theme import (
     OUTLINE, PANEL, PANEL_LIGHT, PANEL_LIGHTER,
     WHITE,
 )
-from ui.drawing import blit_smooth_y, to_display_format, draw_panel, draw_rarity_bg, draw_state_border
+from ui.drawing import (ALPHA_IS_SLOW, blit_smooth_y, to_colorkey, to_display_format, to_opaque,
+                        draw_panel, draw_rarity_bg, draw_state_border)
 from ui.fonts import fit_text, wrap_text
 from ui.icons import load_icon
 
@@ -187,7 +188,12 @@ class TitleSavesMixin:
         if shadow is None:
             shadow = pygame.Surface((shadow_w, 26), pygame.SRCALPHA)
             pygame.draw.ellipse(shadow, (0, 0, 0, 55), shadow.get_rect())
-            shadow = to_display_format(shadow)
+            if ALPHA_IS_SLOW:
+                # a sombra e toda ela meio transparente: nao da para cor-chave (ou
+                # desaparecia toda), achata-se contra o fundo que esta por baixo
+                shadow = to_opaque(shadow, self._bg_color_at(cx, ground_y - 2))
+            else:
+                shadow = to_display_format(shadow)
             self._mascot_shadows[shadow_w] = shadow
         self.canvas.blit(shadow, shadow.get_rect(center=(cx, ground_y - 2)))
         if self.animations:
@@ -197,11 +203,48 @@ class TitleSavesMixin:
             key = (round(angle * 2.0) / 2.0, round(scale * 100.0) / 100.0)
             frame = self._mascot_frames.get(key)
             if frame is None:
-                frame = to_display_format(pygame.transform.rotozoom(padded, key[0], key[1]))
+                frame = self._mascot_ready(pygame.transform.rotozoom(padded, key[0], key[1]),
+                                           cx, ground_y)
                 self._mascot_frames[key] = frame
         else:
-            frame = padded
-        self.canvas.blit(frame, frame.get_rect(center=(cx, ground_y)))
+            frame = self._mascot_frames.get("parado")
+            if frame is None:
+                frame = self._mascot_ready(padded, cx, ground_y)
+                self._mascot_frames["parado"] = frame
+        surf, offset = frame
+        r = surf.get_rect()
+        r.center = (cx + offset[0], ground_y + offset[1])
+        self.canvas.blit(surf, r)
+
+    def _bg_color_at(self, x, y):
+        """A cor do fundo naquele ponto do ecra, para achatar contra ela o que tem transparencia."""
+        bg = getattr(self, "bg_surface", None)
+        if bg is None:
+            return (0, 0, 0)
+        x = max(0, min(bg.get_width() - 1, int(x)))
+        y = max(0, min(bg.get_height() - 1, int(y)))
+        return bg.get_at((x, y))[:3]
+
+    def _mascot_ready(self, surf, cx, ground_y):
+        """Prepara uma pose do mascote para ser desenhada o mais depressa possivel.
+
+        A imagem tem 230x460 (o dobro da altura, para o pivo ficar nos pes) mas o desenho ocupa
+        so uma parte dela: corta-se o rectangulo que tem mesmo alguma coisa, para nao se copiarem
+        dezenas de milhares de pixeis vazios. No telemovel tira-se ainda o canal alfa (0.045 ms
+        com cor-chave contra 3.8 ms com alfa por pixel), achatando a borda contra a cor do fundo
+        que esta por tras do mascote. Devolve (imagem, deslocamento do centro), porque cortar
+        muda onde e que o centro da imagem fica."""
+        full = surf.get_rect()
+        box = surf.get_bounding_rect()
+        if box.width <= 0 or box.height <= 0:
+            box = full
+        cropped = surf.subsurface(box).copy()
+        offset = (box.centerx - full.centerx, box.centery - full.centery)
+        if ALPHA_IS_SLOW:
+            cropped = to_colorkey(cropped, self._bg_color_at(cx + offset[0], ground_y + offset[1]))
+        else:
+            cropped = to_display_format(cropped)
+        return cropped, offset
 
     def draw_save_card_body(self, rect, info):
         """Dinheiro + linhas de Rolls/Playtime no meio do cartão de um slot (save local ou de conta)."""

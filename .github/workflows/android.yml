@@ -97,6 +97,12 @@ jobs:
 
       - name: Criar o APK
         run: buildozer android debug
+        env:
+          # O gradle assina o APK de debug com $ANDROID_SDK_HOME/.android/debug.keystore. Sem isto
+          # o ANDROID_SDK_HOME aponta para dentro do ~/.buildozer, que nao vai para a cache: cada
+          # build assinava com uma chave nova, o telemovel recusava a atualizacao ("signatures do
+          # not match") e era preciso desinstalar o jogo, o que apaga os saves.
+          ANDROID_SDK_HOME: /home/runner
 
       - uses: actions/upload-artifact@v4
         with:

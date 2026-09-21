@@ -2,9 +2,12 @@
 
 import colorsys
 import math
+import os
 import random
 import pygame
 
+from config import IS_ANDROID
+import theme
 from theme import BORDER_W, BORDER_W_SMALL, OUTLINE, PANEL
 
 
@@ -79,14 +82,64 @@ def ease_out_cubic(t):
     return 1 - (1 - t) ** 3
 
 
+# No telemovel, misturar alfa por pixel custa cerca de 228 ns POR PIXEL: um blit opaco de 200x80
+# leva 0.006 ms e o mesmo blit com alfa leva 3.8 ms (mais de 500x). Nao e o aparelho a ser lento -
+# copiar o ecra inteiro opaco leva 0.44 ms - e o caminho com alfa deste build do pygame em ARM.
+# Medido no aparelho (ver _perf_blit_bench no main.py):
+#     opaco 0.006 ms | colorkey 0.045 ms | alfa 3.856 ms | alfa convertido 4.875 ms
+# Por isso, no Android, evita-se o alfa sempre que possivel e nunca se chama convert_alpha().
+# LUCKY_SAHURS_SLOW_ALPHA=1 liga este caminho no computador, para se poder ver como fica sem ter
+# de fazer um APK e instalar no telemovel.
+ALPHA_IS_SLOW = IS_ANDROID or bool(os.environ.get("LUCKY_SAHURS_SLOW_ALPHA"))
+COLORKEY = (255, 0, 254)        # cor que nao aparece no jogo, usada como "transparente"
+
+
 def to_display_format(surf):
-    """Poe a imagem no mesmo formato de pixeis do ecra. Sem isto, cada blit tem de converter a
-    imagem pixel a pixel - no telemovel isso e a diferenca entre 15 e 60 FPS. So funciona depois
-    da janela existir, por isso chama-se ao guardar em cache, nao ao arrancar."""
+    """Poe a imagem no formato em que o blit e mais barato. No computador e convert_alpha(). No
+    telemovel convert_alpha() deixa o blit AINDA mais lento (4.875 ms contra 3.856 ms medidos),
+    por isso deixa-se a imagem como esta."""
+    if ALPHA_IS_SLOW:
+        return surf
     try:
         return surf.convert_alpha()
     except pygame.error:
         return surf
+
+
+def to_opaque(surf, background):
+    """A mesma imagem achatada contra uma cor de fundo conhecida: fica sem canal alfa nenhum e o
+    blit passa a ser o mais rapido que existe (0.006 ms em vez de 3.8 ms). So se pode usar quando
+    se sabe mesmo o que esta por tras - caso contrario ve-se um rectangulo da cor do fundo."""
+    flat = pygame.Surface(surf.get_size())
+    flat.fill(background[:3])
+    flat.blit(surf, (0, 0))
+    try:
+        return flat.convert()
+    except pygame.error:
+        return flat
+
+
+def to_colorkey(surf, near_color):
+    """A mesma imagem sem canal alfa, com uma cor a fazer de transparente. O blit com cor-chave
+    custa 0.045 ms contra 3.8 ms com alfa por pixel, e continua a deixar ver o fundo a volta.
+
+    O alfa passa a ser tudo-ou-nada (a partir de metade conta como opaco), porque a cor-chave nao
+    sabe guardar meios-tons. Para a borda nao ficar aos degraus contra a cor-chave, os pixeis que
+    ficam visiveis sao primeiro misturados com near_color - a cor que costuma estar por tras."""
+    size = surf.get_size()
+    visible = pygame.Surface(size)
+    visible.fill(near_color[:3])
+    visible.blit(surf, (0, 0))          # borda ja misturada com o fundo, sem franja
+    hidden = pygame.Surface(size)
+    hidden.fill(COLORKEY)
+    out = pygame.Surface(size)
+    # A mascara diz, pixel a pixel, o que era opaco: e feita em C, e so se faz uma vez por imagem.
+    pygame.mask.from_surface(surf, 127).to_surface(out, setsurface=visible, unsetsurface=hidden)
+    out.set_colorkey(COLORKEY)
+    try:
+        return out.convert()
+    except pygame.error:
+        return out
 
 
 _SHADOW_CACHE = {}
@@ -96,13 +149,27 @@ _DIM_CACHE = {}
 
 def dim_overlay(w, h, alpha):
     """O veu escuro por tras das paginas (Options, Stats, Traits...). E sempre igual: guarda-se
-    em cache em vez de criar uma superficie do tamanho do ecra a cada frame."""
-    key = (w, h, alpha)
+    em cache em vez de criar uma superficie do tamanho do ecra a cada frame.
+
+    No telemovel este era o desenho mais caro de todos: cobre o ecra inteiro (784 mil pixeis) e,
+    a 228 ns por pixel, um so destes blits levava perto de 180 ms. Em vez do veu transparente
+    usa-se o proprio fundo do jogo ja escurecido, que e opaco e se copia em 0.44 ms. A diferenca
+    e que deixa de se ver o ecra de jogo por trás da pagina - e o preco de o painel abrir depressa."""
+    key = (w, h, alpha, theme.DARK_MODE)
     surf = _DIM_CACHE.get(key)
     if surf is None:
-        surf = pygame.Surface((w, h), pygame.SRCALPHA)
-        surf.fill((0, 0, 0, alpha))
-        surf = to_display_format(surf)
+        if ALPHA_IS_SLOW:
+            t = alpha / 255.0
+            surf = make_vertical_gradient(w, h, mix(theme.BG_TOP, (0, 0, 0), t),
+                                          mix(theme.BG_BOTTOM, (0, 0, 0), t))
+            try:
+                surf = surf.convert()
+            except pygame.error:
+                pass
+        else:
+            surf = pygame.Surface((w, h), pygame.SRCALPHA)
+            surf.fill((0, 0, 0, alpha))
+            surf = to_display_format(surf)
         _DIM_CACHE.clear()
         _DIM_CACHE[key] = surf
     return surf
@@ -114,6 +181,7 @@ def rounded_box(w, h, color, radius, border_w):
     um blit de uma imagem pronta sai muito mais barato do que dois draw.rect com cantos redondos."""
     key = (w, h, radius, tuple(color[:3]), border_w, tuple(OUTLINE[:3]))
     box = _PANEL_CACHE.get(key)
+
     if box is None:
         box = pygame.Surface((w, h), pygame.SRCALPHA)
         box_rect = box.get_rect()
@@ -131,6 +199,16 @@ def draw_panel(canvas, rect, color=None, radius=14, shadow=True, border=None):
     """Painel com contorno preto grosso. border=None -> 4px nos painéis com sombra, 3px nos outros."""
     if color is None:
         color = PANEL           # lido aqui (e nao no def) para acompanhar o modo claro / escuro
+    if ALPHA_IS_SLOW:
+        # No telemovel, desenhar os dois rectangulos custa 0.068 ms e copiar a mesma imagem ja
+        # pronta (que tem alfa nos cantos) custa 3.8 ms: aqui a cache era 55x mais LENTA que
+        # desenhar. A sombra e uma imagem com alfa ainda maior do que o painel, por isso nao se
+        # desenha - o contorno preto grosso ja separa o painel do fundo.
+        bw = border if border is not None else (BORDER_W if shadow else BORDER_W_SMALL)
+        pygame.draw.rect(canvas, color, rect, border_radius=radius)
+        if bw > 0:
+            pygame.draw.rect(canvas, OUTLINE, rect, width=bw, border_radius=radius)
+        return
     if shadow:
         # A sombra e sempre a mesma imagem para o mesmo tamanho: criar a superficie e redesenhar o
         # rectangulo a cada frame custava caro (ha dezenas de paineis por frame). Fica em cache.
