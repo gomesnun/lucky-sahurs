@@ -30,6 +30,13 @@ def make_game_background(w, h, top_color, bottom_color, dark=False):
         base = mix(top_color, bottom_color, t)
         dot = mix(base, target, rng.uniform(low, high))
         pygame.draw.circle(surf, dot, (x, y), 1 if rng.random() < 0.82 else 2)
+    # E a maior imagem do jogo e cobre o ecra inteiro uma vez por frame: se nao estiver no formato do
+    # ecra, esse unico blit converte centenas de milhares de pixeis a cada frame. O fundo e opaco,
+    # por isso usa-se convert() (sem canal alfa), que da o blit mais rapido que existe.
+    try:
+        surf = surf.convert()
+    except pygame.error:
+        pass
     return surf
 
 
