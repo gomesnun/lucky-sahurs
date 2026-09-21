@@ -14,6 +14,7 @@ import urllib.request
 
 from config import SAVE_DIR
 from i18n import tr
+from online.tls import ssl_context
 
 
 # Não precisa de nenhuma biblioteca extra: fala com o Firebase por HTTPS (REST) com o urllib.
@@ -137,7 +138,7 @@ def http_json(method, url, body=None, headers=None, form=False, timeout=NET_TIME
         hdrs.update(headers)
     req = urllib.request.Request(url, data=data, headers=hdrs, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=ssl_context()) as resp:
             raw = resp.read()
     except urllib.error.HTTPError as e:
         raise classify_http_error(e)

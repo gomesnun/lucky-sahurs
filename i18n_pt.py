@@ -395,6 +395,22 @@ PT = {
     "What's new in Lucky Sahurs": "Novidades do Lucky Sahurs",
     "Nothing here yet - future updates will be listed on this page.": "Ainda não há nada aqui - as próximas atualizações vão aparecer nesta página.",
 
+    # ---------------- atualização automática ----------------
+    "New version available": "Nova versão disponível",
+    "Version %s is out (you have %s).": "A versão %s já saiu (tens a %s).",
+    "You need to update to keep playing.": "Tens de atualizar para continuar a jogar.",
+    "Update now": "Atualizar agora",
+    "No (closes the game)": "Não (fecha o jogo)",
+    "Downloading the update... %d%%": "A descarregar a atualização... %d%%",
+    "Installing... the game restarts in a moment.": "A instalar... o jogo reinicia daqui a pouco.",
+    "The update failed": "A atualização falhou",
+    "Couldn't download the update. Check your internet connection.": "Não foi possível descarregar a atualização. Verifica a tua ligação à internet.",
+    "The downloaded file is damaged. Please try again.": "O ficheiro descarregado está danificado. Tenta outra vez.",
+    "The game can't replace itself in this folder. Move it to another folder (for example the Desktop) or download the new version by hand.": "O jogo não consegue substituir-se nesta pasta. Move-o para outra pasta (por exemplo o Ambiente de Trabalho) ou descarrega a versão nova à mão.",
+    "Try again": "Tentar de novo",
+    "Open download page": "Abrir página de descarga",
+    "Close game": "Fechar o jogo",
+
     # ---------------- cloud / erros de rede ----------------
     "Logged out.": "Sessão terminada.",
     "Session expired. Please log in again.": "A sessão expirou. Inicia sessão outra vez.",

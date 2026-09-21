@@ -60,6 +60,8 @@ online/                 conta e cloud
     firebase.py         cliente do Firebase (contas + Firestore) e Worker de fundo
     cloud_cache.py      sessão guardada, cache local dos saves da conta
     cloud.py            lógica online do jogo (login, sincronizar, leaderboard)
+    updater.py          atualizações automáticas: vê no GitHub se há versão nova, descarrega e troca o programa
+    tls.py              certificados HTTPS (certifi) para o online e as atualizações
 
 ui/                     tudo o que se vê / ouve
     fonts.py, drawing.py, widgets.py        peças de desenho e texto
@@ -74,6 +76,7 @@ ui/                     tudo o que se vê / ouve
     rebirth_panel.py, daily_panel.py        página de Rebirths e painel de Missões Diárias
     account_panel.py, leaderboard_panel.py  conta e leaderboard
     credits_panel.py                        página de Credits (sons e música)
+    update_panel.py                         ecrã "Nova versão disponível" (atualização obrigatória)
 """
 
 
@@ -107,6 +110,7 @@ from ui.pets_panel import PetsPanelMixin
 from ui.rebirth_panel import RebirthPanelMixin
 from ui.title_saves import TitleSavesMixin
 from ui.traits_panel import TraitsPanelMixin
+from ui.update_panel import UpdatePanelMixin
 from ui.updatelog_panel import UpdateLogPanelMixin
 from ui.upgrades_panel import UpgradesPanelMixin
 from ui.widgets import SlidePanel
@@ -131,6 +135,7 @@ class Game(
     LeaderboardPanelMixin,  # ecrã da leaderboard
     CreditsPanelMixin,      # página de Credits (sons e música)
     UpdateLogPanelMixin,    # página de Update Log (novidades do jogo)
+    UpdatePanelMixin,       # "Nova versão disponível": atualização automática pelo GitHub (obrigatória)
 ):
     """O jogo: junta todas as peças (som, ecrãs, painéis, online) e tem o ciclo principal."""
 
@@ -205,6 +210,7 @@ class Game(
         self.apply_volume()
 
         self.init_online()
+        self.init_updater()             # verificação de versões novas (ver ui/update_panel.py)
 
     def reset_ui(self):
         """Volta a pôr painéis, scrolls e animações no estado inicial (novo save / voltar ao menu)."""
@@ -356,6 +362,7 @@ class Game(
         while running:
             dt = min(0.1, self.clock.tick(FPS) / 1000.0)
             self.worker.poll()          # entrega os resultados de rede (login, saves, leaderboard...) pendentes
+            self.tick_updater()         # de tempos a tempos vê se há versão nova no GitHub
             running = self.handle_events()
 
             if self.screen_mode == "game":
@@ -416,7 +423,9 @@ class Game(
                 self.recompute_layout()
 
             elif event.type == pygame.KEYDOWN:
-                if self.screen_mode == "account" and self.handle_account_key(event):
+                if self.update_modal_active() and event.key != pygame.K_F11:
+                    pass                # ecrã "Nova versão": ESC e atalhos não fazem nada (só Atualizar ou Não)
+                elif self.screen_mode == "account" and self.handle_account_key(event):
                     pass
                 elif event.key == pygame.K_F11 or (
                         event.key == pygame.K_f and (event.mod & (pygame.KMOD_META | pygame.KMOD_CTRL))):
@@ -459,13 +468,13 @@ class Game(
                     self.open_right_panel("milestones")
 
             elif event.type == pygame.TEXTINPUT:
-                if self.screen_mode == "account" and self.acc_focus:
+                if self.screen_mode == "account" and self.acc_focus and not self.update_modal_active():
                     f = self.acc_fields.get(self.acc_focus)
                     if f:
                         f.add(event.text)
 
             elif event.type == pygame.MOUSEWHEEL:
-                if self.screen_mode != "game" or self.options_open or self.stats_open:
+                if self.screen_mode != "game" or self.options_open or self.stats_open or self.update_modal_active():
                     continue
                 pos = self.mouse_canvas()
                 step = -event.y * 60
@@ -498,7 +507,7 @@ class Game(
 
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 canvas_pos = self.screen_to_canvas(event.pos)
-                if self.options_open:
+                if self.options_open and not self.update_modal_active():
                     hit = next((name for name, r in self.slider_hits.items() if r.collidepoint(canvas_pos)), None)
                     if hit:
                         self.dragging_slider = hit
@@ -514,7 +523,7 @@ class Game(
                         callback()
                         handled = True
                         break
-                if not handled:
+                if not handled and not self.update_modal_active():
                     self.close_overlay_on_outside_click()
         return True
 
@@ -558,6 +567,9 @@ class Game(
         if self.update_log_open:
             self.begin_modal()
             self.draw_update_log(mouse_pos)
+
+        if self.update_modal_active():          # "Nova versão disponível": por cima de tudo, bloqueia o resto
+            self.draw_update_modal(mouse_pos)
 
         real_size = self.screen.get_size()
         if self.animations:

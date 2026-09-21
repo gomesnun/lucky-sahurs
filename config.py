@@ -12,7 +12,19 @@ HINT_H = 0
 FPS = 60
 
 GAME_TITLE = "Lucky Sahurs"
-VERSION = "v7"
+# Número da versão (vX.Y.Z): quem o escreve é o GitHub Actions, a partir da tag da Release (ver
+# .github/workflows/build.yml). Assim o programa sabe sempre que versão é, e as atualizações não fazem ciclos.
+# Sem esse ficheiro ("python main.py" ou um .exe feito à mão) fica "dev": não há verificação de atualizações.
+try:
+    from build_version import BUILD_VERSION
+except ImportError:
+    BUILD_VERSION = "dev"
+VERSION = BUILD_VERSION if BUILD_VERSION != "dev" else "v7"       # o que aparece no menu
+
+# Atualizações automáticas (ver online/updater.py)
+UPDATE_REPO = "gomesnun/lucky-sahurs"       # dono/repositório onde estão as Releases
+UPDATE_CHECK_INTERVAL = 30 * 60             # de quanto em quanto tempo volta a perguntar ao GitHub (segundos)
+UPDATE_RETRY_AFTER_ERROR = 5 * 60           # se o GitHub não respondeu (sem net...): tenta outra vez daqui a isto
 
 
 def _pasta_de_dados_do_utilizador():

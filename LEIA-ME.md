@@ -44,6 +44,24 @@ Para só testar o build sem publicar: separador **Actions** → *Build Lucky Sah
 Avisos normais de programas não assinados: no Windows, "Mais informações → Executar mesmo assim"; no macOS, botão direito
 na app → Abrir (ou `xattr -dr com.apple.quarantine "Lucky Sahurs.app"`); no Linux, `tar xzf Lucky-Sahurs-Linux.tar.gz` e `./LuckySahurs`.
 
+## Atualizações automáticas
+
+Os executáveis criados pelo GitHub Actions verificam sozinhos se há uma versão nova:
+
+- Ao abrir o jogo (e de 30 em 30 minutos) ele pergunta ao GitHub qual é a última Release (`UPDATE_REPO` em `config.py`).
+- Se o número for **maior** que o do jogo, aparece o ecrã **Nova versão disponível** com **Atualizar agora** (descarrega,
+  troca o programa e reabre sozinho) e **Não (fecha o jogo)**. O jogo tem de estar sempre atualizado.
+- **Nunca bloqueia sem certeza:** sem internet, GitHub em baixo, ou Release ainda sem o ficheiro do teu sistema → o jogo abre normalmente.
+- O número da versão vem da **tag** (`v1.0.1`): o workflow escreve-o dentro do jogo (`build_version.py`, que não vai para o
+  repositório). **Usa sempre tags no formato `vX.Y.Z`** (v1.0.1, v1.1.0, v2.0.0...), cada uma MAIOR que a anterior.
+  Tags com outro formato (`v1.0.0-rc1`, `final`...) geram um programa "dev" que não verifica atualizações.
+- `python main.py`, o `build_exe.bat` (build local) e os "Run workflow" de teste **nunca pedem atualização** (versão "dev").
+- Os saves ficam em `%APPDATA%\LuckySahurs` (ou o equivalente), por isso uma atualização não mexe neles.
+- Para desligar (testes): variável de ambiente `LUCKY_SAHURS_NO_UPDATE=1`.
+
+Como a atualização é obrigatória, **testa o executável antes de publicar**: corre *Actions → Build Lucky Sahurs → Run workflow*,
+descarrega o ficheiro de "Artifacts", experimenta, e só depois cria a tag. Uma Release estragada seria imposta a todos.
+
 ## Idioma
 
 **Options → Language** alterna entre English e Português e a mudança é imediata (fica guardada nas definições).
