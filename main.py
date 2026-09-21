@@ -464,11 +464,49 @@ class Game(
             return
         self.play("click")
 
+    def _perf_write(self, lines):
+        """Escreve as medicoes num ficheiro ao lado dos saves. No telemovel o logcat e inutilizavel
+        (o log da camara enche o buffer e as linhas do jogo desaparecem); um ficheiro le-se depois
+        com "adb shell run-as <pacote> cat files/LuckySahurs/perf_profile.txt"."""
+        for line in lines:
+            print(line)
+        try:
+            with open(os.path.join(SAVE_DIR, "perf_profile.txt"), "a") as f:
+                f.write("\n".join(lines) + "\n")
+        except OSError:
+            pass
+
+    def _perf_blit_bench(self):
+        """Mede o custo bruto de um blit neste aparelho, sem o jogo pelo meio: e a unica forma de
+        saber se os ~80 ms por frame sao mesmo o preco dos pixeis ou se ha aqui algo estragado."""
+        import time as _t
+        out = ["BENCH canvas=%dx%d is_screen=%s" % (self.canvas.get_width(), self.canvas.get_height(),
+                                                    self.canvas is self.screen)]
+        opaque = pygame.Surface((200, 80)).convert()
+        alpha = pygame.Surface((200, 80), pygame.SRCALPHA).convert_alpha()
+        alpha.fill((255, 0, 0, 128))
+        big = pygame.Surface(self.canvas.get_size()).convert()
+        for name, surf, count in (("opaco_200x80", opaque, 200),
+                                  ("alpha_200x80", alpha, 200),
+                                  ("opaco_ecra_inteiro", big, 20)):
+            t0 = _t.perf_counter()
+            for _ in range(count):
+                self.canvas.blit(surf, (0, 0))
+            dt = (_t.perf_counter() - t0) / count
+            out.append("BENCH %-20s %7.3f ms/blit" % (name, dt * 1000.0))
+        t0 = _t.perf_counter()
+        for _ in range(50):
+            pygame.draw.rect(self.canvas, (10, 20, 30), pygame.Rect(0, 0, 200, 80), border_radius=12)
+        out.append("BENCH %-20s %7.3f ms" % ("rect_redondo_200x80", (_t.perf_counter() - t0) / 50 * 1000.0))
+        self._perf_write(out)
+
     def _perf_profile_draw(self):
-        """Desenha e, entre o frame 150 e o 450, mede com o cProfile onde e que o tempo se vai.
-        O resultado sai uma unica vez para o logcat, com as 25 funcoes mais caras."""
+        """Desenha e, entre o frame 60 e o 360, mede com o cProfile onde e que o tempo se vai.
+        O resultado sai uma unica vez, com as 25 funcoes mais caras."""
         n = self._perf_frames
-        if n < 150 or n >= 450:
+        if n == 30:
+            self._perf_blit_bench()
+        if n < 60 or n >= 360:
             self.draw()
             return
         if self._perf_prof is None:
@@ -477,13 +515,13 @@ class Game(
         self._perf_prof.enable()
         self.draw()
         self._perf_prof.disable()
-        if n == 449:
+        if n == 359:
             # Le-se o cProfile a mao: o modulo pstats nao vem no Python do Android, e importa-lo
             # aqui rebentava com a app exatamente neste frame (fechava sem erro nenhum).
             try:
                 entries = self._perf_prof.getstats()
             except Exception as err:          # noqa: BLE001 - so medicao, nunca pode matar o jogo
-                print("PROF indisponivel: %r" % (err,))
+                self._perf_write(["PROF indisponivel: %r" % (err,)])
                 return
             rows = []
             for e in entries:
@@ -495,9 +533,10 @@ class Game(
                                           code.co_firstlineno, code.co_name)
                 rows.append((e.inlinetime, e.totaltime, e.callcount, name))
             rows.sort(reverse=True)
-            print("PROF 300 frames: tottime cumtime calls funcao")
+            out = ["PROF 300 frames: tottime cumtime calls funcao"]
             for inline, total, calls, name in rows[:25]:
-                print("PROF %8.3f %8.3f %7d %s" % (inline, total, calls, name))
+                out.append("PROF %8.3f %8.3f %7d %s" % (inline, total, calls, name))
+            self._perf_write(out)
 
     # ---------------------------------------------------------------- loop
     def run(self):
@@ -562,9 +601,9 @@ class Game(
                               % (self.screen.get_width(), self.screen.get_height(),
                                  self.screen.get_bitsize(), self.screen.get_masks(),
                                  self.canvas.get_bitsize()))
-                    print("PERF fps=%.1f draw=%.1fms flip=%.1fms bg=%.1fms"
-                          % (n / self._perf_elapsed, 1000.0 * self._perf_draw / n,
-                             1000.0 * self._perf_flip / n, 1000.0 * self._perf_bg / n))
+                    self._perf_write(["PERF fps=%.1f draw=%.1fms flip=%.1fms bg=%.1fms"
+                                      % (n / self._perf_elapsed, 1000.0 * self._perf_draw / n,
+                                         1000.0 * self._perf_flip / n, 1000.0 * self._perf_bg / n)])
                     self._perf_flip = self._perf_bg = 0.0
                     self._perf_draw = self._perf_elapsed = 0.0
                     self._perf_window = 0
