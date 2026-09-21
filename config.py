@@ -7,8 +7,10 @@ import sys
 # Android: o python-for-android define estas variáveis de ambiente no arranque da app.
 IS_ANDROID = bool(os.environ.get("ANDROID_ARGUMENT") or os.environ.get("ANDROID_PRIVATE"))
 
-VIRTUAL_H = 800            # altura "de desenho" fixa; a largura adapta-se ao ecrã
-VW_MIN, VW_MAX = 1000, 2400
+# Altura "de desenho" fixa; a largura adapta-se ao ecrã. No telemóvel o ecrã é pequeno e o CPU é
+# fraco: desenhar menos píxeis aumenta tudo (botões, letras) e ainda dá mais FPS.
+VIRTUAL_H = 560 if IS_ANDROID else 800
+VW_MIN, VW_MAX = (700, 1400) if IS_ANDROID else (1000, 2400)
 
 TOPBAR_H = 70
 HINT_H = 0

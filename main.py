@@ -677,7 +677,9 @@ class Game(
             self.draw_update_modal(mouse_pos)
 
         real_size = self.screen.get_size()
-        if self.animations:
+        # O smoothscale de um ecrã inteiro custa caro no telemóvel (e a diferença nem se vê num ecrã
+        # tão pequeno), por isso no Android é sempre o scale simples.
+        if self.animations and not IS_ANDROID:
             scaled = pygame.transform.smoothscale(self.canvas, real_size)
         else:
             scaled = pygame.transform.scale(self.canvas, real_size)
