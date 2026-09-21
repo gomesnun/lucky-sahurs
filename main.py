@@ -90,7 +90,8 @@ import traceback
 import pygame
 
 import theme
-from config import AUTOSAVE_INTERVAL, FPS, GAME_TITLE, SAVE_DIR, VIRTUAL_H, VW_MAX, VW_MIN
+from config import (AUTOSAVE_INTERVAL, FPS, GAME_TITLE, IS_ANDROID, SAVE_DIR, TOUCH_DRAG_SLOP,
+                    VIRTUAL_H, VW_MAX, VW_MIN)
 from core.game_state import GameState
 from i18n import set_language, tr
 from online.cloud import CloudMixin
@@ -209,6 +210,12 @@ class Game(
         self.dragging_scrollbar = None  # key da scrollbar a ser arrastada (ver ui/base.py draw_scrollbar)
         self.scrollbar_hits = {}        # registadas de novo a cada frame, só as que estão visíveis
 
+        # Toque (Android): o botão só dispara quando o dedo levanta sem ter arrastado (ver handle_events).
+        self.touch_down = False
+        self.touch_pending = None       # onde o dedo tocou (pixéis do ecrã)
+        self.touch_last = (0, 0)
+        self.touch_dragged = False
+
         self.sounds = {}
         self.last_sfx = {}
         self.build_sounds()
@@ -252,6 +259,12 @@ class Game(
 
     # ---------------------------------------------------------------- ecrã
     def set_fullscreen(self, fs, announce=True):
+        if IS_ANDROID:
+            # O Android só tem ecrã inteiro (a orientação e a barra de estado ficam no buildozer.spec).
+            self.screen = pygame.display.set_mode((0, 0))
+            self.fullscreen = True
+            self.recompute_layout()
+            return
         try:
             if fs:
                 self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
@@ -334,6 +347,8 @@ class Game(
         return (pos[0] / self.scale_x, pos[1] / self.scale_y)
 
     def mouse_canvas(self):
+        if IS_ANDROID and not self.touch_down:
+            return (-10000.0, -10000.0)     # sem dedo no ecrã não há nada "sob o rato" (nenhum botão aceso)
         return self.screen_to_canvas(pygame.mouse.get_pos())
 
     # ---------------------------------------------------------------- scrollbars arrastáveis
@@ -454,9 +469,7 @@ class Game(
             self.frame_dt = dt
             self.draw()
 
-        self.flush_cloud_blocking()
-        self.state.save()
-        save_settings(self.settings)
+        self.save_everything()
         pygame.quit()
         sys.exit()
 
@@ -481,7 +494,7 @@ class Game(
                 elif event.key == pygame.K_F11 or (
                         event.key == pygame.K_f and (event.mod & (pygame.KMOD_META | pygame.KMOD_CTRL))):
                     self.toggle_fullscreen()
-                elif event.key == pygame.K_ESCAPE:
+                elif event.key in (pygame.K_ESCAPE, pygame.K_AC_BACK):
                     if self.screen_mode == "account":
                         self.close_account()
                     elif self.leaderboard_open:
@@ -526,22 +539,20 @@ class Game(
                         f.add(event.text)
 
             elif event.type == pygame.MOUSEWHEEL:
-                if (self.screen_mode != "game" or self.options_open or self.stats_open
-                        or self.leaderboard_open or self.credits_open or self.update_log_open
-                        or self.update_modal_active()):
-                    continue
-                pos = self.mouse_canvas()
-                step = -event.y * 60
-                if self.traits_open and self.traits_list_rect.collidepoint(pos):
-                    self.traits_scroll = max(0.0, min(self.traits_max_scroll, self.traits_scroll + step))
-                elif self.rebirth_open and self.rebirth_list_rect.collidepoint(pos):
-                    self.rebirth_scroll = max(0.0, min(self.rebirth_max_scroll, self.rebirth_scroll + step))
-                elif self.right_panel.visible and self.right_rect.collidepoint(pos):
-                    self.right_panel.add_scroll(step)
-                elif self.left_panel.visible and self.left_rect.collidepoint(pos):
-                    self.left_panel.add_scroll(step)
+                self.scroll_at(self.mouse_canvas(), -event.y * 60)
 
             elif event.type == pygame.MOUSEMOTION:
+                if IS_ANDROID and self.touch_down and not self.dragging_slider and not self.dragging_scrollbar:
+                    start = self.touch_pending or event.pos
+                    if (abs(event.pos[0] - start[0]) > TOUCH_DRAG_SLOP
+                            or abs(event.pos[1] - start[1]) > TOUCH_DRAG_SLOP):
+                        self.touch_dragged = True
+                    if self.touch_dragged:
+                        # arrastar para cima empurra a lista para baixo, como em qualquer app
+                        dy = (event.pos[1] - self.touch_last[1]) / self.scale_y
+                        self.scroll_at(self.screen_to_canvas(event.pos), -dy)
+                    self.touch_last = event.pos
+                    continue
                 if self.dragging_slider:
                     self.set_slider_from_pos(self.dragging_slider, self.screen_to_canvas(event.pos))
                 elif self.dragging_scrollbar:
@@ -558,6 +569,15 @@ class Game(
                     save_settings(self.settings)
                     self.play("click")          # serve de "amostra" do novo volume
                 self.dragging_scrollbar = None
+                if IS_ANDROID:
+                    # No telemóvel o botão só dispara quando o dedo levanta: assim um arrasto faz scroll
+                    # da lista em vez de carregar no que estava por baixo.
+                    pending, dragged = self.touch_pending, self.touch_dragged
+                    self.touch_pending = None
+                    self.touch_dragged = False
+                    self.touch_down = False
+                    if pending is not None and not dragged:
+                        self.dispatch_click(self.screen_to_canvas(pending))
 
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 canvas_pos = self.screen_to_canvas(event.pos)
@@ -569,16 +589,47 @@ class Game(
                         continue
                 if self.start_scrollbar_drag(canvas_pos):
                     continue
-                handled = False
-                for rect, callback, sfx, _nav in reversed(self.buttons):
-                    if rect.collidepoint(canvas_pos):
-                        if sfx:
-                            self.play(sfx)
-                        callback()
-                        handled = True
-                        break
-                if not handled and not self.update_modal_active():
-                    self.close_overlay_on_outside_click()
+                if IS_ANDROID:
+                    self.touch_down = True
+                    self.touch_pending = event.pos
+                    self.touch_last = event.pos
+                    self.touch_dragged = False
+                    continue
+                self.dispatch_click(canvas_pos)
+
+            elif event.type in (pygame.APP_WILLENTERBACKGROUND, pygame.APP_DIDENTERBACKGROUND):
+                # O Android pode matar a app enquanto está em segundo plano: grava já.
+                self.save_everything()
+        return True
+
+    def dispatch_click(self, canvas_pos):
+        """Carrega no botão que estiver debaixo de 'canvas_pos' (ou fecha o painel aberto, se não houver nenhum)."""
+        for rect, callback, sfx, _nav in reversed(self.buttons):
+            if rect.collidepoint(canvas_pos):
+                if sfx:
+                    self.play(sfx)
+                callback()
+                return True
+        if not self.update_modal_active():
+            self.close_overlay_on_outside_click()
+        return False
+
+    def scroll_at(self, pos, step):
+        """Faz scroll da lista que estiver debaixo de 'pos' (coordenadas do canvas). 'step' em pixéis do canvas."""
+        if (self.screen_mode != "game" or self.options_open or self.stats_open
+                or self.leaderboard_open or self.credits_open or self.update_log_open
+                or self.update_modal_active()):
+            return False
+        if self.traits_open and self.traits_list_rect.collidepoint(pos):
+            self.traits_scroll = max(0.0, min(self.traits_max_scroll, self.traits_scroll + step))
+        elif self.rebirth_open and self.rebirth_list_rect.collidepoint(pos):
+            self.rebirth_scroll = max(0.0, min(self.rebirth_max_scroll, self.rebirth_scroll + step))
+        elif self.right_panel.visible and self.right_rect.collidepoint(pos):
+            self.right_panel.add_scroll(step)
+        elif self.left_panel.visible and self.left_rect.collidepoint(pos):
+            self.left_panel.add_scroll(step)
+        else:
+            return False
         return True
 
     def draw(self):
@@ -633,10 +684,14 @@ class Game(
         self.screen.blit(scaled, (0, 0))
         pygame.display.flip()
 
-    def quit_game(self):
+    def save_everything(self):
+        """Grava tudo (nuvem, save, definições) sem fechar o jogo. Usado ao sair e ao ir para segundo plano."""
         self.flush_cloud_blocking()
         self.state.save()
         save_settings(self.settings)
+
+    def quit_game(self):
+        self.save_everything()
         pygame.quit()
         sys.exit()
 

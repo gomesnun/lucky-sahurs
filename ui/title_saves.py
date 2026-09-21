@@ -4,7 +4,7 @@ import math
 import time
 import pygame
 
-from config import FULLSCREEN_HINT, GAME_TITLE, SAVE_SLOTS, VERSION, VIRTUAL_H
+from config import FULLSCREEN_HINT, GAME_TITLE, IS_ANDROID, SAVE_SLOTS, VERSION, VIRTUAL_H
 from core.formatting import format_number, format_playtime
 from core.game_state import GameState
 from core.offline import offline_message
@@ -155,8 +155,8 @@ class TitleSavesMixin:
                     callback=self.toggle_update_log, radius=10, icon="updatelog")
         self.nav_mode = False
 
-        foot = self.font_small.render(tr("%s   ·   %s: fullscreen / windowed", VERSION, FULLSCREEN_HINT),
-                                      True, GREY_DIM)
+        rodape = VERSION if IS_ANDROID else tr("%s   ·   %s: fullscreen / windowed", VERSION, FULLSCREEN_HINT)
+        foot = self.font_small.render(rodape, True, GREY_DIM)
         self.canvas.blit(foot, foot.get_rect(center=(cx, VIRTUAL_H - 20)))
 
     def draw_mascot(self, cx, ground_y, size=230):

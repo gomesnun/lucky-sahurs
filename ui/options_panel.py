@@ -3,7 +3,7 @@
 import pygame
 
 import theme
-from config import VIRTUAL_H
+from config import IS_ANDROID, VIRTUAL_H
 from i18n import get_language, language_name, next_language, set_language, tr
 from storage import SFX_CATEGORIES, save_settings
 from theme import ACCENT, BAD, GREY, GREY_DIM, OUTLINE, PANEL, PANEL_LIGHT, PANEL_LIGHTER, WHITE
@@ -183,11 +183,12 @@ class OptionsPanelMixin:
         btn_w = panel_w - 48
         x0 = rect.x + 24
 
-        self.button(pygame.Rect(x0, y, btn_w, 44),
-                    tr("Fullscreen: %s", tr("On") if self.fullscreen else tr("Off")),
-                    self.font_med, mouse_pos, PANEL_LIGHT, PANEL_LIGHTER, WHITE,
-                    callback=self.toggle_fullscreen, radius=10)
-        y += 54
+        if not IS_ANDROID:          # no telemóvel o jogo é sempre em ecrã inteiro
+            self.button(pygame.Rect(x0, y, btn_w, 44),
+                        tr("Fullscreen: %s", tr("On") if self.fullscreen else tr("Off")),
+                        self.font_med, mouse_pos, PANEL_LIGHT, PANEL_LIGHTER, WHITE,
+                        callback=self.toggle_fullscreen, radius=10)
+            y += 54
 
         self.button(pygame.Rect(x0, y, btn_w, 44),
                     tr("Theme: %s", self.theme_mode_label()),

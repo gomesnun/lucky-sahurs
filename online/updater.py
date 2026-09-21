@@ -80,6 +80,8 @@ def updates_enabled(current=None):
     Para desligar (testes): variável de ambiente LUCKY_SAHURS_NO_UPDATE=1."""
     if os.environ.get("LUCKY_SAHURS_NO_UPDATE"):
         return False
+    if config.IS_ANDROID:
+        return False        # no Android quem atualiza e a loja / o APK, nao o jogo
     if not getattr(sys, "frozen", False):
         return False
     return parse_version(config.BUILD_VERSION if current is None else current) is not None

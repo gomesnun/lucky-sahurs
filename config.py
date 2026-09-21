@@ -4,6 +4,9 @@ import os
 import sys
 
 
+# Android: o python-for-android define estas variáveis de ambiente no arranque da app.
+IS_ANDROID = bool(os.environ.get("ANDROID_ARGUMENT") or os.environ.get("ANDROID_PRIVATE"))
+
 VIRTUAL_H = 800            # altura "de desenho" fixa; a largura adapta-se ao ecrã
 VW_MIN, VW_MAX = 1000, 2400
 
@@ -29,8 +32,12 @@ UPDATE_RETRY_AFTER_ERROR = 5 * 60           # se o GitHub não respondeu (sem ne
 
 def _pasta_de_dados_do_utilizador():
     """A pasta de dados "oficial" de cada sistema, onde ficam os saves:
+    Android: a pasta privada da app (ANDROID_PRIVATE), que só esta app lê e que o sistema apaga com ela.
     Windows: %APPDATA%\\LuckySahurs   macOS: ~/Library/Application Support/LuckySahurs
     Linux: $XDG_DATA_HOME/LuckySahurs (por omissão ~/.local/share/LuckySahurs)."""
+    if IS_ANDROID:
+        privada = os.environ.get("ANDROID_PRIVATE") or os.path.expanduser("~")
+        return os.path.join(privada, "LuckySahurs")
     home = os.path.expanduser("~")
     if sys.platform == "win32":
         base = os.environ.get("APPDATA") or home
@@ -111,7 +118,7 @@ def _pasta_dos_saves():
         return folder
     dados = _pasta_de_dados_do_utilizador()
     if _pode_escrever(dados):
-        if not _dentro_de_uma_app_do_mac():
+        if not _dentro_de_uma_app_do_mac() and not IS_ANDROID:
             _migrar_saves_antigos(GAME_DIR, dados)
         return dados
     return GAME_DIR
@@ -127,3 +134,7 @@ AUTOSAVE_INTERVAL = 10.0
 # Atalho de ecrã inteiro mostrado no menu. No macOS o F11 costuma estar ocupado pelo sistema (e precisa da
 # tecla Fn nos portáteis), por isso lá também funciona Cmd+F (ver main.py).
 FULLSCREEN_HINT = "F11 / Cmd+F" if sys.platform == "darwin" else "F11"
+
+# No Android o jogo é sempre em ecrã inteiro (não há janela nem F11) e os toques substituem o rato:
+# um toque que arrasta mais do que isto (pixéis do ecrã) conta como scroll e já não carrega no botão.
+TOUCH_DRAG_SLOP = 16
