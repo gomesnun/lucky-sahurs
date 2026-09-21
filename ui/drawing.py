@@ -83,6 +83,7 @@ def to_display_format(surf):
 
 
 _SHADOW_CACHE = {}
+_PANEL_CACHE = {}
 _DIM_CACHE = {}
 
 
@@ -117,10 +118,23 @@ def draw_panel(canvas, rect, color=None, radius=14, shadow=True, border=None):
             shadow_surf = to_display_format(shadow_surf)
             _SHADOW_CACHE[key] = shadow_surf
         canvas.blit(shadow_surf, (rect.x - 7, rect.y - 7))
-    pygame.draw.rect(canvas, color, rect, border_radius=radius)
+    # O corpo do painel (preenchimento + contorno) so depende do tamanho, do raio, da cor e da
+    # espessura: desenha-se uma vez para uma imagem e depois e so um blit, em vez de dois
+    # pygame.draw.rect com cantos redondos a cada frame.
     bw = border if border is not None else (BORDER_W if shadow else BORDER_W_SMALL)
-    if bw > 0:
-        pygame.draw.rect(canvas, OUTLINE, rect, width=bw, border_radius=radius)
+    key = (rect.width, rect.height, radius, tuple(color[:3]), bw, tuple(OUTLINE[:3]))
+    body = _PANEL_CACHE.get(key)
+    if body is None:
+        body = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        body_rect = body.get_rect()
+        pygame.draw.rect(body, color, body_rect, border_radius=radius)
+        if bw > 0:
+            pygame.draw.rect(body, OUTLINE, body_rect, width=bw, border_radius=radius)
+        body = to_display_format(body)
+        if len(_PANEL_CACHE) > 400:
+            _PANEL_CACHE.clear()
+        _PANEL_CACHE[key] = body
+    canvas.blit(body, rect)
 
 
 # ---------------------------------------------------------------- movimento suave (sub-píxel)
@@ -147,6 +161,7 @@ def clear_drawing_caches():
     _VSHIFT_CACHE.clear()
     _SHADOW_CACHE.clear()
     _DIM_CACHE.clear()
+    _PANEL_CACHE.clear()
 
 
 def blit_smooth_y(canvas, key, build, x, y):
