@@ -73,6 +73,28 @@ jobs:
             mkdir -p .buildozer && printf '%s' "$H" > "$M"
           fi
 
+      # O APK de debug e assinado com a ~/.android/debug.keystore. Se cada build gerar uma chave nova,
+      # o telemovel recusa a atualizacao ("signatures do not match") e e preciso desinstalar o jogo,
+      # o que apaga os saves. Guardar a chave na cache mantem a assinatura igual entre builds.
+      - name: Cache da chave de debug
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
+
+      - name: Criar a chave de debug se ainda nao existir
+        shell: bash
+        run: |
+          KS=~/.android/debug.keystore
+          if [ ! -f "$KS" ]; then
+            mkdir -p ~/.android
+            # Os mesmos valores que o SDK do Android usa por omissao para a chave de debug.
+            keytool -genkeypair -keystore "$KS" -storepass android -keypass android \
+              -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          keytool -list -keystore "$KS" -storepass android | grep -i sha256 || true
+
       - name: Criar o APK
         run: buildozer android debug
 
