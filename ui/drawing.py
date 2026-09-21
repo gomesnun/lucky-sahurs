@@ -17,13 +17,65 @@ def make_vertical_gradient(w, h, top_color, bottom_color):
     return surf
 
 
+def make_game_background(w, h, top_color, bottom_color, dark=False):
+    """Fundo do jogo: o mesmo gradiente vertical de sempre com uns pontinhos subtis espalhados (sempre nos
+    mesmos sítios, para não "saltarem" quando a janela é redimensionada): estrelinhas claras em modo escuro
+    e pontinhos pretos em modo claro."""
+    surf = make_vertical_gradient(w, h, top_color, bottom_color)
+    rng = random.Random(1789980865)
+    target, low, high = ((255, 255, 255), 0.12, 0.42) if dark else ((0, 0, 0), 0.16, 0.52)
+    for _ in range(max(50, (w * h) // 4600)):
+        x, y = rng.randrange(w), rng.randrange(h)
+        t = y / float(max(1, h - 1))
+        base = mix(top_color, bottom_color, t)
+        dot = mix(base, target, rng.uniform(low, high))
+        pygame.draw.circle(surf, dot, (x, y), 1 if rng.random() < 0.82 else 2)
+    return surf
+
+
+def mix(c1, c2, t):
+    """Mistura duas cores (t=0 -> c1, t=1 -> c2)."""
+    return tuple(int(c1[i] + (c2[i] - c1[i]) * t) for i in range(3))
+
+
+def shade(color, factor):
+    """A mesma cor mais clara (factor > 1) ou mais escura (factor < 1), sem sair de 0-255."""
+    return tuple(max(0, min(255, int(c * factor))) for c in color[:3])
+
+
+_GRADIENT_CACHE = {}
+
+
+def rounded_gradient(w, h, top_color, bottom_color, radius):
+    """Gradiente vertical (top_color -> bottom_color) já recortado num retângulo arredondado
+    (usado nos cartões: pets bloqueados no Index e o fundo das traits)."""
+    key = (w, h, tuple(top_color), tuple(bottom_color), radius)
+    surf = _GRADIENT_CACHE.get(key)
+    if surf is not None:
+        return surf
+    surf = pygame.Surface((w, h), pygame.SRCALPHA)
+    for y in range(h):
+        t = y / float(max(1, h - 1))
+        color = mix(top_color, bottom_color, t)
+        pygame.draw.line(surf, (*color, 255), (0, y), (w, y))
+    mask = pygame.Surface((w, h), pygame.SRCALPHA)
+    pygame.draw.rect(mask, (255, 255, 255, 255), mask.get_rect(), border_radius=radius)
+    surf.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+    if len(_GRADIENT_CACHE) > 200:
+        _GRADIENT_CACHE.clear()
+    _GRADIENT_CACHE[key] = surf
+    return surf
+
+
 def ease_out_cubic(t):
     t = max(0.0, min(1.0, t))
     return 1 - (1 - t) ** 3
 
 
-def draw_panel(canvas, rect, color=PANEL, radius=14, shadow=True, border=None):
+def draw_panel(canvas, rect, color=None, radius=14, shadow=True, border=None):
     """Painel com contorno preto grosso. border=None -> 4px nos painéis com sombra, 3px nos outros."""
+    if color is None:
+        color = PANEL           # lido aqui (e nao no def) para acompanhar o modo claro / escuro
     if shadow:
         shadow_surf = pygame.Surface((rect.width + 14, rect.height + 14), pygame.SRCALPHA)
         pygame.draw.rect(shadow_surf, (0, 0, 0, 80), (7, 11, rect.width, rect.height), border_radius=radius)
@@ -51,6 +103,11 @@ def _vshift_variants(surf, steps):
         window = pygame.Rect(0, steps - k, w * steps, (h + 2) * steps)
         out.append(pygame.transform.smoothscale(hi.subsurface(window), (w, h + 2)))
     return out
+
+
+def clear_drawing_caches():
+    """Chamado ao trocar de tema: os sprites guardados em cache foram desenhados com as cores antigas."""
+    _VSHIFT_CACHE.clear()
 
 
 def blit_smooth_y(canvas, key, build, x, y):

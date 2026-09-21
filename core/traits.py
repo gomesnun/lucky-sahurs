@@ -2,6 +2,7 @@
 
 import random
 
+from core import balance as B
 from theme import BLACK, WHITE
 
 
@@ -10,7 +11,7 @@ from theme import BLACK, WHITE
 # que fica na tua coleção (Index de Traits) mas só a trait EQUIPADA é que dá os buffs.
 # Só a última trait (a mais rara) dá todos os tipos de buff ao mesmo tempo.
 # ("mutation" = mais chance de Golden e de Diamond. A melhor trait dá +25%: ver as contas em core/pets.py.)
-TRAIT_CHARGE_ONE_IN = 250
+TRAIT_CHARGE_ONE_IN = B.TRAIT_CHARGE_ONE_IN
 
 TRAITS = [
     {"name": "Lucky",           "color": (110, 130, 145), "text": WHITE, "one_in": 3,
@@ -44,6 +45,14 @@ TRAITS = [
      "buffs": {"money": 1.75, "luck": 1.10, "charge_chance": 1.75, "mutation": 0.25, "auto_speed": 1.40,
                "secret_luck": 2.30}},
 ]
+
+# BALANCE: os buffs de dinheiro / sorte / velocidade do auto das traits são multiplicados por B.TRAIT_BUFF_SCALE
+# (aqui, uma vez, por isso a página de Traits mostra os valores finais).
+for _t in TRAITS:
+    for _k, _s in B.TRAIT_BUFF_SCALE.items():
+        if _k in _t["buffs"] and _s != 1.0:
+            _t["buffs"][_k] = round(_t["buffs"][_k] * _s, 2)
+del _t
 
 
 class TraitMixin:

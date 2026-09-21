@@ -11,11 +11,17 @@ from theme import (
 )
 from ui.drawing import draw_panel, draw_state_border
 from ui.fonts import fit_text
+from ui.fonts import font_at as _font_at
 from ui.icons import load_icon
 
 
 class UIBaseMixin:
     """Peças base da interface: botões, clip, scrollbar, ícones, toasts."""
+
+    def font_at(self, size, heavy=True, outline=None):
+        """Fonte com o tamanho exato pedido, com cache (ver ui/fonts.py). Usado pelos cartões
+        (ui/cards.py), que precisam de muitos tamanhos consoante o espaço disponível."""
+        return _font_at(size, heavy=heavy, outline=outline)
 
     def show_toast(self, text, duration=1.8):
         """Aviso no topo do ecrã (duration em segundos). Um texto com quebras de linha mostra várias linhas."""
@@ -189,9 +195,11 @@ class UIBaseMixin:
                 self.scrollbar_hits[key] = (track, max_scroll, bar_h)
 
     # ---------------------------------------------------------------- botões laterais
-    def draw_icon(self, kind, rect, color, bg=PANEL_LIGHT):
+    def draw_icon(self, kind, rect, color, bg=None):
         """Ícones dos botões laterais. Se existir icons/<kind>.png usa-o (a cores, sem tingir);
         senão desenha o ícone por código ('color' = cor do desenho, 'bg' = cor do botão, para os recortes)."""
+        if bg is None:
+            bg = PANEL_LIGHT            # lido aqui (e nao no def) para acompanhar o modo claro / escuro
         img = load_icon(kind, min(rect.width, rect.height) - 14)
         if img is not None:
             self.canvas.blit(img, img.get_rect(center=rect.center))

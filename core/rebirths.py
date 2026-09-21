@@ -2,12 +2,13 @@
 sorte e dinheiro, e desbloqueia recompensas em certos números de rebirths (REBIRTH_REWARDS).
 Não há limite de rebirths - o custo só sobe (exponencial) a cada um."""
 
+from core import balance as B
 from i18n import tr
 
-REBIRTH_BASE_COST = 500000        # custo do 1º rebirth (coins na mão, não total_coins_earned)
-REBIRTH_COST_MULT = 4.5           # cada rebirth seguinte custa isto vezes mais (era 4.0)
-REBIRTH_MONEY_PER = 0.10          # +10% dinheiro/seg por rebirth (permanente, empilha com tudo o resto)
-REBIRTH_LUCK_PER = 0.06           # +6% peso em pets Raros ou melhores por rebirth (permanente)
+REBIRTH_BASE_COST = B.REBIRTH_BASE_COST        # custo do 1º rebirth (coins na mão, não total_coins_earned)
+REBIRTH_COST_MULT = B.REBIRTH_COST_MULT        # cada rebirth seguinte custa isto vezes mais
+REBIRTH_MONEY_PER = B.REBIRTH_MONEY_PER        # +x% dinheiro/seg por rebirth (permanente, empilha com tudo o resto)
+REBIRTH_LUCK_PER = B.REBIRTH_LUCK_PER          # +x% peso em pets Raros ou melhores por rebirth (permanente)
 
 # ----------------------------------------------------------------------------------
 # RECOMPENSAS DE REBIRTH (aparecem na página de Rebirth)
@@ -21,7 +22,7 @@ REBIRTH_LUCK_PER = 0.06           # +6% peso em pets Raros ou melhores por rebir
 #   keep_upgrades -> a partir daqui um Rebirth só reseta o dinheiro (as upgrades ficam)
 # Golden/Diamond: as 5 recompensas somam +25% cada (parte das contas do teto de mutação em core/pets.py).
 REBIRTH_REWARDS = [
-    (2,  "Second Wind",     {"auto_speed": 0.10}),
+    (2,  "Second Wind",     {"money": 0.10}),
     (4,  "Lucky Start",     {"luck": 0.05}),
     (6,  "Full House",      {"slots": 1}),
     (8,  "Cash Flow",       {"money": 0.15}),
@@ -38,6 +39,14 @@ REBIRTH_REWARDS = [
     (35, "Sleepless",       {"offline_time": 2, "money": 0.15}),
     (38, "Turbo Roller",    {"auto_speed": 0.10, "luck": 0.05}),
     (40, "Shiny Legend",    {"golden_luck": 0.05, "diamond_luck": 0.05, "money": 0.25}),
+]
+
+# BALANCE: as recompensas de dinheiro / sorte / velocidade do auto são multiplicadas por B.REBIRTH_REWARD_SCALE
+# (aqui, uma vez, por isso a página de Rebirth mostra os valores finais).
+REBIRTH_REWARDS = [
+    (need, name, {k: (round(v * B.REBIRTH_REWARD_SCALE.get(k, 1.0), 2) if k in B.REBIRTH_REWARD_SCALE else v)
+                  for k, v in rewards.items()})
+    for need, name, rewards in REBIRTH_REWARDS
 ]
 
 REBIRTH_REWARD_LABELS = {

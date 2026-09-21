@@ -2,6 +2,7 @@
 
 import random
 
+from core import balance as B
 from theme import BLACK, DIAMOND_BORDER, GOLD_BORDER, WHITE
 
 
@@ -168,18 +169,18 @@ class PetMixin:
         tier = RARITIES[rarity_index]["tier"]
         if tier < 2:
             return 1.0
-        m = 1.0 + 0.12 * self.upgrade_level("luck")
+        m = 1.0 + B.LUCK_PER_LEVEL * self.upgrade_level("luck")
         prism = self.upgrade_level("luck_prism")
         if tier >= 3:
-            m *= (1.0 + 0.10 * prism)
+            m *= (1.0 + B.LUCK_PRISM_PER_LEVEL * prism)
         if tier >= 5:
-            m *= (1.0 + 0.10 * prism)
+            m *= (1.0 + B.LUCK_PRISM_PER_LEVEL * prism)
         if tier >= TIER_SECRET:
-            m *= (1.0 + 0.10 * prism)
+            m *= (1.0 + B.LUCK_PRISM_PER_LEVEL * prism)
         if tier >= 6:
-            m *= (1.0 + 0.25 * self.upgrade_level("luck_cosmic"))       # upgrade "Exotic Luck"
+            m *= (1.0 + B.LUCK_COSMIC_PER_LEVEL * self.upgrade_level("luck_cosmic"))       # upgrade "Exotic Luck"
         if tier >= TIER_DIVINE:
-            m *= (1.0 + 0.40 * self.upgrade_level("luck_divine"))
+            m *= (1.0 + B.LUCK_DIVINE_PER_LEVEL * self.upgrade_level("luck_divine"))
         m *= (1.0 + self.trait_buff("luck"))
         if tier >= TIER_SECRET:   # Secret e melhores também ganham a sorte especial da trait
             m *= (1.0 + self.trait_buff("secret_luck"))

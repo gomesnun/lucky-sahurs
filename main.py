@@ -33,8 +33,10 @@ Sounds: the files in the "sounds" folder are the click / upgrade / achievement /
 background music (music.ogg). Their credits are in sounds/CREDITS.txt and in the Credits button of the
 main menu. Replace or delete any file (a missing file falls back to a generated beep / no music).
 
-Optional font: drop a .ttf / .otf file (e.g. "Lilita One" or "Fredoka" from Google Fonts)
-inside a folder called "fonts" next to main.py and the game uses it for every text.
+Font: the game uses the first .ttf / .otf inside the "fonts" folder next to main.py (it ships with
+Fredoka Bold, licence in fonts/OFL.txt). Drop another font there to change every text.
+
+Theme: Options -> "Theme" cycles Windows default (follows the system, default) / Dark / Light. Colours live in theme.py.
 
 MAPA DOS FICHEIROS
 ------------------
@@ -45,6 +47,7 @@ theme.py                cores do estilo cartoon
 storage.py              saves locais (slots) e definições
 
 core/                   as regras do jogo (não desenham nada)
+    balance.py          TODOS os números de balanceamento (dinheiro, sorte, auto roller, anti auto-clicker...)
     game_state.py       GameState = o save completo (junta os ficheiros abaixo)
     pets.py             pets, raridades, mutações, chances e roll
     traits.py           traits
@@ -86,20 +89,20 @@ import time
 import traceback
 import pygame
 
+import theme
 from config import AUTOSAVE_INTERVAL, FPS, GAME_TITLE, SAVE_DIR, VIRTUAL_H, VW_MAX, VW_MIN
 from core.game_state import GameState
 from i18n import set_language, tr
 from online.cloud import CloudMixin
 from storage import load_settings, migrate_legacy_save, save_settings
-from theme import BG_BOTTOM, BG_TOP
 from ui.account_panel import AccountPanelMixin
 from ui.audio import AudioMixin
 from ui.base import UIBaseMixin
 from ui.cards import CardsMixin
 from ui.credits_panel import CreditsPanelMixin
 from ui.daily_panel import DailyPanelMixin
-from ui.drawing import make_vertical_gradient
-from ui.fonts import make_font
+from ui.drawing import clear_drawing_caches, make_game_background
+from ui.fonts import clear_font_caches, make_font
 from ui.icons import set_window_icon
 from ui.game_screen import GameScreenMixin
 from ui.gameplay import GameplayMixin
@@ -142,6 +145,9 @@ class Game(
     def __init__(self):
         self.settings = load_settings()
         set_language(self.settings.get("language"))       # idioma do jogo (English / Português): ver i18n.py
+        # tema: "system" (segue o Windows), "dark" ou "light" (ver theme.py); antes de desenhar seja o que for
+        theme.set_dark(theme.resolve_dark(self.settings.get("theme_mode", theme.DEFAULT_THEME_MODE)))
+        self.theme_check_timer = 0.0
 
         try:
             pygame.mixer.pre_init(22050, -16, 2, 512)
@@ -274,11 +280,55 @@ class Game(
         vw = int(round(VIRTUAL_H * real_w / float(real_h)))
         self.vw = max(VW_MIN, min(VW_MAX, vw))
         self.canvas = pygame.Surface((self.vw, VIRTUAL_H))
-        self.bg_surface = make_vertical_gradient(self.vw, VIRTUAL_H, BG_TOP, BG_BOTTOM)
+        self.bg_surface = make_game_background(self.vw, VIRTUAL_H, theme.BG_TOP, theme.BG_BOTTOM, dark=theme.DARK_MODE)
         self.scale_x = real_w / float(self.vw)
         self.scale_y = real_h / float(VIRTUAL_H)
         self.right_w = int(min(470, self.vw * 0.34))
         self.left_w = int(min(370, self.vw * 0.28))
+
+    # ---------------------------------------------------------------- tema (claro / escuro)
+    def theme_mode_label(self):
+        """Nome do tema escolhido, para o botão das Options."""
+        mode = self.settings.get("theme_mode", theme.DEFAULT_THEME_MODE)
+        return {"dark": tr("Dark"), "light": tr("Light")}.get(mode, tr(theme.SYSTEM_LABEL))
+
+    def apply_dark(self, dark):
+        """Passa para o tema escuro / claro e refaz tudo o que guarda cores do tema antigo (fundo, fontes com
+        contorno, cartões). As cores dos ficheiros já importados são trocadas por theme.set_dark()."""
+        dark = bool(dark)
+        if dark == theme.DARK_MODE:
+            return
+        theme.set_dark(dark)
+        clear_font_caches()             # o contorno do texto muda de cor
+        clear_drawing_caches()
+        self.clear_card_cache()         # cartões dos pets / traits (contorno)
+        self.recompute_layout()         # refaz o fundo (em modo escuro tem estrelinhas)
+
+    def set_theme_mode(self, mode, announce=True):
+        """mode = "system" (segue o Windows / sistema), "dark" ou "light"."""
+        if mode not in theme.THEME_MODES:
+            mode = theme.DEFAULT_THEME_MODE
+        self.settings["theme_mode"] = mode
+        self.theme_check_timer = 0.0
+        self.apply_dark(theme.resolve_dark(mode))
+        save_settings(self.settings)
+        if announce:
+            self.show_toast(tr("Theme: %s", self.theme_mode_label()))
+
+    def cycle_theme_mode(self):
+        modes = theme.THEME_MODES
+        cur = self.settings.get("theme_mode", theme.DEFAULT_THEME_MODE)
+        self.set_theme_mode(modes[(modes.index(cur) + 1) % len(modes)] if cur in modes else modes[0])
+
+    def tick_theme(self, dt):
+        """No modo 'system' acompanha o Windows: se mudares o tema do Windows com o jogo aberto, o jogo muda também.
+        (Só no Windows, onde ler o tema é instantâneo; no macOS / Linux lê-se ao abrir o jogo e ao escolher a opção.)"""
+        if sys.platform != "win32" or self.settings.get("theme_mode", theme.DEFAULT_THEME_MODE) != "system":
+            return
+        self.theme_check_timer -= dt
+        if self.theme_check_timer <= 0:
+            self.theme_check_timer = 2.0
+            self.apply_dark(theme.system_prefers_dark(theme.DARK_MODE))
 
     def screen_to_canvas(self, pos):
         return (pos[0] / self.scale_x, pos[1] / self.scale_y)
@@ -363,6 +413,7 @@ class Game(
             dt = min(0.1, self.clock.tick(FPS) / 1000.0)
             self.worker.poll()          # entrega os resultados de rede (login, saves, leaderboard...) pendentes
             self.tick_updater()         # de tempos a tempos vê se há versão nova no GitHub
+            self.tick_theme(dt)         # tema "system": acompanha o tema do Windows
             running = self.handle_events()
 
             if self.screen_mode == "game":

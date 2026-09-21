@@ -23,7 +23,7 @@ echo "[3/3] A criar o jogo (demora 1 a 2 minutos)..."
 if [ "$(uname)" = "Darwin" ]; then
     # macOS: uma .app (pasta) com o icone do Tung
     python -m PyInstaller --noconfirm --clean --windowed --icon "icons/tung.icns" \
-        --add-data "icons:icons" --add-data "sounds:sounds" --name "Lucky Sahurs" main.py
+        --add-data "icons:icons" --add-data "sounds:sounds" --add-data "fonts:fonts" --name "Lucky Sahurs" main.py
     echo
     echo "Pronto! O jogo esta em:  dist/Lucky Sahurs.app"
     echo "Para enviar a amigos: comprime essa .app num .zip. (Ao abrir pela 1a vez, o macOS pode avisar que o"
@@ -31,7 +31,7 @@ if [ "$(uname)" = "Darwin" ]; then
 else
     # Linux: um unico ficheiro
     python -m PyInstaller --noconfirm --clean --onefile --windowed \
-        --add-data "icons:icons" --add-data "sounds:sounds" --name "Lucky Sahurs" main.py
+        --add-data "icons:icons" --add-data "sounds:sounds" --add-data "fonts:fonts" --name "Lucky Sahurs" main.py
     echo
     echo "Pronto! O jogo esta em:  dist/Lucky Sahurs"
     echo "(Se nao abrir com duplo clique:  chmod +x \"dist/Lucky Sahurs\")"

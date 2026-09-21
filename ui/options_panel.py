@@ -2,6 +2,7 @@
 
 import pygame
 
+import theme
 from config import VIRTUAL_H
 from i18n import get_language, language_name, next_language, set_language, tr
 from storage import SFX_CATEGORIES, save_settings
@@ -162,7 +163,7 @@ class OptionsPanelMixin:
         panel_w = 420
         # Altura sem o menu que expande: título + linhas de botões + nota. A página fica sempre centrada no
         # ecrã: quando o menu Volume / SFX abre ela cresce para cima e para baixo, e volta a centrar-se ao fechar.
-        rows = 3 + 1 + 1 + 1 + (2 if in_game else 0)     # 3 toggles, Language, Volume|SFX, Leaderboard, [Save now, Main Menu|Quit]
+        rows = 4 + 1 + 1 + 1 + (2 if in_game else 0)     # 4 toggles, Language, Volume|SFX, Leaderboard, [Save now, Main Menu|Quit]
         base_h = 72 + 54 * rows + 76
         open_amount = ease_out_cubic(self.options_prog) if self.options_shown else 0.0
         extra = int((DROP_H + DROP_GAP) * open_amount)       # quanto o menu já cresceu
@@ -186,6 +187,12 @@ class OptionsPanelMixin:
                     tr("Fullscreen: %s", tr("On") if self.fullscreen else tr("Off")),
                     self.font_med, mouse_pos, PANEL_LIGHT, PANEL_LIGHTER, WHITE,
                     callback=self.toggle_fullscreen, radius=10)
+        y += 54
+
+        self.button(pygame.Rect(x0, y, btn_w, 44),
+                    tr("Theme: %s", self.theme_mode_label()),
+                    self.font_med, mouse_pos, PANEL_LIGHT, PANEL_LIGHTER, WHITE,
+                    callback=self.cycle_theme_mode, radius=10)
         y += 54
 
         def toggle_anim():

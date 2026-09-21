@@ -2,6 +2,7 @@
 
 import time
 
+from core import balance as B
 from core.pets import RARITIES, TIER_COSMIC
 from ui.audio import AUTO_QUIET_RPS
 from ui.widgets import Particle
@@ -61,6 +62,12 @@ class GameplayMixin:
             self.toast_timer -= dt
 
     def do_roll(self):
+        # ANTI AUTO-CLICKER: no maximo B.MAX_MANUAL_CPS rolls por clique / segundo (20 => 1 a cada 0.05 s).
+        # Cliques a mais (de um auto-clicker) sao simplesmente ignorados. O Auto Roller nao passa por aqui.
+        now = time.perf_counter()
+        if now - getattr(self, "_last_manual_roll", -1.0) < 1.0 / B.MAX_MANUAL_CPS:
+            return
+        self._last_manual_roll = now
         was_ready = (self.state.cyclic_bonus_ready, self.state.diamond_bonus_ready,
                     self.state.rainbow_bonus_ready)
         r_idx, mut, gained_charge, _used_bonus = self.state.roll()

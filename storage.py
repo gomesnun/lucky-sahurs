@@ -5,6 +5,7 @@ import os
 
 from config import SAVE_DIR, SAVE_PATH, SAVE_SLOTS
 from i18n import DEFAULT_LANGUAGE, LANGUAGE_CODES
+from theme import DEFAULT_THEME_MODE, THEME_MODES
 
 
 def save_slot_path(slot):
@@ -72,7 +73,7 @@ SFX_CATEGORIES = (
 DEFAULT_SETTINGS = {"sound_on": True, "volume": 0.6, "animations": True, "fullscreen": True,
                     "trait_notifications": True, "buy_mode": 1, "music_on": True,
                     "music_volume": 0.5, "sfx_volume": 1.0, "sfx_on": True,
-                    "language": DEFAULT_LANGUAGE}
+                    "language": DEFAULT_LANGUAGE, "theme_mode": DEFAULT_THEME_MODE}
 for _key, _label in SFX_CATEGORIES:
     DEFAULT_SETTINGS["sfx_" + _key] = True
 
@@ -89,6 +90,10 @@ def load_settings():
             s["fullscreen"] = bool(d.get("fullscreen", True))
             s["trait_notifications"] = bool(d.get("trait_notifications", True))
             s["music_on"] = bool(d.get("music_on", True))
+            # tema: "system" (segue o Windows / sistema), "dark" ou "light". Contas antigas nao tem esta chave
+            # (ou tinham o interruptor antigo "dark_mode"), por isso ficam todas em "system".
+            mode = d.get("theme_mode", DEFAULT_THEME_MODE)
+            s["theme_mode"] = mode if mode in THEME_MODES else DEFAULT_THEME_MODE
             # "volume" = volume mestre (o que já existia). A música e os SFX têm o seu próprio volume por cima.
             s["music_volume"] = max(0.0, min(1.0, float(d.get("music_volume", 0.5))))
             s["sfx_volume"] = max(0.0, min(1.0, float(d.get("sfx_volume", 1.0))))

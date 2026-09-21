@@ -1,7 +1,8 @@
 """Economia: dinheiro por segundo, multiplicadores e auto-roll."""
 
+from core import balance as B
 from core.pets import MUTATIONS, RARITIES
-from core.upgrades import AUTO_BASE_RPS, BASE_SLOTS
+from core.upgrades import BASE_SLOTS
 
 
 class EconomyMixin:
@@ -12,18 +13,20 @@ class EconomyMixin:
                 + int(self.rebirth_bonus("slots")))
 
     def money_multiplier(self):
-        base = (1.0 + 0.10 * self.upgrade_level("money")) * (1.0 + 0.25 * self.upgrade_level("money_prism"))
+        base = ((1.0 + B.MONEY_PER_LEVEL * self.upgrade_level("money"))
+                * (1.0 + B.MONEY_PRISM_PER_LEVEL * self.upgrade_level("money_prism")))
         return (base * (1.0 + self.trait_buff("money")) * (1.0 + self.milestone_bonus("money"))
-                * self.rebirth_money_mult() * (1.0 + self.rebirth_bonus("money")))
+                * self.rebirth_money_mult() * (1.0 + self.rebirth_bonus("money")) * B.INCOME_SCALE)
 
     def auto_unlocked(self):
-        return self.upgrade_level("auto_unlock") >= 1
+        """O Auto Roller funciona se o compraste E já tens os rebirths que ele pede (B.AUTO_UNLOCK_REBIRTHS)."""
+        return self.upgrade_level("auto_unlock") >= 1 and self.rebirths >= B.AUTO_UNLOCK_REBIRTHS
 
     def auto_rolls_per_second(self):
         if not self.auto_unlocked():
             return 0.0
-        base = AUTO_BASE_RPS * (1 + 0.40 * self.upgrade_level("auto_speed"))
-        base *= (1.0 + 0.50 * self.upgrade_level("auto_turbo"))
+        base = B.AUTO_BASE_RPS * (1 + B.AUTO_SPEED_PER_LEVEL * self.upgrade_level("auto_speed"))
+        base *= (1.0 + B.AUTO_TURBO_PER_LEVEL * self.upgrade_level("auto_turbo"))
         return (base * (1.0 + self.trait_buff("auto_speed")) * (1.0 + self.milestone_bonus("auto_speed"))
                 * (1.0 + self.rebirth_bonus("auto_speed")))
 

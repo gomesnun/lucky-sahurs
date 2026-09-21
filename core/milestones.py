@@ -1,5 +1,6 @@
 """Milestones: tabela de metas e recompensas, e a lógica que as calcula."""
 
+from core import balance as B
 from core.pets import INDEX_ENTRIES
 
 
@@ -93,6 +94,15 @@ MILESTONE_DEFS = {
             [.03, .05, .07, .09, .12, .15, .19, .24, .30, .38, .48, .60, .75, 1.00]),
     },
 }
+# BALANCE: as recompensas de dinheiro / sorte / velocidade do auto são multiplicadas por B.MILESTONE_SCALE (aqui, uma
+# vez, por isso as Milestones mostram os valores finais). A sorte "index_luck" conta como sorte normal.
+_SCALE_KEY = {"index_luck": "luck"}
+for _d in MILESTONE_DEFS.values():
+    _s = B.MILESTONE_SCALE.get(_SCALE_KEY.get(_d["reward_type"], _d["reward_type"]), 1.0)
+    if _s != 1.0:
+        _d["tiers"] = [(_th, max(0.01, round(_v * _s, 2))) for _th, _v in _d["tiers"]]
+del _d, _s
+
 MILESTONE_CAT_ORDER = ["rolls", "traits_rolled", "golden_rolled", "diamond_rolled",
                        "secret_rolled", "divine_rolled", "cosmic_rolled", "transcendent_rolled",
                        "indexed_pets", "coins", "playtime"]

@@ -201,7 +201,13 @@ class GameScreenMixin:
         # --- direita: index + árvore + metas + missões diárias (acompanham o painel quando ele abre) ---
         shown_r = self.right_panel.shown_width(self.right_w) if self.right_panel.visible else 0
         x = self.vw - shown_r - size - 18
-        y = TOPBAR_H + 60
+        # cada coluna fica centrada na vertical (no meio do ecrã, como o cartão): altura do bloco = botões + o texto por baixo
+        label_h = 26
+
+        def column_top(n_buttons):
+            return VIRTUAL_H // 2 - ((n_buttons - 1) * step + size + label_h) // 2
+
+        y = column_top(4)
         self.side_button(pygame.Rect(x, y, size, size), lbl_index, "index", mouse_pos,
                          self.right_panel.is_open and self.right_panel.content == "index",
                          lambda: self.open_right_panel("index"), lf)
@@ -219,6 +225,7 @@ class GameScreenMixin:
         # --- esquerda: mochila + rebirth + traits (Rebirth e Traits abrem uma página central, não um slide) ---
         shown_l = self.left_panel.shown_width(self.left_w) if self.left_panel.visible else 0
         lx = shown_l + 18
+        y = column_top(3)               # a coluna da esquerda tem 3 botões (a da direita tem 4)
         self.side_button(pygame.Rect(lx, y, size, size), lbl_bag, "bag", mouse_pos,
                          self.left_panel.is_open,
                          lambda: self.open_left_panel("bag"), lf)
@@ -236,7 +243,7 @@ class GameScreenMixin:
     def main_card_rect(self):
         """Cartão do último pet: fica EXATAMENTE no centro do ecrã (na vertical, o meio da janela;
         na horizontal, o meio da zona livre entre os painéis, que acompanha o slide)."""
-        card_w, card_h = 270, 190
+        card_w, card_h = 236, 236          # quase quadrado (estilo "brainrot"): não ocupa o ecrã todo
         cx = self.main_center_x()
         cy = VIRTUAL_H // 2
         return pygame.Rect(cx - card_w // 2, cy - card_h // 2, card_w, card_h)
@@ -269,9 +276,9 @@ class GameScreenMixin:
             rarity = RARITIES[r_idx]
             income = self.state.pet_income(r_idx, mutation)
             chance = self.state.combined_chance(r_idx, mutation)      # chance atual de sair este pet (com esta mutação)
-            card_surf = self.render_pet_card(rarity, mutation, card_w, card_h, name_font=self.font_big,
-                                             bottom_lines=[tr("+%s/sec", format_number(income)),
-                                                           format_one_in(chance)])
+            plates = [[(tr("Income"), tr("+%s/sec", format_number(income)))],
+                      [(tr("Roll Chance"), format_one_in(chance))]]
+            card_surf = self.render_pet_card(rarity, mutation, card_w, card_h, plates=plates)
             glow_color = tuple(rarity["color"]) if rarity["color"][2] > 60 or is_light(rarity["color"]) else (90, 90, 110)
             glow = rarity_glow((card_w, card_h), glow_color)
             self.canvas.blit(glow, glow.get_rect(center=card_rect.center))

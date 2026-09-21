@@ -37,7 +37,7 @@ if errorlevel 1 (
 
 echo.
 echo [3/3] A criar o .exe com o icone do Tung (demora 1 a 2 minutos)...
-python -m PyInstaller --noconfirm --clean --onefile --windowed --icon "icons\tung.ico" --add-data "icons;icons" --add-data "sounds;sounds" --name "Lucky Sahurs" main.py
+python -m PyInstaller --noconfirm --clean --onefile --windowed --icon "icons\tung.ico" --add-data "icons;icons" --add-data "sounds;sounds" --add-data "fonts;fonts" --name "Lucky Sahurs" main.py
 if errorlevel 1 (
     echo A criacao do .exe falhou. Copia a mensagem de erro de cima e manda-a.
     pause

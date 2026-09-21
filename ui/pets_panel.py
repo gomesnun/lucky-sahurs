@@ -61,8 +61,6 @@ class PetsPanelMixin:
         card = (rect.width - pad * 2 - gap - 6) // cols   # quadrados
 
         live_weights = self.state.roll_weights(with_luck=True)     # calculado 1x por frame, não por cartão
-        big_cards = card >= 170          # com o painel estreito os cartões são pequenos: texto mais pequeno
-        card_font = self.font_small_b if big_cards else self.font_tiny_b
         for pos, i in enumerate(PET_ORDER):        # ordenado por raridade (os pets novos ficam com a sua raridade)
             rarity = RARITIES[i]
             col = pos % cols
@@ -79,23 +77,9 @@ class PetsPanelMixin:
             base_line = "(%s)" % format_one_in(base_pet_chance(i, mutation))
             income_line = tr("+%s/sec", format_number(self.state.pet_income(i, mutation)))     # dinheiro/seg deste pet
 
-            if locked_mut or owned <= 0:
-                draw_panel(self.canvas, crect, PANEL_LIGHT, radius=12, shadow=False)
-                rar_txt = self.font_small_b.render(tr(rarity["name"]), True, GREY)
-                self.canvas.blit(rar_txt, rar_txt.get_rect(center=(crect.centerx, crect.top + 16)))
-                q = self.font_huge.render("?", True, GREY_DIM)
-                self.canvas.blit(q, q.get_rect(center=(crect.centerx, crect.centery - 14)))
-                inc_txt = self.font_small_b.render(income_line, True, WHITE)
-                self.canvas.blit(inc_txt, inc_txt.get_rect(center=(crect.centerx, crect.bottom - 58)))
-                ch_txt = self.font_small.render(format_one_in(real_chance), True, GREY)
-                self.canvas.blit(ch_txt, ch_txt.get_rect(center=(crect.centerx, crect.bottom - 38)))
-                base_txt = self.font_small.render(base_line, True, GREY_DIM)
-                self.canvas.blit(base_txt, base_txt.get_rect(center=(crect.centerx, crect.bottom - 18)))
-                continue
-
-            card_surf = self.render_pet_card(rarity, mutation, card, card,
-                                             name_font=card_font, label_font=card_font,
-                                             bottom_lines=[income_line, format_one_in(real_chance), base_line])
+            plates = [[(tr("Income"), income_line)], [(tr("Chance"), format_one_in(real_chance), base_line)]]
+            locked = locked_mut or owned <= 0
+            card_surf = self.render_pet_card(rarity, mutation, card, card, plates=plates, locked=locked)
             self.canvas.blit(card_surf, crect.topleft)
 
         rows = (len(RARITIES) + cols - 1) // cols
@@ -205,8 +189,8 @@ class PetsPanelMixin:
                 r_idx, mutation = self.state.equipped[actual_idx]
                 rarity = RARITIES[r_idx]
                 income = self.state.pet_income(r_idx, mutation)
-                surf = self.render_pet_card(rarity, mutation, card, card, name_font=self.font_small_b,
-                                            bottom_lines=[tr("+%s/sec", format_number(income))])
+                plates = [[(tr("Income"), tr("+%s/sec", format_number(income)))]]
+                surf = self.render_pet_card(rarity, mutation, card, card, plates=plates)
                 self.canvas.blit(surf, crect.topleft)
                 if crect.collidepoint(mouse_pos) and content_rect.collidepoint(mouse_pos):
                     pygame.draw.rect(self.canvas, WHITE, crect, width=3, border_radius=12)
@@ -375,12 +359,9 @@ class PetsPanelMixin:
             owned = st.count_owned(idx, mut)
             eq_count = st.equipped_count(idx, mut)
             income = st.pet_income(idx, mut)
-            surf = self.render_pet_card(RARITIES[idx], mut, card_w, card_h,
-                                        name_font=self.font_tiny_b, label_font=self.font_tiny_b,
-                                        bottom_lines=[tr("+%s/sec", format_number(income)),
-                                                      tr("Have %s", format_number(owned)),
-                                                      tr("Equipped %d", eq_count)],
-                                        reserve_bottom=30)
+            plates = [[(tr("Income"), tr("+%s/sec", format_number(income)))],
+                      [(tr("Have"), format_number(owned)), (tr("Equipped"), str(eq_count))]]
+            surf = self.render_pet_card(RARITIES[idx], mut, card_w, card_h, plates=plates, footer_h=30)
             self.canvas.blit(surf, crect.topleft)
 
             bw = (card_w - 18) // 2

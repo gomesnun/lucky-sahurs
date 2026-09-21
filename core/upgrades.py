@@ -1,5 +1,6 @@
 """Upgrades: tabela de upgrades, categorias, constantes dos Golden / Diamond / Rainbow Roll e a compra."""
 
+from core import balance as B
 from core.pets import DIAMOND_STEP_1, DIAMOND_STEP_2, GOLDEN_STEP_1, GOLDEN_STEP_2
 from i18n import L
 
@@ -13,30 +14,30 @@ OFFLINE_MAX_HOURS = 48         # teto de segurança (upgrades + recompensas de R
 
 UPGRADE_DEFS = {
     "luck": {
-        "name": "Luck", "desc": "+12% weight to all Rare pets or better.",
+        "name": "Luck", "desc": L("+%g%% weight to all Rare pets or better.", B.LUCK_PER_LEVEL * 100),
         "max_level": 40, "base_cost": 50, "cost_mult": 1.55, "requires": None,
     },
     "luck_prism": {
-        "name": "Prismatic Luck", "desc": "Stacks: +10% to Epic+, again to Mythic+ and again to Secret+.",
+        "name": "Prismatic Luck", "desc": L("Stacks: +%g%% to Epic+, again to Mythic+ and again to Secret+.", B.LUCK_PRISM_PER_LEVEL * 100),
         "max_level": 25, "base_cost": 60000, "cost_mult": 1.6, "requires": "luck",
         "requires_level": 10,
     },
     "luck_cosmic": {
-        "name": "Exotic Luck", "desc": "+25% weight to Exotic or better, per level.",
+        "name": "Exotic Luck", "desc": L("+%g%% weight to Exotic or better, per level.", B.LUCK_COSMIC_PER_LEVEL * 100),
         "max_level": 20, "base_cost": 2000000000, "cost_mult": 1.8, "requires": "luck_prism",
         "requires_level": 15,
     },
     "luck_divine": {
-        "name": "Divine Luck", "desc": "+40% weight to Divine or better, per level.",
+        "name": "Divine Luck", "desc": L("+%g%% weight to Divine or better, per level.", B.LUCK_DIVINE_PER_LEVEL * 100),
         "max_level": 15, "base_cost": 100000000000, "cost_mult": 2.0, "requires": "luck_cosmic",
         "requires_level": 10,
     },
     "money": {
-        "name": "Money", "desc": "+10% money/sec per level.",
+        "name": "Money", "desc": L("+%g%% money/sec per level.", B.MONEY_PER_LEVEL * 100),
         "max_level": 70, "base_cost": 40, "cost_mult": 1.5, "requires": None,
     },
     "money_prism": {
-        "name": "Superior Money", "desc": "+25% money/sec per level (multiplies with regular Money).",
+        "name": "Superior Money", "desc": L("+%g%% money/sec per level (multiplies with regular Money).", B.MONEY_PRISM_PER_LEVEL * 100),
         "max_level": 40, "base_cost": 20000000000, "cost_mult": 1.6, "requires": "money",
         "requires_level": 35,
     },
@@ -50,15 +51,16 @@ UPGRADE_DEFS = {
         "requires_level": 20,
     },
     "auto_unlock": {
-        "name": "Auto Roller", "desc": "Unlocks the Auto Roller: rolls by itself while turned on.",
+        "name": "Auto Roller", "desc": L("Unlocks the Auto Roller (needs Rebirth %d): rolls by itself while turned on.", B.AUTO_UNLOCK_REBIRTHS),
         "max_level": 1, "base_cost": 120000, "cost_mult": 1, "requires": None,
+        "requires_rebirths": B.AUTO_UNLOCK_REBIRTHS,
     },
     "auto_speed": {
-        "name": "Auto Speed", "desc": "+40% Auto Roller speed per level.",
+        "name": "Auto Speed", "desc": L("+%g%% Auto Roller speed per level.", B.AUTO_SPEED_PER_LEVEL * 100),
         "max_level": 40, "base_cost": 25000, "cost_mult": 1.42, "requires": "auto_unlock",
     },
     "auto_turbo": {
-        "name": "Auto Turbo", "desc": "+50% Auto Roller speed per level (multiplies).",
+        "name": "Auto Turbo", "desc": L("+%g%% Auto Roller speed per level (multiplies).", B.AUTO_TURBO_PER_LEVEL * 100),
         "max_level": 25, "base_cost": 50000000000, "cost_mult": 1.5, "requires": "auto_speed",
         "requires_level": 20,
     },
@@ -111,7 +113,7 @@ UPGRADE_DEFS = {
         "requires_level": 20,
     },
     "cyclic_every": {
-        "name": "Short Cycle", "desc": "-1 roll in the Golden Roll cycle per level (minimum 6 rolls).",
+        "name": "Short Cycle", "desc": L("-1 roll in the Golden Roll cycle per level (minimum %d rolls).", B.GOLDEN_ROLL_MIN),
         "max_level": 4, "base_cost": 50000000, "cost_mult": 5.0, "requires": None,
     },
     "cyclic_power": {
@@ -183,7 +185,7 @@ UPGRADE_DEFS = {
 # BALANCE: com os Rebirths o jogo ficou fácil demais, por isso todas as upgrades passam a encarecer um pouco
 # mais depressa por nível (2%: no nível 10 custam ~1.2x, no 35 ~2x, no 70 ~4x do que custavam antes).
 # Para ficar mais fácil/difícil basta mexer neste número (1.0 = como antes).
-UPGRADE_COST_GROWTH = 1.02
+UPGRADE_COST_GROWTH = B.UPGRADE_COST_GROWTH
 for _d in UPGRADE_DEFS.values():
     if _d["cost_mult"] != 1:
         _d["cost_mult"] = round(_d["cost_mult"] * UPGRADE_COST_GROWTH, 4)
@@ -219,7 +221,6 @@ UPGRADE_ORDER = [k for c in UPGRADE_CATEGORIES for k in c["upgrades"]]
 assert sorted(UPGRADE_ORDER) == sorted(UPGRADE_DEFS), "Há upgrades fora das categorias da Tree"
 
 BASE_SLOTS = 3
-AUTO_BASE_RPS = 0.34          # rolls por segundo no nível 0 do auto
 
 # ----------------------------------------------------------------------------------
 # GOLDEN / DIAMOND / RAINBOW ROLL (sorte cíclica)
@@ -231,9 +232,9 @@ AUTO_BASE_RPS = 0.34          # rolls por segundo no nível 0 do auto
 #   Diamond Roll  -> desbloqueado por "diamond_roll_unlock", melhorado pelos "diamond_roll_*"
 #   Rainbow Roll  -> desbloqueado por "rainbow_roll_unlock", melhorado pelos "rainbow_roll_*"
 # Se mais do que um ciclo estiver pronto ao mesmo tempo, os multiplicadores multiplicam-se.
-CYCLIC_LUCK_EVERY = 10
-CYCLIC_LUCK_MIN = 6
-CYCLIC_LUCK_MULT = 10.0
+CYCLIC_LUCK_EVERY = B.GOLDEN_ROLL_EVERY
+CYCLIC_LUCK_MIN = B.GOLDEN_ROLL_MIN
+CYCLIC_LUCK_MULT = B.GOLDEN_ROLL_MULT
 
 DIAMOND_ROLL_EVERY_BASE = 100
 DIAMOND_ROLL_EVERY_MIN = 70
@@ -276,11 +277,16 @@ class UpgradeMixin:
             return req
         return None
 
+    def upgrade_rebirths_needed(self, key):
+        """Rebirths que faltam para esta upgrade abrir (0 = já podes; só o Auto Roller pede rebirths)."""
+        need = UPGRADE_DEFS[key].get("requires_rebirths", 0)
+        return max(0, need - self.rebirths)
+
     def upgrade_available(self, key):
         d = UPGRADE_DEFS[key]
         if self.upgrade_level(key) >= d["max_level"]:
             return False
-        return self.upgrade_locked_by(key) is None
+        return self.upgrade_locked_by(key) is None and self.upgrade_rebirths_needed(key) == 0
 
     def upgrade_affordable(self, key):
         """True se a upgrade dá para comprar AGORA: desbloqueada, não está no máximo e há moedas para o próximo nível."""

@@ -2,6 +2,7 @@
 
 import pygame
 
+from core import balance as B
 from core.formatting import format_number
 from core.pets import DIAMOND_MAX_CHANCE, GOLDEN_MAX_CHANCE
 from core.upgrades import UPGRADE_CATEGORIES, UPGRADE_CAT_BY_KEY, UPGRADE_DEFS
@@ -20,18 +21,19 @@ class UpgradesPanelMixin:
         s = self.state
         lvl = s.upgrade_level(key)
         if key == "luck":
-            return tr("Now: x%.2f weight on Rare+", 1 + 0.12 * lvl)
+            return tr("Now: x%.2f weight on Rare+", 1 + B.LUCK_PER_LEVEL * lvl)
         if key == "luck_prism":
             return tr("Now: x%.2f Epic+ / x%.2f Mythic+ / x%.2f Secret+",
-                      1 + 0.10 * lvl, (1 + 0.10 * lvl) ** 2, (1 + 0.10 * lvl) ** 3)
+                      1 + B.LUCK_PRISM_PER_LEVEL * lvl, (1 + B.LUCK_PRISM_PER_LEVEL * lvl) ** 2,
+                      (1 + B.LUCK_PRISM_PER_LEVEL * lvl) ** 3)
         if key == "luck_cosmic":
-            return tr("Now: x%.2f weight on Exotic+", 1 + 0.25 * lvl)
+            return tr("Now: x%.2f weight on Exotic+", 1 + B.LUCK_COSMIC_PER_LEVEL * lvl)
         if key == "luck_divine":
-            return tr("Now: x%.2f weight on Divine+", 1 + 0.40 * lvl)
+            return tr("Now: x%.2f weight on Divine+", 1 + B.LUCK_DIVINE_PER_LEVEL * lvl)
         if key == "money":
             return tr("Now: x%.1f money (total)", s.money_multiplier())
         if key == "money_prism":
-            return tr("Now: x%.2f money (from this upgrade only)", 1 + 0.25 * lvl)
+            return tr("Now: x%.2f money (from this upgrade only)", 1 + B.MONEY_PRISM_PER_LEVEL * lvl)
         if key == "slots" or key == "slots_plus":
             return tr("Now: %d slots", s.max_slots())
         if key in ("auto_speed", "auto_unlock", "auto_turbo"):
@@ -194,6 +196,7 @@ class UpgradesPanelMixin:
             lvl = self.state.upgrade_level(key)
             maxed = lvl >= d["max_level"]
             locked_by = self.state.upgrade_locked_by(key)
+            need_rebirths = UPGRADE_DEFS[key].get("requires_rebirths", 0) if self.state.upgrade_rebirths_needed(key) else 0
 
             desc_lines = wrap_text(tr(d["desc"]), self.font_tiny, row_w - 28)
             effect = self.upgrade_effect_text(key)
@@ -205,7 +208,7 @@ class UpgradesPanelMixin:
                 if maxed:
                     draw_state_border(self.canvas, row_rect, (80, 150, 100), 10)
 
-                name_txt = self.font_med.render(tr(d["name"]), True, WHITE if not locked_by else GREY)
+                name_txt = self.font_med.render(tr(d["name"]), True, WHITE if not (locked_by or need_rebirths) else GREY)
                 self.canvas.blit(name_txt, (row_rect.x + 14, row_rect.y + 9))
                 lvl_txt = self.font_small.render(tr("Lv %d/%d", lvl, d["max_level"]), True,
                                                  GOOD if maxed else GREY)
@@ -224,6 +227,9 @@ class UpgradesPanelMixin:
                 if maxed:
                     self.button(btn_rect, tr("MAX"), self.font_small_b, mouse_pos, (58, 78, 64), (58, 78, 64),
                                 GOOD, enabled=False, radius=8)
+                elif need_rebirths:
+                    self.button(btn_rect, tr("Requires Rebirth %d", need_rebirths), self.font_small, mouse_pos,
+                                (60, 62, 72), (60, 62, 72), GREY, enabled=False, radius=8)
                 elif locked_by:
                     need = UPGRADE_DEFS[key].get("requires_level", 1)
                     req_name = tr(UPGRADE_DEFS[locked_by]["name"])

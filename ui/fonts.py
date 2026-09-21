@@ -1,6 +1,7 @@
 """Fontes e texto: fonte com contorno, quebra de linhas, texto com sombra."""
 
 import os
+import sys
 import pygame
 
 from config import GAME_DIR
@@ -48,19 +49,27 @@ _CUSTOM_FONT = "unset"
 
 
 def find_custom_font():
-    """Se existir uma pasta 'fonts' ao lado do script com um .ttf/.otf, usa essa fonte."""
+    """Se existir uma pasta 'fonts' com um .ttf/.otf, usa essa fonte (a Fredoka vem la dentro). Procura
+    ao lado do jogo / .exe (para poderes trocar a letra), na pasta do projeto e dentro do .exe (PyInstaller)."""
     global _CUSTOM_FONT
     if _CUSTOM_FONT == "unset":
         _CUSTOM_FONT = None
-        try:
-            folder = os.path.join(GAME_DIR, "fonts")
-            if os.path.isdir(folder):
-                for fn in sorted(os.listdir(folder)):
-                    if fn.lower().endswith((".ttf", ".otf")):
-                        _CUSTOM_FONT = os.path.join(folder, fn)
-                        break
-        except OSError:
-            _CUSTOM_FONT = None
+        folders = [os.path.join(GAME_DIR, "fonts"),
+                   os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fonts")]
+        bundled = getattr(sys, "_MEIPASS", None)
+        if bundled:
+            folders.append(os.path.join(bundled, "fonts"))
+        for folder in folders:
+            try:
+                if os.path.isdir(folder):
+                    for fn in sorted(os.listdir(folder)):
+                        if fn.lower().endswith((".ttf", ".otf")):
+                            _CUSTOM_FONT = os.path.join(folder, fn)
+                            break
+            except OSError:
+                continue
+            if _CUSTOM_FONT:
+                break
     return _CUSTOM_FONT
 
 
@@ -132,6 +141,48 @@ def make_font(size, outline=1, heavy=False):
     if raw is None:
         raw = pygame.font.SysFont(FONT_NAMES, size, bold=True)
     return StyledFont(raw, outline)
+
+
+_FONT_AT_CACHE = {}
+
+
+def _default_outline(size, heavy):
+    """Espessura do contorno que a fonte deste tamanho tem noutros sítios do jogo (font_med,
+    font_big...), para os cartões (que pedem tamanhos "soltos") ficarem consistentes com o resto."""
+    if not heavy:
+        return 1
+    if size <= 14:
+        return 1
+    if size <= 22:
+        return 2
+    if size <= 34:
+        return 3
+    if size <= 54:
+        return 4
+    return 5
+
+
+def font_at(size, heavy=True, outline=None):
+    """Fonte com o tamanho exato pedido (com cache): os cartões dos pets precisam de muitos
+    tamanhos diferentes consoante o espaço disponível (ver ui/cards.py)."""
+    size = max(1, int(size))
+    if outline is None:
+        outline = _default_outline(size, heavy)
+    key = (size, heavy, outline)
+    f = _FONT_AT_CACHE.get(key)
+    if f is None:
+        if len(_FONT_AT_CACHE) > 400:
+            _FONT_AT_CACHE.clear()
+        f = make_font(size, outline=outline, heavy=heavy)
+        _FONT_AT_CACHE[key] = f
+    return f
+
+
+def clear_font_caches():
+    """Chamado ao trocar de tema (o contorno do texto muda de cor): esquece as fontes e os
+    textos já desenhados, para saírem a seguir com o contorno certo."""
+    _FONT_AT_CACHE.clear()
+    StyledFont._cache.clear()
 
 
 def render_outlined(font, text, color, outline_color=None, thickness=1):
