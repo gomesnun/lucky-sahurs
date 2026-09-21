@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://gomesnun.github.io/lucky-sahurs/website/"><b>🌐 Website &amp; live roll simulator</b></a> ·
+  <a href="https://gomesnun.github.io/lucky-sahurs/website/" target="_blank"><b>🌐 Website &amp; live roll simulator</b></a> ·
   <a href="https://github.com/gomesnun/lucky-sahurs/releases/latest"><b>⬇ Download latest release</b></a> ·
   <a href="LEIA-ME.md"><b>🇵🇹 Versão portuguesa</b></a>
 </p>
