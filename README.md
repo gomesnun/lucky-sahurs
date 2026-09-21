@@ -69,7 +69,7 @@ Pick your platform. Fastest path is the prebuilt download; no Python needed.
    chmod +x "Lucky Sahurs"
    ./"Lucky Sahurs"
    ```
-   The binary needs **glibc ≥ 2.39** (Ubuntu 24.04+, Fedora 40+, Mint 22+, Arch). On older distros use Option B.
+   The binary needs **glibc ≥ 2.39** (Ubuntu 24.04+, Fedora 40+, Mint 22+, Arch).
 
 ---
 
