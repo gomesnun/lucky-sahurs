@@ -433,6 +433,8 @@ PT = {
     "Syncing your save... try again in a second.": "A sincronizar o teu save... tenta outra vez daqui a um segundo.",
     "Loading save...": "A carregar o save...",
     "Offline: playing from this PC's copy. It will sync later.": "Offline: a jogar a partir da cópia deste PC. Sincroniza mais tarde.",
+    "This account is already being played on another device. Close the game there and try again.":
+        "Esta conta já está a ser jogada noutro dispositivo. Fecha o jogo lá e tenta outra vez.",
     "This save couldn't be read. Nothing was changed.": "Não foi possível ler este save. Nada foi alterado.",
     "Couldn't read the local save for slot %d.": "Não foi possível ler o save local do slot %d.",
     "Slot %d imported. Your local file was kept.": "Slot %d importado. O teu ficheiro local foi mantido.",

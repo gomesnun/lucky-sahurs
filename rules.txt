@@ -19,6 +19,32 @@ service cloud.firestore {
                             && slot in ['slot1', 'slot2', 'slot3']
                             && validSave();
     }
+    // ---- Sessão: uma conta, um jogo de cada vez ----
+    // Marca de "estou a jogar", renovada de 30 em 30 s pelo jogo. Só o dono a vê e a escreve, e só se
+    // pode tirar a marca a outro PC se ele já a largou (active = false) ou se deixou de a renovar há mais
+    // de 90 s (SESSION_STALE no online/firebase.py — os dois valores têm de ser iguais).
+    match /users/{uid}/session/current {
+      function validLock() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['session_id', 'active', 'heartbeat'])
+            && d.keys().hasAll(['session_id', 'active', 'heartbeat'])
+            // nome da instalação: o jogo usa 32 caracteres hexadecimais (uuid4)
+            && d.session_id is string && d.session_id.matches('[A-Za-z0-9_-]{8,64}')
+            && d.active is bool
+            // a hora tem de ser a do servidor: assim não dá para fingir uma marca fresca (para trancar
+            // a conta a alguém) nem uma marca velha (para roubar a marca a quem está mesmo a jogar)
+            && d.heartbeat == request.time;
+      }
+      allow read:   if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == uid && validLock();
+      allow update: if request.auth != null && request.auth.uid == uid && validLock()
+                    && (resource.data.session_id == request.resource.data.session_id
+                        || resource.data.active == false
+                        || request.time > resource.data.heartbeat + duration.value(90, 's'));
+      // apagar não: um "delete" não traz session_id nenhum, por isso não havia forma de distinguir
+      // quem larga a sua marca de quem estava a limpar a marca de outro para entrar por cima
+      allow delete: if false;
+    }
     // ---- Leaderboard: toda a gente lê, cada conta escreve só a sua linha ----
     match /leaderboard/{uid} {
       function validEntry() {

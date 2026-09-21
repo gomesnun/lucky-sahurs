@@ -1,5 +1,7 @@
 """Cliente do Firebase (contas + Firestore por REST), erros de rede e o Worker de fundo."""
 
+import calendar
+import email.utils
 import http.client
 import json
 import os
@@ -37,6 +39,12 @@ LEADERBOARD_MIN_GAP = 6 * 60        # mínimo entre duas publicações da mesma 
                                     # MENOS do que isto: 'duration.value(5, 'm')' na regra "allow update" de /leaderboard
 LEADERBOARD_SIZE = 50
 CLOUD_SYNC_INTERVAL = 90.0          # segundos entre uploads do save para a cloud (a cache local grava de 10 em 10 s)
+
+# ---- "uma conta, um jogo de cada vez" ----
+SESSION_HEARTBEAT = 30.0            # de quanto em quanto tempo se renova a marca de "estou a jogar"
+SESSION_STALE = 90.0                # sem renovar durante isto, a marca vale zero (jogo fechado à bruta, luz que foi
+                                    # abaixo...). As regras do Firestore têm de usar o MESMO valor em
+                                    # 'duration.value(90, 's')' na regra "allow update" de /users/{uid}/session/current
 
 
 def load_firebase_config():
@@ -124,6 +132,57 @@ def classify_http_error(e):
     return OnlineError("server", short or ("HTTP %d" % status), status)
 
 
+# ---- relógio do servidor ----
+# O relógio do PC do jogador pode estar completamente trocado (fuso mal posto, pilha da motherboard gasta).
+# Como a marca de sessão é gravada com a hora do SERVIDOR, comparar com time.time() daria disparates: ou
+# bloqueava o jogador para sempre, ou nunca bloqueava ninguém. Por isso guarda-se a diferença entre os dois
+# relógios, lida do cabeçalho "Date" que vem em cada resposta HTTP.
+_clock_lock = threading.Lock()
+_clock_offset = 0.0                 # hora do servidor - hora deste PC
+_clock_synced = False
+
+
+def note_server_date(headers):
+    global _clock_offset, _clock_synced
+    try:
+        stamp = email.utils.parsedate_to_datetime(headers.get("Date")).timestamp()
+    except (AttributeError, TypeError, ValueError):
+        return
+    with _clock_lock:
+        _clock_offset = stamp - time.time()
+        _clock_synced = True
+
+
+def server_now():
+    """Hora do servidor (aproximada ao segundo: chega bem para uma janela de 90 s)."""
+    with _clock_lock:
+        return time.time() + _clock_offset
+
+
+def server_clock_synced():
+    with _clock_lock:
+        return _clock_synced
+
+
+def parse_timestamp(text):
+    """'2026-09-21T12:34:56.789Z' -> segundos desde a época. None se não der para ler."""
+    try:
+        head = text.strip().rstrip("Z")
+    except AttributeError:
+        return None
+    frac = 0.0
+    if "." in head:
+        head, dot = head.split(".", 1)
+        try:
+            frac = float("0." + re.sub(r"[^0-9]", "", dot))
+        except ValueError:
+            frac = 0.0
+    try:
+        return calendar.timegm(time.strptime(head, "%Y-%m-%dT%H:%M:%S")) + frac
+    except (ValueError, TypeError):
+        return None
+
+
 def http_json(method, url, body=None, headers=None, form=False, timeout=NET_TIMEOUT):
     hdrs = {"Accept": "application/json"}
     data = None
@@ -140,7 +199,9 @@ def http_json(method, url, body=None, headers=None, form=False, timeout=NET_TIME
     try:
         with urllib.request.urlopen(req, timeout=timeout, context=ssl_context()) as resp:
             raw = resp.read()
+            note_server_date(resp.headers)
     except urllib.error.HTTPError as e:
+        note_server_date(e.headers)
         raise classify_http_error(e)
     except (urllib.error.URLError, OSError, ValueError, http.client.HTTPException) as e:
         raise OnlineError("offline", str(e))
@@ -365,6 +426,45 @@ class FirebaseClient:
         except OnlineError as e:
             if e.code != "not_found":
                 raise
+
+    # ---- sessão: uma conta, um jogo de cada vez ----
+    def read_session(self):
+        """A marca de "estou a jogar" da conta, ou None se não existir."""
+        uid = self._need_uid()
+        try:
+            doc = self._fs("GET", "/users/%s/session/current" % uid)
+        except OnlineError as e:
+            if e.code == "not_found":
+                return None
+            raise
+        f = fs_fields(doc)
+        return {"session_id": str(f.get("session_id") or ""),
+                "active": bool(f.get("active")),
+                "heartbeat": parse_timestamp(f.get("heartbeat"))}
+
+    def session_blocker(self, session_id):
+        """A marca de OUTRO PC que ainda está a jogar esta conta, ou None se o caminho estiver livre.
+        Na dúvida devolve None: mais vale deixar jogar do que trancar alguém fora da própria conta."""
+        lock = self.read_session()
+        if not lock or lock["session_id"] == session_id or not lock["active"]:
+            return None
+        if lock["heartbeat"] is None or not server_clock_synced():
+            return None
+        if server_now() - lock["heartbeat"] > SESSION_STALE:
+            return None                                  # o outro PC desapareceu sem se despedir
+        return lock
+
+    def write_session(self, session_id, active):
+        """Marca (ou larga) a conta como "a jogar neste PC". A hora é posta pelo SERVIDOR, para não
+        haver forma de fingir uma marca fresca nem uma marca velha."""
+        uid = self._need_uid()
+        name = "%s/users/%s/session/current" % (self.docs_root, uid)
+        body = {"writes": [{
+            "update": {"name": name, "fields": {"session_id": fs_encode(str(session_id)),
+                                                "active": fs_encode(bool(active))}},
+            "updateTransforms": [{"fieldPath": "heartbeat", "setToServerValue": "REQUEST_TIME"}],
+        }]}
+        self._fs("POST", ":commit", body)
 
     # ---- leaderboard ----
     def publish_score(self, coins, playtime, rolls=0, rebirths=0):

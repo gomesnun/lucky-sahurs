@@ -81,6 +81,7 @@ class TitleSavesMixin:
 
     def go_to_menu(self):
         self.state.save()
+        self.release_session()
         self.state = GameState()
         self.reset_ui()
         self.options_open = False
