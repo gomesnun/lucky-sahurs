@@ -90,3 +90,4 @@ Para usar outra pasta (testes, pen drive) define a variável de ambiente `LUCKY_
 `main.py`, `config.py`, `storage.py`, `theme.py`, `i18n.py`, `i18n_pt.py` · `core/` (regras) · `ui/` (ecrãs) ·
 `online/` (contas e cloud) · `icons/` (imagens; `tung.ico` / `tung.icns` são os ícones do executável) ·
 `sounds/` (sons e música, com `CREDITS.txt`) · scripts de build.
+ 
