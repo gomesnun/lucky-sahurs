@@ -219,6 +219,8 @@ class Game(
         self._perf_window = 0
         self._perf_prof = None
         self._perf_said_format = False
+        self._perf_flip = 0.0
+        self._perf_bg = 0.0
 
         self.dragging_scrollbar = None  # key da scrollbar a ser arrastada (ver ui/base.py draw_scrollbar)
         self.scrollbar_hits = {}        # registadas de novo a cada frame, só as que estão visíveis
@@ -274,9 +276,19 @@ class Game(
     def set_fullscreen(self, fs, announce=True):
         if IS_ANDROID:
             # O Android só tem ecrã inteiro (a orientação e a barra de estado ficam no buildozer.spec).
+            # A escala pela GPU (SCALED) pode nao compensar em todos os telemoveis. Para comparar as
+            # duas sem refazer o APK, basta pôr "android_gpu_scale": false no ficheiro das definicoes.
+            want_gpu = bool(self.settings.get("android_gpu_scale", True))
+            if not want_gpu:
+                self.screen = pygame.display.set_mode((0, 0))
+                self.gpu_scaled = False
+                self.fullscreen = True
+                self.recompute_layout()
+                return
             if not self.gpu_scaled:
                 # Primeiro abre-se o ecrã como ele é, só para saber o tamanho real e o formato.
                 real = pygame.display.set_mode((0, 0))
+                print("PERF real_screen=%dx%d" % (real.get_width(), real.get_height()))
                 rw, rh = max(320, real.get_width()), max(240, real.get_height())
                 vw = int(round(VIRTUAL_H * rw / float(rh)))
                 vw = max(VW_MIN, min(VW_MAX, vw))
@@ -537,7 +549,10 @@ class Game(
                               % (self.screen.get_width(), self.screen.get_height(),
                                  self.screen.get_bitsize(), self.screen.get_masks(),
                                  self.canvas.get_bitsize()))
-                    print("PERF fps=%.1f draw=%.1fms" % (n / self._perf_elapsed, 1000.0 * self._perf_draw / n))
+                    print("PERF fps=%.1f draw=%.1fms flip=%.1fms bg=%.1fms"
+                          % (n / self._perf_elapsed, 1000.0 * self._perf_draw / n,
+                             1000.0 * self._perf_flip / n, 1000.0 * self._perf_bg / n))
+                    self._perf_flip = self._perf_bg = 0.0
                     self._perf_draw = self._perf_elapsed = 0.0
                     self._perf_window = 0
             else:
@@ -707,7 +722,9 @@ class Game(
         return True
 
     def draw(self):
+        t_bg = time.perf_counter()
         self.canvas.blit(self.bg_surface, (0, 0))
+        self._perf_bg += time.perf_counter() - t_bg
         self.buttons = []
         self.nav_mode = False
         self.clip_stack = []
@@ -750,6 +767,7 @@ class Game(
         if self.update_modal_active():          # "Nova versão disponível": por cima de tudo, bloqueia o resto
             self.draw_update_modal(mouse_pos)
 
+        t_flip = time.perf_counter()
         if self.canvas is not self.screen:
             real_size = self.screen.get_size()
             # O smoothscale de um ecrã inteiro custa caro no telemóvel (e a diferença nem se vê num ecrã
@@ -760,6 +778,9 @@ class Game(
                 scaled = pygame.transform.scale(self.canvas, real_size)
             self.screen.blit(scaled, (0, 0))
         pygame.display.flip()
+        # O flip (e o scale, quando existe) medido a parte: assim sabe-se se o tempo se vai no
+        # desenho ou na entrega do frame ao ecra, que sao problemas diferentes.
+        self._perf_flip += time.perf_counter() - t_flip
 
     def save_everything(self):
         """Grava tudo (nuvem, save, definições) sem fechar o jogo. Usado ao sair e ao ir para segundo plano."""
