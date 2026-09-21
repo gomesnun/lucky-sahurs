@@ -218,6 +218,7 @@ class Game(
         self._perf_frames = 0
         self._perf_window = 0
         self._perf_prof = None
+        self._perf_said_format = False
 
         self.dragging_scrollbar = None  # key da scrollbar a ser arrastada (ver ui/base.py draw_scrollbar)
         self.scrollbar_hits = {}        # registadas de novo a cada frame, só as que estão visíveis
@@ -528,6 +529,14 @@ class Game(
                 self._perf_elapsed += dt
                 if self._perf_elapsed >= 2.0:
                     n = max(1, self._perf_window)
+                    if not self._perf_said_format:
+                        self._perf_said_format = True
+                        # Se o ecra nao for 32 bits, cada blit de uma imagem com transparencia tem de
+                        # converter pixeis; e a primeira coisa a confirmar quando o desenho esta lento.
+                        print("PERF screen=%dx%d bits=%d masks=%s canvas_bits=%d"
+                              % (self.screen.get_width(), self.screen.get_height(),
+                                 self.screen.get_bitsize(), self.screen.get_masks(),
+                                 self.canvas.get_bitsize()))
                     print("PERF fps=%.1f draw=%.1fms" % (n / self._perf_elapsed, 1000.0 * self._perf_draw / n))
                     self._perf_draw = self._perf_elapsed = 0.0
                     self._perf_window = 0

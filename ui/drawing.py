@@ -72,6 +72,16 @@ def ease_out_cubic(t):
     return 1 - (1 - t) ** 3
 
 
+def to_display_format(surf):
+    """Poe a imagem no mesmo formato de pixeis do ecra. Sem isto, cada blit tem de converter a
+    imagem pixel a pixel - no telemovel isso e a diferenca entre 15 e 60 FPS. So funciona depois
+    da janela existir, por isso chama-se ao guardar em cache, nao ao arrancar."""
+    try:
+        return surf.convert_alpha()
+    except pygame.error:
+        return surf
+
+
 _SHADOW_CACHE = {}
 _DIM_CACHE = {}
 
@@ -84,6 +94,7 @@ def dim_overlay(w, h, alpha):
     if surf is None:
         surf = pygame.Surface((w, h), pygame.SRCALPHA)
         surf.fill((0, 0, 0, alpha))
+        surf = to_display_format(surf)
         _DIM_CACHE.clear()
         _DIM_CACHE[key] = surf
     return surf
@@ -103,6 +114,7 @@ def draw_panel(canvas, rect, color=None, radius=14, shadow=True, border=None):
             pygame.draw.rect(shadow_surf, (0, 0, 0, 80), (7, 11, rect.width, rect.height), border_radius=radius)
             if len(_SHADOW_CACHE) > 400:
                 _SHADOW_CACHE.clear()
+            shadow_surf = to_display_format(shadow_surf)
             _SHADOW_CACHE[key] = shadow_surf
         canvas.blit(shadow_surf, (rect.x - 7, rect.y - 7))
     pygame.draw.rect(canvas, color, rect, border_radius=radius)
@@ -142,7 +154,7 @@ def blit_smooth_y(canvas, key, build, x, y):
     'build()' cria a Surface na primeira vez que for precisa."""
     variants = _VSHIFT_CACHE.get(key)
     if variants is None:
-        variants = _vshift_variants(build(), VSHIFT_STEPS)
+        variants = [to_display_format(v) for v in _vshift_variants(build(), VSHIFT_STEPS)]
         _VSHIFT_CACHE[key] = variants
     iy = int(math.floor(y))
     k = min(VSHIFT_STEPS - 1, int((y - iy) * VSHIFT_STEPS))
@@ -233,6 +245,7 @@ def rarity_glow(size, color, spread=30):
             pygame.draw.rect(glow, (color[0], color[1], color[2], a),
                              pygame.Rect(spread - i, spread - i, w + 2 * i, h + 2 * i),
                              border_radius=12 + i)
+        glow = to_display_format(glow)
         _GLOW_CACHE[key] = glow
     return glow
 

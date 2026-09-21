@@ -17,7 +17,7 @@ from theme import (
     OUTLINE, PANEL, PANEL_LIGHT, PANEL_LIGHTER,
     WHITE,
 )
-from ui.drawing import blit_smooth_y, draw_panel, draw_rarity_bg, draw_state_border
+from ui.drawing import blit_smooth_y, to_display_format, draw_panel, draw_rarity_bg, draw_state_border
 from ui.fonts import fit_text, wrap_text
 from ui.icons import load_icon
 
@@ -187,16 +187,17 @@ class TitleSavesMixin:
         if shadow is None:
             shadow = pygame.Surface((shadow_w, 26), pygame.SRCALPHA)
             pygame.draw.ellipse(shadow, (0, 0, 0, 55), shadow.get_rect())
+            shadow = to_display_format(shadow)
             self._mascot_shadows[shadow_w] = shadow
         self.canvas.blit(shadow, shadow.get_rect(center=(cx, ground_y - 2)))
         if self.animations:
             # O rotozoom interpola 230x460 pixeis e custava alguns milissegundos por frame. O balanco
             # e ciclico, por isso ha poucas poses diferentes: arredondam-se o angulo e a escala e
             # guarda-se cada pose. Depois das primeiras voltas e sempre a cache que responde.
-            key = (round(angle, 1), round(scale, 3))
+            key = (round(angle * 2.0) / 2.0, round(scale * 100.0) / 100.0)
             frame = self._mascot_frames.get(key)
             if frame is None:
-                frame = pygame.transform.rotozoom(padded, key[0], key[1])
+                frame = to_display_format(pygame.transform.rotozoom(padded, key[0], key[1]))
                 self._mascot_frames[key] = frame
         else:
             frame = padded

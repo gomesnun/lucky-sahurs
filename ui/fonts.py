@@ -115,6 +115,10 @@ class StyledFont:
             for dx, dy in self._offsets:
                 surf.blit(shade, (t + dx, t + dy))
             surf.blit(base, (t, t))
+        try:
+            surf = surf.convert_alpha()     # mesmo formato do ecra: o blit deixa de converter pixeis
+        except pygame.error:
+            pass
         if len(StyledFont._cache) > 1500:
             StyledFont._cache.clear()
         StyledFont._cache[key] = surf
