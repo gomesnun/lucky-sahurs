@@ -61,13 +61,15 @@ jobs:
       - name: Recompilar o pygame se a recipe mudou
         shell: bash
         run: |
-          H=$(find android/p4a-recipes -type f -exec sha256sum {} + | sort | sha256sum | cut -d' ' -f1)
+          H=$(cat <(find android/p4a-recipes -type f -exec sha256sum {} + | sort) .github/workflows/android.yml | sha256sum | cut -d" " -f1)
           M=.buildozer/p4a-recipes.hash
           if [ "$(cat "$M" 2>/dev/null)" != "$H" ]; then
             echo "Recipes mudaram: a apagar o pygame compilado."
             rm -rf .buildozer/android/platform/build-*/build/other_builds/pygame*
             rm -rf .buildozer/android/platform/build-*/build/python-installs/*/*/pygame*
             rm -rf .buildozer/android/platform/build-*/packages/pygame
+            # sem apagar a dist, o p4a limita-se a reempacotar o que ja tinha
+            rm -rf .buildozer/android/platform/build-*/dists
             mkdir -p .buildozer && printf '%s' "$H" > "$M"
           fi
 
