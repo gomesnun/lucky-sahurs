@@ -16,6 +16,7 @@
   <img alt="Windows" src="https://img.shields.io/badge/Windows-.exe-0078D6?logo=windows&logoColor=white">
   <img alt="macOS" src="https://img.shields.io/badge/macOS-Apple%20Silicon%20%2B%20Intel-000000?logo=apple&logoColor=white">
   <img alt="Linux" src="https://img.shields.io/badge/Linux-x86__64-FCC624?logo=linux&logoColor=black">
+  <img alt="Android" src="https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white">
   <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white">
   <img alt="pygame-ce" src="https://img.shields.io/badge/pygame--ce-engine-green">
 </p>
@@ -70,6 +71,28 @@ Pick your platform. Fastest path is the prebuilt download; no Python needed.
    ./"Lucky Sahurs"
    ```
    The binary needs **glibc ≥ 2.39** (Ubuntu 24.04+, Fedora 40+, Mint 22+, Arch).
+
+### 🤖 Android
+
+Landscape, touch-first: tap to roll and to press buttons, drag to scroll a list, hardware **Back** closes the
+open panel. Account, cloud saves and the leaderboard work the same as on desktop.
+
+**Option A — download**
+1. Open the [latest release](https://github.com/gomesnun/lucky-sahurs/releases/latest) on your phone.
+2. Download `Lucky-Sahurs-Android.apk`.
+3. Android will ask to allow installs from your browser — allow it, then tap **Install**. The APK is
+   debug-signed, so Play Protect shows an "unknown app" warning: **More details → Install anyway**.
+
+**Option B — build the APK yourself** (Linux or WSL; needs a JDK 17)
+```bash
+sudo apt install -y git zip unzip autoconf libtool pkg-config zlib1g-dev libffi-dev libssl-dev
+pip install --user buildozer cython
+buildozer android debug          # first run downloads the Android SDK/NDK (~10 GB, 40-60 min)
+```
+Result: `bin/luckysahurs-<version>-debug.apk`. Settings live in `buildozer.spec`.
+CI builds it too: **Actions → Build Android APK → Run workflow**.
+
+Minimum Android 7.0 (API 24), `arm64-v8a` + `armeabi-v7a`.
 
 ---
 
