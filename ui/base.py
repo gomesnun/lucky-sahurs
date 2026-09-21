@@ -9,7 +9,7 @@ from theme import (
     BORDER_W_SMALL, GREY_DIM, OUTLINE, PANEL,
     PANEL_LIGHT, PANEL_LIGHTER, PAUSED_RED, WHITE,
 )
-from ui.drawing import draw_panel, draw_state_border
+from ui.drawing import draw_panel, draw_state_border, rounded_box
 from ui.fonts import fit_text
 from ui.fonts import font_at as _font_at
 from ui.icons import load_icon
@@ -83,8 +83,7 @@ class UIBaseMixin:
             color = tuple(max(0, c - 55) for c in base_color)
         elif hovering:
             color = hover_color
-        pygame.draw.rect(self.canvas, color, rect, border_radius=radius)
-        pygame.draw.rect(self.canvas, OUTLINE, rect, width=BORDER_W_SMALL, border_radius=radius)
+        self.canvas.blit(rounded_box(rect.width, rect.height, color, radius, BORDER_W_SMALL), rect)
         if border_color:
             draw_state_border(self.canvas, rect, border_color, radius)
         if label or icon:

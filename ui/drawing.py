@@ -101,6 +101,25 @@ def dim_overlay(w, h, alpha):
     return surf
 
 
+def rounded_box(w, h, color, radius, border_w):
+    """Rectangulo de cantos redondos (preenchimento + contorno) ja desenhado, guardado em cache.
+    So depende do tamanho, da cor, do raio e da espessura, e ha dezenas por frame (paineis e botoes):
+    um blit de uma imagem pronta sai muito mais barato do que dois draw.rect com cantos redondos."""
+    key = (w, h, radius, tuple(color[:3]), border_w, tuple(OUTLINE[:3]))
+    box = _PANEL_CACHE.get(key)
+    if box is None:
+        box = pygame.Surface((w, h), pygame.SRCALPHA)
+        box_rect = box.get_rect()
+        pygame.draw.rect(box, color, box_rect, border_radius=radius)
+        if border_w > 0:
+            pygame.draw.rect(box, OUTLINE, box_rect, width=border_w, border_radius=radius)
+        box = to_display_format(box)
+        if len(_PANEL_CACHE) > 600:
+            _PANEL_CACHE.clear()
+        _PANEL_CACHE[key] = box
+    return box
+
+
 def draw_panel(canvas, rect, color=None, radius=14, shadow=True, border=None):
     """Painel com contorno preto grosso. border=None -> 4px nos painéis com sombra, 3px nos outros."""
     if color is None:
@@ -122,19 +141,7 @@ def draw_panel(canvas, rect, color=None, radius=14, shadow=True, border=None):
     # espessura: desenha-se uma vez para uma imagem e depois e so um blit, em vez de dois
     # pygame.draw.rect com cantos redondos a cada frame.
     bw = border if border is not None else (BORDER_W if shadow else BORDER_W_SMALL)
-    key = (rect.width, rect.height, radius, tuple(color[:3]), bw, tuple(OUTLINE[:3]))
-    body = _PANEL_CACHE.get(key)
-    if body is None:
-        body = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
-        body_rect = body.get_rect()
-        pygame.draw.rect(body, color, body_rect, border_radius=radius)
-        if bw > 0:
-            pygame.draw.rect(body, OUTLINE, body_rect, width=bw, border_radius=radius)
-        body = to_display_format(body)
-        if len(_PANEL_CACHE) > 400:
-            _PANEL_CACHE.clear()
-        _PANEL_CACHE[key] = body
-    canvas.blit(body, rect)
+    canvas.blit(rounded_box(rect.width, rect.height, color, radius, bw), rect)
 
 
 # ---------------------------------------------------------------- movimento suave (sub-píxel)
