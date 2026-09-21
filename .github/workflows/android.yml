@@ -45,7 +45,7 @@ jobs:
           path: |
             ~/.buildozer
             .buildozer
-          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec', 'android/p4a-recipes/**') }}
           restore-keys: buildozer-${{ runner.os }}-
 
       - name: Escrever a versao no jogo (so nas tags)
@@ -54,6 +54,21 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/* && "$GITHUB_REF_NAME" =~ ^v[0-9]+(\.[0-9]+){0,2}$ ]]; then
             printf 'BUILD_VERSION = "%s"\n' "$GITHUB_REF_NAME" > build_version.py
             sed -i "s/^version = .*/version = ${GITHUB_REF_NAME#v}/" buildozer.spec
+          fi
+
+      # A cache guarda o pygame ja compilado: se a recipe mudar, e preciso deita-lo fora
+      # ou o build reaproveita o .so antigo e a correcao nunca chega ao APK.
+      - name: Recompilar o pygame se a recipe mudou
+        shell: bash
+        run: |
+          H=$(find android/p4a-recipes -type f -exec sha256sum {} + | sort | sha256sum | cut -d' ' -f1)
+          M=.buildozer/p4a-recipes.hash
+          if [ "$(cat "$M" 2>/dev/null)" != "$H" ]; then
+            echo "Recipes mudaram: a apagar o pygame compilado."
+            rm -rf .buildozer/android/platform/build-*/build/other_builds/pygame*
+            rm -rf .buildozer/android/platform/build-*/build/python-installs/*/*/pygame*
+            rm -rf .buildozer/android/platform/build-*/packages/pygame
+            mkdir -p .buildozer && printf '%s' "$H" > "$M"
           fi
 
       - name: Criar o APK
