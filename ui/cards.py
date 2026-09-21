@@ -8,7 +8,7 @@ from core.pets import MUTATIONS
 from core.traits import TRAITS
 from i18n import tr
 from theme import BORDER_W_SMALL, GOLD_BORDER, OUTLINE, PANEL_LIGHT, WHITE
-from ui.drawing import draw_rarity_bg, mix, rounded_gradient, shade
+from ui.drawing import to_display_format, draw_rarity_bg, mix, rounded_gradient, shade
 from ui.fonts import fit_text, wrap_text
 
 # Cor "viva" de cada raridade: o texto da pílula, o brilho por trás do cartão principal e as faíscas.
@@ -36,6 +36,7 @@ def rarity_glow_color(rarity):
 def _remember(cache, key, surf, limit=320):
     if len(cache) >= limit:
         cache.clear()
+    surf = to_display_format(surf)      # mesmo formato do ecra: o blit deixa de converter pixeis
     cache[key] = surf
     return surf
 
