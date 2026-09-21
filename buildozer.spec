@@ -24,7 +24,7 @@ source.exclude_patterns = build_exe.bat,build_linux_mac.sh,run_linux_mac.sh,*.sp
 version = 1.0.4
 
 # pygame-ce (recipe "pygame"), HTTPS com certificados proprios (a conta / leaderboard / saves na nuvem).
-requirements = hostpython3==3.11.9,python3==3.11.9,pygame,certifi,openssl
+requirements = python3,pygame,certifi,openssl
 
 icon.filename = %(source.dir)s/icons/tung.png
 presplash.filename = %(source.dir)s/icons/tung.png
