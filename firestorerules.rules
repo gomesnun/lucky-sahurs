@@ -151,6 +151,84 @@ service cloud.firestore {
                     && (request.auth.uid == uid || request.auth.uid == amigo);
     }
 
+    // ================= Feedback (um recado por conta) =================
+
+    match /feedback/{uid} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+                            && request.resource.data.keys().hasOnly(['username', 'text', 'updated_at'])
+                            && request.resource.data.username is string
+                            && request.resource.data.username.matches('[a-z0-9_]{3,16}')
+                            // o nome tem de ser o da própria conta (o email interno é <username>@luckysahurs.invalid)
+                            && request.auth.token.email == request.resource.data.username + '@luckysahurs.invalid'
+                            && request.resource.data.text is string
+                            && request.resource.data.text.size() >= 4
+                            && request.resource.data.text.size() <= 280
+                            // a hora tem de ser a do servidor (não dá para falsificar)
+                            && request.resource.data.updated_at == request.time;
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // ================= Chat entre amigos =================
+
+    function chatMember(cid) {
+      // "uidA__uidB" -> o uid de quem está autenticado tem de ser uma das duas metades
+      return request.auth != null
+          && cid.split('__').hasAny([request.auth.uid]);
+    }
+
+    match /chats/{cid} {
+      // documento-resumo da conversa: last_at / last_from (usado para o ponto de mensagem nova)
+      allow read: if chatMember(cid);
+      allow create, update: if chatMember(cid)
+          && request.resource.data.keys().hasOnly(['last_at', 'last_from'])
+          && request.resource.data.last_from == request.auth.uid
+          && request.resource.data.last_at == request.time;
+      allow delete: if false;
+
+      match /messages/{msgId} {
+        allow read: if chatMember(cid);
+        allow create: if chatMember(cid)
+            && request.resource.data.keys().hasOnly(['from_uid', 'to_uid', 'text', 'sent_at'])
+            && request.resource.data.from_uid == request.auth.uid
+            && cid.split('__').hasAll([request.resource.data.from_uid, request.resource.data.to_uid])
+            && request.resource.data.text is string
+            && request.resource.data.text.size() >= 1
+            && request.resource.data.text.size() <= 280
+            && request.resource.data.sent_at == request.time;
+        // as mensagens não se editam nem se apagam
+        allow update, delete: if false;
+      }
+    }
+
+    // ================= Eventos globais (admin) =================
+
+    function isAdmin() {
+      return request.auth != null
+          && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    match /admins/{uid} {
+      // cada conta so pode ver a sua (e so para saber se e admin); escrever e' so pelo Console
+      allow get: if request.auth != null && request.auth.uid == uid;
+      allow list, write: if false;
+    }
+
+    match /events/current {
+      // toda a gente le: e' assim que o bonus chega a todos os jogadores online
+      allow read: if true;
+      allow create, update: if isAdmin()
+          && request.resource.data.keys().hasOnly(['kind', 'mult', 'ends_at', 'by'])
+          && request.resource.data.kind in ['luck', 'money', 'speed']
+          && request.resource.data.mult is number
+          && request.resource.data.mult >= 1 && request.resource.data.mult <= 100
+          && request.resource.data.ends_at is timestamp
+          // no maximo uma hora de cada vez (um evento esquecido acaba sozinho)
+          && request.resource.data.ends_at > request.time
+          && request.resource.data.ends_at < request.time + duration.value(3600, 's');
+      allow delete: if isAdmin();
+    }
+
     // NOTA: as stats de um amigo vêm da /leaderboard/{uid}, que já é pública para leitura.
     match /{document=**} {
       allow read, write: if false;
