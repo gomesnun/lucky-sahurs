@@ -140,6 +140,15 @@ jobs:
           path: release
           merge-multiple: true    # todos os ficheiros ficam juntos na pasta "release"
 
+      # O jogo procura na Release o ficheiro com o nome que ESSA versao conhece (ver online/updater.py).
+      # Quem ainda esta na v2.0.0 ou anterior procura "Lucky-Sahurs-*": sem estas copias, a atualizacao
+      # automatica para a versao com o nome novo falhava e era preciso descarregar a mao.
+      - name: Copias com o nome antigo (para quem ainda tem o Lucky Sahurs instalado)
+        run: |
+          for f in release/Lucky-Verities-*; do
+            cp "$f" "release/$(basename "$f" | sed 's/^Lucky-Verities-/Lucky-Sahurs-/')"
+          done
+
       - name: Criar ou atualizar a Release
         run: |
           ls -l release

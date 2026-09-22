@@ -13,6 +13,12 @@ from ui.fonts import wrap_text
 
 # (versão, data, linhas de descrição) - a mais recente primeiro.
 UPDATE_LOG = (
+    ("v2.1.0", "2026-09-22", [
+        "The game is now Lucky Verities: new name, new art, and 22 Verities to collect.",
+        "Your saves come with you - the first time you open it, everything is copied over from the "
+        "old Lucky Sahurs folder.",
+        "New cutscenes when a rare Verity shows up, and the Options page is now split into tabs.",
+    ]),
     ("v2.0.0", "2026-09-22", [
         "The Android build updates itself now: when a new version comes out the game downloads it and "
         "asks Android to install it, the same way the computer version does.",

@@ -135,4 +135,7 @@ jobs:
         run: |
           APK="$(ls bin/*.apk | head -1)"
           cp "$APK" "Lucky-Verities-Android.apk"
-          gh release upload "$GITHUB_REF_NAME" "Lucky-Verities-Android.apk" --clobber
+          # Copia com o nome antigo: o APK da v2.0.0 procura "Lucky-Sahurs-Android.apk" e sem isto
+          # nao se conseguia atualizar sozinho para a versao com o nome novo.
+          cp "$APK" "Lucky-Sahurs-Android.apk"
+          gh release upload "$GITHUB_REF_NAME" "Lucky-Verities-Android.apk" "Lucky-Sahurs-Android.apk" --clobber
