@@ -13,6 +13,11 @@ from ui.fonts import wrap_text
 
 # (versão, data, linhas de descrição) - a mais recente primeiro.
 UPDATE_LOG = (
+    ("v2.0.0", "2026-09-22", [
+        "The Android build updates itself now: when a new version comes out the game downloads it and "
+        "asks Android to install it, the same way the computer version does.",
+        "The first time, Android asks you to allow the game to install apps - say yes and tap Try again.",
+    ]),
     ("v1.0.5", "2026-09-22", [
         "Android: the game now runs at 60 FPS on the phone.",
         "The main screen was drawing the pet card and its glow pixel by pixel every frame "

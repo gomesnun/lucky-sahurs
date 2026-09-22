@@ -43,6 +43,7 @@ ASSET_WINDOWS = "Lucky-Sahurs-Windows.exe"
 ASSET_LINUX = "Lucky-Sahurs-Linux.tar.gz"
 ASSET_MAC_ARM = "Lucky-Sahurs-macOS-AppleSilicon.zip"
 ASSET_MAC_INTEL = "Lucky-Sahurs-macOS-Intel.zip"
+ASSET_ANDROID = "Lucky-Sahurs-Android.apk"
 LINUX_BINARY_NAME = "LuckySahurs"      # o ficheiro que vai dentro do .tar.gz
 MAC_APP_NAME = "Lucky Sahurs.app"      # a pasta que vai dentro do .zip
 WORK_PREFIX = ".lucky-update-"         # pastas de trabalho temporárias (apagadas ao arrancar)
@@ -80,15 +81,17 @@ def updates_enabled(current=None):
     Para desligar (testes): variável de ambiente LUCKY_SAHURS_NO_UPDATE=1."""
     if os.environ.get("LUCKY_SAHURS_NO_UPDATE"):
         return False
-    if config.IS_ANDROID:
-        return False        # no Android quem atualiza e a loja / o APK, nao o jogo
-    if not getattr(sys, "frozen", False):
+    # No Android nao ha "sys.frozen": o jogo e sempre o APK. O que diz se isto e uma versao a serio
+    # continua a ser o build_version.py que o GitHub Actions escreve a partir da tag.
+    if not config.IS_ANDROID and not getattr(sys, "frozen", False):
         return False
     return parse_version(config.BUILD_VERSION if current is None else current) is not None
 
 
 def asset_name():
     """O nome do ficheiro da Release que serve a este sistema."""
+    if config.IS_ANDROID:
+        return ASSET_ANDROID        # no Android o sys.platform tambem e "linux"
     if sys.platform == "win32":
         return ASSET_WINDOWS
     if sys.platform == "darwin":
@@ -222,11 +225,27 @@ def _need_writable(folder):
 # ---------------------------------------------------------------- preparar a troca (numa thread de fundo)
 def prepare(info, progress=None):
     """Descarrega e prepara a troca do programa. Devolve um "plano" para launch(). Levanta UpdateError."""
+    if config.IS_ANDROID:
+        return _prepare_android(info, progress)
     if sys.platform == "win32":
         return _prepare_windows(info, progress)
     if sys.platform == "darwin":
         return _prepare_mac(info, progress)
     return _prepare_linux(info, progress)
+
+
+def _prepare_android(info, progress):
+    """Descarrega o APK novo para a pasta privada do jogo. Quem instala e o sistema (ver launch())."""
+    folder = config.SAVE_DIR if hasattr(config, "SAVE_DIR") else tempfile.gettempdir()
+    try:
+        os.makedirs(folder, exist_ok=True)
+    except OSError as e:
+        raise UpdateError("perm", str(e))
+    apk = os.path.join(folder, ASSET_ANDROID)
+    _remove(apk)
+    download(info, apk, progress)
+    _check_magic(apk, b"PK")        # um APK e um .zip
+    return {"kind": "android", "apk": apk}
 
 
 def _prepare_windows(info, progress):
@@ -361,8 +380,15 @@ def _detached(cmd, env, **kw):
 def launch(plan):
     """Arranca o ajudante que troca o programa depois de o jogo fechar e o reabre. NÃO fecha o jogo: quem
     chama guarda tudo e faz sys.exit() logo a seguir."""
-    env = clean_env()
     kind = plan["kind"]
+    if kind == "android":
+        # O Android nao deixa uma aplicacao trocar-se a si propria: abre-se o instalador do sistema.
+        from online import android_install
+        if not android_install.ensure_can_install():
+            raise android_install.InstallError("permission", "")
+        android_install.install_apk(plan["apk"])
+        return None
+    env = clean_env()
     if kind == "windows":
         folder = tempfile.mkdtemp(prefix="lucky-update-")
         bat = os.path.join(folder, "update.bat")
@@ -380,6 +406,8 @@ def launch(plan):
 
 def cleanup_leftovers():
     """Ao arrancar: apaga restos de atualizações que ficaram a meio (ficheiros .update / .part e pastas de trabalho)."""
+    if config.IS_ANDROID:
+        return                      # no Android nao se troca nenhum programa: nao ha restos
     try:
         exe = os.path.abspath(sys.executable)
         folders = {os.path.dirname(exe)}

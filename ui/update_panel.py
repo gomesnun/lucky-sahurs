@@ -10,7 +10,7 @@ import time
 
 import pygame
 
-from config import UPDATE_CHECK_INTERVAL, UPDATE_RETRY_AFTER_ERROR, VERSION, VIRTUAL_H
+from config import IS_ANDROID, UPDATE_CHECK_INTERVAL, UPDATE_RETRY_AFTER_ERROR, VERSION, VIRTUAL_H
 from i18n import tr
 from online import updater
 from storage import save_settings
@@ -26,6 +26,7 @@ class UpdatePanelMixin:
     def init_updater(self):
         self.upd_phase = "idle"
         self.upd_info = None            # a versão nova (ver updater.fetch_latest)
+        self.upd_plan = None            # o que já está descarregado e pronto a instalar
         self.upd_progress = 0.0         # 0..1 enquanto descarrega
         self.upd_error = "other"        # net | corrupt | perm | other
         self.upd_error_detail = ""
@@ -58,6 +59,15 @@ class UpdatePanelMixin:
         self.worker.run(updater.fetch_latest, ok, err)
 
     # ---------------------------------------------------------------- ações
+    def upd_retry(self):
+        """Botão "Tentar outra vez": se o ficheiro já está descarregado, não o volta a descarregar
+        (no Android é normal falhar só por faltar a autorização para instalar)."""
+        if self.upd_plan is not None:
+            self.upd_phase = "installing"
+            self.upd_finish(self.upd_plan)
+        else:
+            self.upd_start_download()
+
     def upd_start_download(self):
         info = self.upd_info
         self.upd_phase = "downloading"
@@ -74,6 +84,7 @@ class UpdatePanelMixin:
 
         def done(res):
             if res[0] == "ok":
+                self.upd_plan = res[1]
                 self.upd_phase = "installing"
                 self.upd_finish(res[1])
             else:
@@ -94,7 +105,12 @@ class UpdatePanelMixin:
         try:
             updater.launch(plan)
         except Exception as e:
-            self.upd_fail("other", str(e))
+            code = getattr(e, "code", "other")
+            self.upd_fail(code if code in ("permission", "net", "corrupt", "perm") else "other", str(e))
+            return
+        if plan.get("kind") == "android":
+            # Quem instala é o Android, e o jogo tem de continuar aberto por trás: se o utilizador
+            # cancelar a instalação, volta aqui e pode tentar outra vez.
             return
         pygame.quit()
         sys.exit()
@@ -133,7 +149,8 @@ class UpdatePanelMixin:
         elif phase == "downloading":
             lines = [tr("Downloading the update... %d%%", int(self.upd_progress * 100))]
         elif phase == "installing":
-            lines = [tr("Installing... the game restarts in a moment.")]
+            lines = [tr("Android is asking you to install the new version. Accept it to keep playing.")
+                     if IS_ANDROID else tr("Installing... the game restarts in a moment.")]
         else:
             lines = [self.upd_error_text()]
         for i, text in enumerate(lines):
@@ -160,11 +177,17 @@ class UpdatePanelMixin:
                         ACCENT, ACCENT_HOVER, BLACK, callback=self.upd_start_download, radius=12)
             self.button(pygame.Rect(inner_x + bw + gap, by, bw, bh), tr("No (closes the game)"), self.font_med,
                         mouse_pos, PANEL_LIGHT, PANEL_LIGHTER, WHITE, callback=self.quit_game, radius=12)
+        elif phase == "installing" and IS_ANDROID:
+            bw = (inner_w - gap) // 2
+            self.button(pygame.Rect(inner_x, by, bw, bh), tr("Install again"), self.font_med, mouse_pos,
+                        ACCENT, ACCENT_HOVER, BLACK, callback=self.upd_retry, radius=12)
+            self.button(pygame.Rect(inner_x + bw + gap, by, bw, bh), tr("No (closes the game)"), self.font_med,
+                        mouse_pos, PANEL_LIGHT, PANEL_LIGHTER, WHITE, callback=self.quit_game, radius=12)
         elif phase == "error":
             bw = (inner_w - 2 * gap) // 3
             self.button(pygame.Rect(inner_x, by, bw, bh), tr("Try again"), self.font_med, mouse_pos,
-                        ACCENT, ACCENT_HOVER, BLACK, callback=self.upd_start_download, radius=12,
-                        enabled=bool(self.upd_info))
+                        ACCENT, ACCENT_HOVER, BLACK, callback=self.upd_retry, radius=12,
+                        enabled=bool(self.upd_info or self.upd_plan))
             self.button(pygame.Rect(inner_x + bw + gap, by, bw, bh), tr("Open download page"), self.font_med,
                         mouse_pos, PANEL_LIGHT, PANEL_LIGHTER, WHITE, callback=self.upd_open_page, radius=12)
             self.button(pygame.Rect(inner_x + 2 * (bw + gap), by, bw, bh), tr("Close game"), self.font_med,
@@ -176,6 +199,9 @@ class UpdatePanelMixin:
             return tr("Couldn't download the update. Check your internet connection.")
         if code == "corrupt":
             return tr("The downloaded file is damaged. Please try again.")
+        if code == "permission":
+            return tr("Android needs your permission to install apps from the game. Allow it on the page that "
+                      "just opened, then come back and tap Try again.")
         if code == "perm":
             return tr("The game can't replace itself in this folder. Move it to another folder (for example the "
                       "Desktop) or download the new version by hand.")

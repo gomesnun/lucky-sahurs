@@ -21,10 +21,10 @@ source.exclude_dirs = website,.github,android,bin,.buildozer,.venv,dist,build,__
 source.exclude_patterns = build_exe.bat,build_linux_mac.sh,run_linux_mac.sh,*.spec,rules.txt,read-problems.md,savegame*.json,lucky_sahurs_*.json
 
 # Numero da versao do APK. Acompanhar as tags das Releases (v1.0.4 -> 1.0.4).
-version = 1.0.5
+version = 2.0.0
 
 # pygame-ce (recipe "pygame"), HTTPS com certificados proprios (a conta / leaderboard / saves na nuvem).
-requirements = python3,pygame,openssl
+requirements = python3,pygame,openssl,pyjnius,android
 
 icon.filename = %(source.dir)s/icons/tung.png
 presplash.filename = %(source.dir)s/icons/tung.png
@@ -34,7 +34,7 @@ orientation = landscape
 fullscreen = 1
 
 # INTERNET: conta, saves na nuvem e leaderboard (Firebase). O jogo funciona na mesma sem rede.
-android.permissions = android.permission.INTERNET,android.permission.ACCESS_NETWORK_STATE
+android.permissions = android.permission.INTERNET,android.permission.ACCESS_NETWORK_STATE,android.permission.REQUEST_INSTALL_PACKAGES,android.permission.WRITE_EXTERNAL_STORAGE
 
 android.api = 34
 android.minapi = 24

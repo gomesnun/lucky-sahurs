@@ -424,6 +424,13 @@ PT = {
     "The downloaded file is damaged. Please try again.": "O ficheiro descarregado está danificado. Tenta outra vez.",
     "The game can't replace itself in this folder. Move it to another folder (for example the Desktop) or download the new version by hand.": "O jogo não consegue substituir-se nesta pasta. Move-o para outra pasta (por exemplo o Ambiente de Trabalho) ou descarrega a versão nova à mão.",
     "Try again": "Tentar de novo",
+    "Install again": "Instalar outra vez",
+    "Android is asking you to install the new version. Accept it to keep playing.":
+        "O Android está a pedir para instalares a versão nova. Aceita para continuares a jogar.",
+    "Android needs your permission to install apps from the game. Allow it on the page that just opened, "
+    "then come back and tap Try again.":
+        "O Android precisa da tua autorização para o jogo instalar aplicações. Autoriza na página que "
+        "acabou de abrir, volta ao jogo e carrega em Tentar de novo.",
     "Open download page": "Abrir página de descarga",
     "Close game": "Fechar o jogo",
 
