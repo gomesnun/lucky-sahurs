@@ -5,6 +5,7 @@ import collections
 import math
 import os
 import random
+import time
 import pygame
 
 from config import IS_ANDROID
@@ -267,6 +268,13 @@ _BAKE_SEEN = collections.OrderedDict()
 # dos pets nao sao, e cada copia misturada e mais uma imagem na memoria do telemovel.
 BAKE_MAX_PIXELS = 8 * 1024 * 1024
 _BAKE_SEEN_MAX = 2000
+# Ha texto que se repete durante uns segundos e depois nunca mais volta: o dinheiro, por exemplo,
+# muda a cada frame mas escrito fica "$1.23M" durante varios frames seguidos. Isso passa a regra do
+# "so guardo a partir da segunda vez" e enche a cache de imagens que nunca mais servem para nada -
+# numa sessao longa sao dezenas de MB de memoria no telemovel, e e por isso que o jogo ia ficando
+# cada vez mais lento. Tudo o que esta mesmo a ser desenhado e usado a cada frame, por isso o que
+# nao e pedido ha 5 segundos pode ser deitado fora.
+BAKE_MAX_AGE = 5.0
 
 
 def _bake_evict():
@@ -276,16 +284,32 @@ def _bake_evict():
     todos os cartoes, todos os textos - tinha de ser misturado outra vez, e esse frame demorava
     dezenas de ms. Deitando fora so a mais antiga, o custo fica espalhado e nao se ve."""
     while _BAKE_PIXELS[0] > BAKE_MAX_PIXELS and _BAKE_CACHE:
-        _key, (_src, old) = _BAKE_CACHE.popitem(last=False)
-        w, h = old.get_size()
-        _BAKE_PIXELS[0] -= w * h
+        _bake_drop_oldest()
+
+
+def _bake_drop_oldest():
+    _key, (_src, old, _t) = _BAKE_CACHE.popitem(last=False)
+    w, h = old.get_size()
+    _BAKE_PIXELS[0] -= w * h
+
+
+def _bake_reclaim(now):
+    """Deita fora UMA imagem que ja nao e pedida ha muito tempo (ver BAKE_MAX_AGE).
+
+    Uma de cada vez: a cache esta por ordem de uso, a mais antiga esta a frente, e o que continua
+    a ser desenhado nunca chega a envelhecer. Assim a memoria fica do tamanho do que esta no ecra."""
+    if not _BAKE_CACHE:
+        return
+    _key, entry = next(iter(_BAKE_CACHE.items()))
+    if now - entry[2] > BAKE_MAX_AGE:
+        _bake_drop_oldest()
 
 
 def _bake_remember(key, source, flat):
     """Guarda a imagem ja misturada. Guarda tambem a imagem de origem: assim o id() dela nunca e
     reaproveitado por outra (senao uma imagem nova podia apanhar a mistura de uma imagem morta)."""
     w, h = flat.get_size()
-    _BAKE_CACHE[key] = (source, flat)
+    _BAKE_CACHE[key] = (source, flat, time.monotonic())
     _BAKE_PIXELS[0] += w * h
     _bake_evict()
     return flat
@@ -317,10 +341,14 @@ def bake(surf, color):
     if not ALPHA_IS_SLOW:
         return surf
     key = (id(surf), tuple(color[:3]))
+    now = time.monotonic()
     hit = _BAKE_CACHE.get(key)
     if hit is not None:
+        _BAKE_CACHE[key] = (hit[0], hit[1], now)      # volta a ficar no fim: e das mais usadas
         _BAKE_CACHE.move_to_end(key)
+        _bake_reclaim(now)
         return hit[1]
+    _bake_reclaim(now)
     if not _worth_baking(key):
         return surf
     return _bake_remember(key, surf, to_opaque(surf, color))
@@ -336,10 +364,14 @@ def bake_on(surf, backdrop, topleft):
     if not backdrop.get_rect().contains(rect):
         return surf
     key = (id(surf), id(backdrop), rect.topleft)
+    now = time.monotonic()
     hit = _BAKE_CACHE.get(key)
     if hit is not None:
+        _BAKE_CACHE[key] = (hit[0], hit[1], now)      # volta a ficar no fim: e das mais usadas
         _BAKE_CACHE.move_to_end(key)
+        _bake_reclaim(now)
         return hit[1]
+    _bake_reclaim(now)
     if not _worth_baking(key):
         return surf
     flat = backdrop.subsurface(rect).copy()
