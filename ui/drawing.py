@@ -1,6 +1,7 @@
 """Desenho: painéis, gradientes, barras e os fundos das raridades (incl. Cosmic e Transcendent)."""
 
 import colorsys
+import collections
 import math
 import os
 import random
@@ -255,26 +256,56 @@ def clear_drawing_caches():
     _DIM_CACHE.clear()
     _PANEL_CACHE.clear()
     _BAKE_CACHE.clear()
+    _BAKE_SEEN.clear()
     _BAKE_PIXELS[0] = 0
 
 
-_BAKE_CACHE = {}
+_BAKE_CACHE = collections.OrderedDict()
 _BAKE_PIXELS = [0]
+_BAKE_SEEN = collections.OrderedDict()
 # Limite da cache das imagens ja misturadas, em pixeis (~32 MB): o texto e pequeno, mas os cartoes
 # dos pets nao sao, e cada copia misturada e mais uma imagem na memoria do telemovel.
 BAKE_MAX_PIXELS = 8 * 1024 * 1024
+_BAKE_SEEN_MAX = 2000
+
+
+def _bake_evict():
+    """Deita fora as imagens mais antigas ate caber no limite, UMA DE CADA VEZ.
+
+    Esvaziar a cache toda de uma vez era o que provocava os solavancos: no frame seguinte tudo -
+    todos os cartoes, todos os textos - tinha de ser misturado outra vez, e esse frame demorava
+    dezenas de ms. Deitando fora so a mais antiga, o custo fica espalhado e nao se ve."""
+    while _BAKE_PIXELS[0] > BAKE_MAX_PIXELS and _BAKE_CACHE:
+        _key, (_src, old) = _BAKE_CACHE.popitem(last=False)
+        w, h = old.get_size()
+        _BAKE_PIXELS[0] -= w * h
 
 
 def _bake_remember(key, source, flat):
-    """Guarda a imagem ja misturada, esvaziando a cache quando passa do limite de memoria.
-    Guarda tambem a imagem de origem: assim o id() dela nunca e reaproveitado por outra."""
+    """Guarda a imagem ja misturada. Guarda tambem a imagem de origem: assim o id() dela nunca e
+    reaproveitado por outra (senao uma imagem nova podia apanhar a mistura de uma imagem morta)."""
     w, h = flat.get_size()
-    if _BAKE_PIXELS[0] + w * h > BAKE_MAX_PIXELS:
-        _BAKE_CACHE.clear()
-        _BAKE_PIXELS[0] = 0
     _BAKE_CACHE[key] = (source, flat)
     _BAKE_PIXELS[0] += w * h
+    _bake_evict()
     return flat
+
+
+def _worth_baking(key):
+    """Se vale a pena guardar esta imagem misturada, ou se e so trabalho a dobrar.
+
+    Misturar custa o mesmo que desenhar com alfa E ainda cria uma imagem nova. So compensa se a
+    MESMA imagem voltar a ser desenhada. O dinheiro na barra de cima, por exemplo, muda em todos
+    os frames: e uma imagem diferente de cada vez, nunca acertaria na cache, e guarda-la so servia
+    para encher a memoria. Por isso a primeira vez que se ve uma imagem desenha-se com alfa na
+    mesma; so a partir da segunda e que se guarda."""
+    if key in _BAKE_SEEN:
+        _BAKE_SEEN.move_to_end(key)
+        return True
+    _BAKE_SEEN[key] = True
+    if len(_BAKE_SEEN) > _BAKE_SEEN_MAX:
+        _BAKE_SEEN.popitem(last=False)
+    return False
 
 
 def bake(surf, color):
@@ -288,7 +319,10 @@ def bake(surf, color):
     key = (id(surf), tuple(color[:3]))
     hit = _BAKE_CACHE.get(key)
     if hit is not None:
+        _BAKE_CACHE.move_to_end(key)
         return hit[1]
+    if not _worth_baking(key):
+        return surf
     return _bake_remember(key, surf, to_opaque(surf, color))
 
 
@@ -304,7 +338,10 @@ def bake_on(surf, backdrop, topleft):
     key = (id(surf), id(backdrop), rect.topleft)
     hit = _BAKE_CACHE.get(key)
     if hit is not None:
+        _BAKE_CACHE.move_to_end(key)
         return hit[1]
+    if not _worth_baking(key):
+        return surf
     flat = backdrop.subsurface(rect).copy()
     flat.blit(surf, (0, 0))
     try:

@@ -214,6 +214,8 @@ class Game(
         # Medicao de desempenho: LUCKY_SAHURS_PERF=1 faz o jogo escrever os FPS e o tempo de desenho.
         # No Android isso sai no logcat ("adb logcat -s python"), que e a unica forma de medir no telemovel.
         self._perf_draw = 0.0
+        self._perf_worst = 0.0      # o frame mais demorado da janela atual
+        self._perf_slow = 0         # quantos frames passaram dos 16.6 ms
         self._perf_elapsed = 0.0
         self._perf_frames = 0
         self._perf_window = 0
@@ -619,7 +621,14 @@ class Game(
             if PERF_LOG:
                 t0 = time.perf_counter()
                 self._perf_profile_draw()
-                self._perf_draw += time.perf_counter() - t0
+                d = time.perf_counter() - t0
+                self._perf_draw += d
+                # a media esconde os solavancos: guarda-se tambem o pior frame da janela e
+                # quantos e que passaram dos 16.6 ms (o tempo de um frame a 60 fps)
+                if d > self._perf_worst:
+                    self._perf_worst = d
+                if d > 1.0 / 60.0:
+                    self._perf_slow += 1
                 self._perf_frames += 1
                 self._perf_window += 1
                 self._perf_elapsed += dt
@@ -633,9 +642,12 @@ class Game(
                               % (self.screen.get_width(), self.screen.get_height(),
                                  self.screen.get_bitsize(), self.screen.get_masks(),
                                  self.canvas.get_bitsize()))
-                    self._perf_write(["PERF fps=%.1f draw=%.1fms flip=%.1fms bg=%.1fms"
+                    self._perf_write(["PERF fps=%.1f draw=%.1fms flip=%.1fms bg=%.1fms pior=%.1fms lentos=%d/%d"
                                       % (n / self._perf_elapsed, 1000.0 * self._perf_draw / n,
-                                         1000.0 * self._perf_flip / n, 1000.0 * self._perf_bg / n)])
+                                         1000.0 * self._perf_flip / n, 1000.0 * self._perf_bg / n,
+                                         1000.0 * self._perf_worst, self._perf_slow, n)])
+                    self._perf_worst = 0.0
+                    self._perf_slow = 0
                     self._perf_flip = self._perf_bg = 0.0
                     self._perf_draw = self._perf_elapsed = 0.0
                     self._perf_window = 0

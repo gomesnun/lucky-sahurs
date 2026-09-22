@@ -24,8 +24,10 @@ PLATE_LABEL = (196, 202, 226)          # o "Income" pequenino de cada placa
 PLATE_SUB = (150, 156, 184)            # a linha pequenina por baixo (chance base, etc.)
 LOCKED_MARK = (150, 156, 184)          # o "?" dos pets / traits que ainda não tens
 
-_CARD_CACHE = {}
-_OVERLAY_CACHE = {}
+import collections
+
+_CARD_CACHE = collections.OrderedDict()
+_OVERLAY_CACHE = collections.OrderedDict()
 
 
 def rarity_glow_color(rarity):
@@ -34,10 +36,12 @@ def rarity_glow_color(rarity):
 
 
 def _remember(cache, key, surf, limit=320):
-    if len(cache) >= limit:
-        cache.clear()
+    """Guarda o cartao, deitando fora o mais antigo quando passa do limite. Um de cada vez: esvaziar
+    a cache toda dava um frame muito demorado (todos os cartoes a serem desenhados outra vez)."""
     surf = to_display_format(surf)      # mesmo formato do ecra: o blit deixa de converter pixeis
     cache[key] = surf
+    while len(cache) > limit:
+        cache.popitem(last=False)
     return surf
 
 

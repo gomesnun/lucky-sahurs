@@ -1,5 +1,6 @@
 """Fontes e texto: fonte com contorno, quebra de linhas, texto com sombra."""
 
+import collections
 import os
 import sys
 import pygame
@@ -84,7 +85,11 @@ class StyledFont:
     grosso (estilo cartoon). O texto escuro (ex.: preto em cima de dourado) sai sem contorno.
     Tudo o que não seja render() (size, get_height...) vai direto para a fonte de baixo."""
 
-    _cache = {}
+    # OrderedDict: deita fora o texto mais antigo, um de cada vez. Esvaziar tudo de uma vez
+    # dava um solavanco - o dinheiro muda em todos os frames, enchia isto em segundos, e no frame
+    # a seguir ao esvaziamento TODO o texto do ecra tinha de ser desenhado outra vez.
+    _cache = collections.OrderedDict()
+    _CACHE_MAX = 1500
 
     def __init__(self, raw, outline):
         self.raw = raw
@@ -103,6 +108,7 @@ class StyledFont:
         key = (id(self), text, color)
         surf = StyledFont._cache.get(key)
         if surf is not None:
+            StyledFont._cache.move_to_end(key)
             return surf
         base = self.raw.render(text, True, color)
         if self.outline <= 0 or not is_light(color):
@@ -119,9 +125,9 @@ class StyledFont:
             surf = surf.convert_alpha()     # mesmo formato do ecra: o blit deixa de converter pixeis
         except pygame.error:
             pass
-        if len(StyledFont._cache) > 1500:
-            StyledFont._cache.clear()
         StyledFont._cache[key] = surf
+        while len(StyledFont._cache) > StyledFont._CACHE_MAX:
+            StyledFont._cache.popitem(last=False)
         return surf
 
 
@@ -147,7 +153,7 @@ def make_font(size, outline=1, heavy=False):
     return StyledFont(raw, outline)
 
 
-_FONT_AT_CACHE = {}
+_FONT_AT_CACHE = collections.OrderedDict()
 
 
 def _default_outline(size, heavy):
@@ -174,11 +180,13 @@ def font_at(size, heavy=True, outline=None):
         outline = _default_outline(size, heavy)
     key = (size, heavy, outline)
     f = _FONT_AT_CACHE.get(key)
-    if f is None:
-        if len(_FONT_AT_CACHE) > 400:
-            _FONT_AT_CACHE.clear()
+    if f is not None:
+        _FONT_AT_CACHE.move_to_end(key)
+    else:
         f = make_font(size, outline=outline, heavy=heavy)
         _FONT_AT_CACHE[key] = f
+        while len(_FONT_AT_CACHE) > 400:      # a mais antiga, uma de cada vez (abrir uma fonte e caro)
+            _FONT_AT_CACHE.popitem(last=False)
     return f
 
 

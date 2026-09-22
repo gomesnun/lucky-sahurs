@@ -90,6 +90,8 @@ class TitleSavesMixin:
         self.screen_mode = "title"
 
     # ---------------------------------------------------------------- menu principal
+    _title_shadow_cache = {}      # {id(titulo): (titulo, sombra)} - guarda o titulo para o id nao ser reutilizado
+
     def draw_title(self, mouse_pos):
         cx = self.vw // 2
         t = time.time()
@@ -115,8 +117,16 @@ class TitleSavesMixin:
 
         # título com sombra
         title = self.font_title.render(GAME_TITLE, True, WHITE)
-        shadow = title.copy()
-        shadow.fill((0, 0, 0, 110), special_flags=pygame.BLEND_RGBA_MULT)   # silhueta escura = sombra
+        # A sombra e sempre a mesma: guarda-se, senao era uma imagem NOVA em cada frame e nunca
+        # chegava a valer a pena misturar-la com o fundo (ver _worth_baking em ui/drawing.py).
+        shadow = self._title_shadow_cache.get(id(title))
+        if shadow is None:
+            shadow = title.copy()
+            shadow.fill((0, 0, 0, 110), special_flags=pygame.BLEND_RGBA_MULT)   # silhueta escura = sombra
+            self._title_shadow_cache = {id(title): (title, shadow)}
+            shadow = self._title_shadow_cache[id(title)][1]
+        else:
+            shadow = shadow[1]
         # O titulo, a sombra e o subtitulo estao sempre no mesmo sitio por cima do fundo (que nunca
         # muda): mistura-se cada um com o fundo uma vez e a partir dai copiam-se sem alfa.
         bg = getattr(self, "bg_surface", None)
