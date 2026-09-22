@@ -10,7 +10,7 @@
 #
 # CODIGO PRIVADO + RELEASES PUBLICAS (os amigos descarregam sem conta e nao veem o codigo)
 #   Por omissao a Release e criada nesta mesma repo. Para a criar noutra repo (publica, so com os executaveis):
-#     - Settings > Secrets and variables > Actions > separador Variables:  RELEASES_REPO = TEU-USER/lucky-sahurs-releases
+#     - Settings > Secrets and variables > Actions > separador Variables:  RELEASES_REPO = TEU-USER/lucky-verities-releases
 #     - separador Secrets:  RELEASES_TOKEN = um token com permissao "Contents: Read and write" nessa repo
 #   Sem estas duas definicoes, tudo funciona como antes (Release nesta repo).
 #

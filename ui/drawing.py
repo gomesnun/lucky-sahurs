@@ -90,9 +90,10 @@ def ease_out_cubic(t):
 # Medido no aparelho (ver _perf_blit_bench no main.py):
 #     opaco 0.006 ms | colorkey 0.045 ms | alfa 3.856 ms | alfa convertido 4.875 ms
 # Por isso, no Android, evita-se o alfa sempre que possivel e nunca se chama convert_alpha().
-# LUCKY_SAHURS_SLOW_ALPHA=1 liga este caminho no computador, para se poder ver como fica sem ter
-# de fazer um APK e instalar no telemovel.
-ALPHA_IS_SLOW = IS_ANDROID or bool(os.environ.get("LUCKY_SAHURS_SLOW_ALPHA"))
+# LUCKY_VERITIES_SLOW_ALPHA=1 liga este caminho no computador, para se poder ver como fica sem ter
+# de fazer um APK e instalar no telemovel (a antiga LUCKY_SAHURS_SLOW_ALPHA continua a funcionar).
+ALPHA_IS_SLOW = IS_ANDROID or bool(os.environ.get("LUCKY_VERITIES_SLOW_ALPHA")
+                                   or os.environ.get("LUCKY_SAHURS_SLOW_ALPHA"))
 COLORKEY = (255, 0, 254)        # cor que nao aparece no jogo, usada como "transparente"
 
 

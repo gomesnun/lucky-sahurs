@@ -2,7 +2,7 @@
 #
 # COMO CRIAR O APK
 #   python -m pip install --user buildozer cython
-#   buildozer android debug            -> bin/luckysahurs-<versao>-debug.apk
+#   buildozer android debug            -> bin/luckysahurs-<versao>-debug.apk (ver package.name)
 # A primeira vez descarrega o SDK/NDK do Android (alguns GB) e demora bastante; as seguintes sao rapidas.
 # Precisa de um JDK 17 (variavel JAVA_HOME) e, em Linux, de: git zip unzip autoconf libtool pkg-config.
 #
@@ -10,6 +10,9 @@
 
 [app]
 title = Lucky Verities
+# NAO mudar: o par package.domain + package.name e a identidade da app no Android
+# (io.github.gomesnun.luckysahurs). Se mudar, o telemovel trata o APK novo como outra
+# aplicacao: nao se atualiza por cima e os saves da app antiga ficam para tras.
 package.name = luckysahurs
 package.domain = io.github.gomesnun
 

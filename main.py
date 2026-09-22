@@ -96,8 +96,9 @@ from config import (AUTOSAVE_INTERVAL, FPS, GAME_TITLE, IS_ANDROID, SAVE_DIR, TO
 from core.game_state import GameState
 
 # Medicao de desempenho: no Android escreve os FPS no logcat de 2 em 2 segundos (e a unica forma de
-# medir no telemovel); no computador so com a variavel de ambiente LUCKY_SAHURS_PERF=1.
-PERF_LOG = IS_ANDROID or bool(os.environ.get("LUCKY_SAHURS_PERF"))
+# medir no telemovel); no computador so com a variavel de ambiente LUCKY_VERITIES_PERF=1
+# (a antiga LUCKY_SAHURS_PERF continua a funcionar).
+PERF_LOG = IS_ANDROID or bool(os.environ.get("LUCKY_VERITIES_PERF") or os.environ.get("LUCKY_SAHURS_PERF"))
 from i18n import set_language, tr
 from online.cloud import CloudMixin
 from storage import load_settings, migrate_legacy_save, save_settings
@@ -215,7 +216,7 @@ class Game(
         self.nav_mode = False           # True enquanto se registam botões de navegação (topo / laterais)
         self.clip_stack = []
         self.clock = pygame.time.Clock()
-        # Medicao de desempenho: LUCKY_SAHURS_PERF=1 faz o jogo escrever os FPS e o tempo de desenho.
+        # Medicao de desempenho: LUCKY_VERITIES_PERF=1 faz o jogo escrever os FPS e o tempo de desenho.
         # No Android isso sai no logcat ("adb logcat -s python"), que e a unica forma de medir no telemovel.
         self._perf_draw = 0.0
         self._perf_worst = 0.0      # o frame mais demorado da janela atual

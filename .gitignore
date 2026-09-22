@@ -1,5 +1,5 @@
 # ---- NUNCA enviar para o GitHub: dados pessoais de quem joga ----
-# Saves (savegame_slot1.json...), definicoes, ranking e o lucky_sahurs_session.json
+# Saves (savegame_slot1.json...), definicoes, ranking e o lucky_verities_session.json
 # (esse ultimo tem o token de login da conta). O projeto nao tem nenhum .json de codigo.
 *.json
 cloud_cache/

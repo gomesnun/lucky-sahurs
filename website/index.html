@@ -10,7 +10,7 @@
 <meta name="description" content="Lucky Verities — an idle collecting game about Verities: little round creatures with big personalities. Roll Verities across 11 rarity tiers, rebirth for permanent power, and climb the leaderboard. Free, open source, for Windows, macOS and Linux.">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Lucky Verities">
-<meta property="og:description" content="An idle pet-collecting game full of Italian-brainrot chaos. Roll, rebirth, repeat.">
+<meta property="og:description" content="An idle collecting game about Verities: little round creatures with big personalities. Roll, rebirth, repeat.">
 <meta property="og:image" content="https://gomesnun.github.io/lucky-verities/icons/verity.png">
 <meta name="twitter:card" content="summary">
 <link rel="icon" href="../icons/verity.png" type="image/png">
@@ -319,7 +319,7 @@
            alt="Verity, the Lucky Verities mascot">
       <h1 class="title">Lucky Verities</h1>
       <p class="tagline" data-i18n="hero.tagline">
-        An idle pet-collecting game built on pure Italian-brainrot chaos. Roll for pets from
+        An idle collecting game about Verities: little round creatures with big personalities. Roll for Verities from
         Common to Transcendent, stack income, rebirth for permanent power, and climb the leaderboard — solo, on any desktop.
       </p>
       <div class="cta-row">
@@ -687,14 +687,14 @@ var TIERS = [
 ];
 var TIER_INDEX = {}; TIERS.forEach(function(t,i){ TIER_INDEX[t.key] = i; });
 var PET_DEFS = [
-  ['comum','Trippi Troppi'], ['incomum','Bombombini Gusini'], ['raro','Frigo Camelo'],
-  ['epico','Chimpanzini Bananini'], ['lendario','Ballerina Cappuccina'], ['mitico','Bombardiro Crocodilo'],
-  ['exotico','Tralalero Tralala'], ['secreto','Saturno Saturnita'], ['divino','Tung Tung Tung Sahur'],
-  ['comum','Lirili Larila'], ['incomum','Cappuccino Assassino'], ['raro','Brr Brr Patapim'],
-  ['epico','Glorbo Fruttodrillo'], ['lendario','Trulimero Trulicina'], ['mitico','Brri Brri Bicus Dicus Bombicus'],
-  ['exotico','Orcalero Orcala'], ['secreto','Graipuss Medussi'], ['divino','La Vacca Saturno Saturnita'],
-  ['cosmico','Girafa Celestre'], ['transcendente','Dragon Cannelloni'],
-  ['cosmico','Tralaledon'], ['transcendente','Ganganzelli Trulala']
+  ['comum','Levity'], ['incomum','Humility'], ['raro','Amity'],
+  ['epico','Fidelity'], ['lendario','Audacity'], ['mitico','Nobility'],
+  ['exotico','Serendipity'], ['secreto','Obscurity'], ['divino','Divinity'],
+  ['comum','Gravity'], ['incomum','Vanity'], ['raro','Hostility'],
+  ['epico','Duplicity'], ['lendario','Ferocity'], ['mitico','Immortality'],
+  ['exotico','Ambiguity'], ['secreto','Anonymity'], ['divino','Sanctity'],
+  ['cosmico','Infinity'], ['transcendente','Eternity'],
+  ['cosmico','Singularity'], ['transcendente','Omnity']
 ];
 var SECOND_PET_SHARE = 1/3, SECOND_PET_INCOME_MULT = 1.5;
 var PETS = PET_DEFS.map(function(def){
@@ -753,7 +753,7 @@ var I18N = {
     'a11y.skip':'Skip to content',
     'nav.features':'Features','nav.pets':'Pets','nav.traits':'Traits','nav.progression':'Progression','nav.download':'Download',
     'hero.badge':'Free & open source',
-    'hero.tagline':"An idle pet-collecting game built on pure Italian-brainrot chaos. Roll for pets from Common to Transcendent, stack income, rebirth for permanent power, and climb the leaderboard — solo, on any desktop.",
+    'hero.tagline':"An idle collecting game about Verities: little round creatures with big personalities. Roll for Verities from Common to Transcendent, stack income, rebirth for permanent power, and climb the leaderboard — solo, on any desktop.",
     'hero.cta.download':'⬇ Download latest release','hero.cta.source':'★ View source on GitHub',
     'hero.hint':'Windows · macOS (Apple Silicon & Intel) · Linux — auto-detected above',
     'dl.primary':'⬇ Download latest release',
@@ -806,7 +806,7 @@ var I18N = {
     'a11y.skip':'Saltar para o conteúdo',
     'nav.features':'Funcionalidades','nav.pets':'Pets','nav.traits':'Atributos','nav.progression':'Progressão','nav.download':'Descarregar',
     'hero.badge':'Grátis e open source',
-    'hero.tagline':'Um jogo idle de coleção de pets em puro caos "Italian brainrot". Faz roll de pets do Comum ao Transcendente, acumula rendimento, renasce para poder permanente e sobe no ranking — sozinho, em qualquer computador.',
+    'hero.tagline':'Um jogo idle de coleção de Verities: bolinhas com muita personalidade. Faz roll de Verities do Comum ao Transcendente, acumula rendimento, renasce para poder permanente e sobe no ranking — sozinho, em qualquer computador.',
     'hero.cta.download':'⬇ Descarregar a última versão','hero.cta.source':'★ Ver código no GitHub',
     'hero.hint':'Windows · macOS (Apple Silicon e Intel) · Linux — detetado automaticamente acima',
     'dl.primary':'⬇ Descarregar a última versão',
