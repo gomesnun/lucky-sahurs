@@ -14,7 +14,7 @@ from theme import (
     GOLD_BORDER, GOOD, GREY, OUTLINE,
     PANEL, PANEL_LIGHT, PANEL_LIGHTER, PAUSED_RED, WHITE,
 )
-from ui.drawing import (bake, dim_overlay,
+from ui.drawing import (bake, bake_scene, dim_overlay,
     bar_fill_surface, draw_panel, draw_rainbow_border, draw_state_border,
     rainbow_glow_surface, rarity_glow,
 )
@@ -281,15 +281,32 @@ class GameScreenMixin:
             card_surf = self.render_pet_card(rarity, mutation, card_w, card_h, plates=plates)
             glow_color = tuple(rarity["color"]) if rarity["color"][2] > 60 or is_light(rarity["color"]) else (90, 90, 110)
             glow = rarity_glow((card_w, card_h), glow_color)
-            self.canvas.blit(glow, glow.get_rect(center=card_rect.center))
+            glow_rect = glow.get_rect(center=card_rect.center)
+            zoom = None
             if self.animations:
                 elapsed = time.time() - self.roll_anim_start
                 dur = 0.18
                 if elapsed < dur:
-                    s = 0.72 + 0.28 * (elapsed / dur)
+                    zoom = 0.72 + 0.28 * (elapsed / dur)      # o cartão cresce um instante ao sair um pet novo
+            if zoom is None:
+                # O brilho e o cartão são as duas maiores imagens com alfa do ecrã (juntos, ~34 ms por
+                # frame no telemóvel). Enquanto o pet não muda são sempre iguais: misturam-se uma vez
+                # com o fundo e passam a ser um blit opaco. Durante o crescimento não vale a pena
+                # (o tamanho muda a cada frame), e aí faz-se o desenho normal.
+                scene = bake_scene(getattr(self, "bg_surface", None), glow_rect,
+                                   (id(glow), id(card_surf), card_rect.center),
+                                   lambda flat: (flat.blit(glow, (0, 0)),
+                                                 flat.blit(card_surf, card_surf.get_rect(
+                                                     center=(glow_rect.width // 2, glow_rect.height // 2)))))
+                if scene is not None:
+                    self.canvas.blit(scene, glow_rect.topleft)
+                    card_surf = None
+            if card_surf is not None:
+                self.canvas.blit(glow, glow_rect)
+                if zoom is not None:
                     card_surf = pygame.transform.smoothscale(
-                        card_surf, (max(1, int(card_w * s)), max(1, int(card_h * s))))
-            self.canvas.blit(card_surf, card_surf.get_rect(center=card_rect.center))
+                        card_surf, (max(1, int(card_w * zoom)), max(1, int(card_h * zoom))))
+                self.canvas.blit(card_surf, card_surf.get_rect(center=card_rect.center))
         else:
             draw_panel(self.canvas, card_rect, PANEL_LIGHT, radius=12)
             txt = self.font_med.render(tr("Click ROLL to start!"), True, GREY)
@@ -328,7 +345,13 @@ class GameScreenMixin:
         roll_rect = pygame.Rect(center_x - 130, card_rect.bottom + 24, 260, 60)
         if bonus_kind:
             pulse = 0.6 + 0.4 * math.sin(time.time() * 6.0)
+            # O brilho pulsa: se a transparência mudasse a cada frame, cada mistura seria diferente e
+            # nenhuma serviria duas vezes. Arredondado a 8 degraus, repete-se - e aí pode ficar
+            # misturado com o fundo (um blit com alfa deste tamanho custava ~5 ms no telemóvel).
+            step = max(1, min(8, int(round(pulse * 8))))
+            pulse = step / 8.0
             glow_w, glow_h = roll_rect.width + 20, roll_rect.height + 20
+            glow_pos = (roll_rect.x - 10, roll_rect.y - 10)
             if bonus_kind == "rainbow":
                 glow = rainbow_glow_surface(glow_w, glow_h, 20)
                 glow.set_alpha(int(120 * pulse))
@@ -336,7 +359,11 @@ class GameScreenMixin:
                 glow_color, glow_alpha = (DIAMOND_BORDER, 130) if bonus_kind == "diamond" else (GOLD_BORDER, 90)
                 glow = pygame.Surface((glow_w, glow_h), pygame.SRCALPHA)
                 pygame.draw.rect(glow, (*glow_color, int(glow_alpha * pulse)), glow.get_rect(), border_radius=20)
-            self.canvas.blit(glow, (roll_rect.x - 10, roll_rect.y - 10))
+            scene = bake_scene(getattr(self, "bg_surface", None),
+                               pygame.Rect(glow_pos, (glow_w, glow_h)),
+                               ("roll_glow", bonus_kind, step, roll_rect.topleft),
+                               lambda flat: flat.blit(glow, (0, 0)))
+            self.canvas.blit(scene if scene is not None else glow, glow_pos)
         # sorte total dos bónus ativos (Golden + Diamond + Rainbow somados), à direita da palavra ROLL
         luck_total, luck_top = self.active_roll_luck()
         luck_parts = None                     # (etiqueta SORTE, número ×N, x do centro do bloco)

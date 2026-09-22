@@ -383,6 +383,43 @@ def bake_on(surf, backdrop, topleft):
     return _bake_remember(key, surf, flat)
 
 
+def bake_scene(backdrop, rect, key, paint):
+    """Um conjunto de imagens com alfa (brilho + cartao, por exemplo) misturado de uma vez com o
+    fundo fixo do jogo e guardado em cache: depois e um unico blit opaco.
+
+    O cartao do ultimo pet e o brilho por tras dele sao as duas maiores imagens com alfa do ecra
+    principal - juntos custavam ~34 ms por frame no telemovel. Enquanto o pet nao muda, a mistura
+    e sempre a mesma, por isso faz-se uma vez.
+
+    'paint(flat)' desenha as imagens sobre uma copia do fundo. Devolve None quando nao ha nada a
+    ganhar (no computador, ou quando o sitio pedido sai fora do fundo): nesse caso quem chamou
+    desenha como sempre.
+    """
+    if not ALPHA_IS_SLOW or backdrop is None:
+        return None
+    rect = pygame.Rect(rect)
+    if not backdrop.get_rect().contains(rect):
+        return None
+    now = time.monotonic()
+    full_key = (key, id(backdrop), rect.topleft, rect.size)
+    hit = _BAKE_CACHE.get(full_key)
+    if hit is not None:
+        _BAKE_CACHE[full_key] = (hit[0], hit[1], now)
+        _BAKE_CACHE.move_to_end(full_key)
+        _bake_reclaim(now)
+        return hit[1]
+    _bake_reclaim(now)
+    if not _worth_baking(full_key):
+        return None
+    flat = backdrop.subsurface(rect).copy()
+    paint(flat)
+    try:
+        flat = flat.convert()
+    except pygame.error:
+        pass
+    return _bake_remember(full_key, backdrop, flat)
+
+
 def blit_smooth_y(canvas, key, build, x, y, near_color=None):
     """Desenha em (x, y) um sprite ESTÁTICO com y fracionário. 'key' identifica o sprite (para a cache) e
     'build()' cria a Surface na primeira vez que for precisa.
