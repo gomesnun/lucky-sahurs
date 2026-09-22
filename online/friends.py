@@ -65,6 +65,7 @@ class FriendsMixin:
         self.refresh_friends()
 
     def close_friends(self):
+        self.close_chat()
         self.friends_open = False
         self.avatar_picker = False
         self.friend_view = None
@@ -219,7 +220,17 @@ class FriendsMixin:
                 if prof:
                     entry["avatar_pet"] = prof.get("avatar_pet")
                     entry["avatar_mut"] = prof.get("avatar_mut", "normal")
-            return {"friends": friends, "incoming": incoming, "outgoing": outgoing}
+            # última mensagem de cada conversa (um GET por amigo, só para os primeiros): é o que
+            # acende o ponto vermelho na lista sem ter de ler as mensagens todas
+            chats = {}
+            for entry in friends[:FRIEND_PROFILE_FETCH]:
+                try:
+                    summary = client.get_chat_summary(entry["uid"])
+                except Exception:
+                    summary = None
+                if summary and summary.get("last_at"):
+                    chats[entry["uid"]] = summary["last_at"]
+            return {"friends": friends, "incoming": incoming, "outgoing": outgoing, "chats": chats}
 
         def ok(res):
             self.friends_loading = False
@@ -227,6 +238,7 @@ class FriendsMixin:
             self.friends_list = res["friends"]
             self.friends_incoming = res["incoming"]
             self.friends_outgoing = res["outgoing"]
+            self.chat_last.update(res.get("chats") or {})
             self.friends_badge_at = time.time() + FRIEND_BADGE_POLL
 
         def err(e):
@@ -393,5 +405,6 @@ class FriendsMixin:
         self.worker.run(lambda: self.client.get_public_stats(uid), ok, err)
 
     def close_friend_view(self):
+        self.close_chat()
         self.friend_view = None
         self.friends_scroll = 0.0

@@ -62,6 +62,10 @@ class FriendsPanelMixin:
             self.draw_avatar_picker(pygame.Rect(rect.x + 22, body_top, panel_w - 44,
                                                 rect.bottom - 22 - body_top), mouse_pos)
             return
+        if self.chat_uid:
+            self.draw_chat(pygame.Rect(rect.x + 22, body_top, panel_w - 44,
+                                       rect.bottom - 22 - body_top), mouse_pos)
+            return
         if self.friend_view:
             self.draw_friend_details(pygame.Rect(rect.x + 22, body_top, panel_w - 44,
                                                  rect.bottom - 22 - body_top), mouse_pos)
@@ -168,6 +172,10 @@ class FriendsPanelMixin:
         pygame.draw.rect(self.canvas, OUTLINE, rect, width=2, border_radius=12)
         img = self.friend_avatar(entry, AVATAR_ROW)
         self.canvas.blit(img, img.get_rect(midleft=(rect.x + 10, rect.centery)))
+        if self.chat_unread(entry.get("uid")):
+            # ponto vermelho: mensagem nova que ainda não foi vista
+            pygame.draw.circle(self.canvas, BAD, (rect.x + 10 + AVATAR_ROW - 2, rect.centery - AVATAR_ROW // 2 + 4), 6)
+            pygame.draw.circle(self.canvas, PANEL, (rect.x + 10 + AVATAR_ROW - 2, rect.centery - AVATAR_ROW // 2 + 4), 6, width=2)
 
         bx = rect.right - 10
         busy = self.friends_action == entry.get("uid")
@@ -222,7 +230,8 @@ class FriendsPanelMixin:
             def draw(rrect, entry=entry):
                 self.draw_friend_card(
                     rrect, entry, mouse_pos,
-                    buttons=[(tr("Stats"), PANEL_LIGHTER, lambda e=entry: self.open_friend(e["uid"]))],
+                    buttons=[(tr("Chat"), ACCENT, lambda e=entry: self.open_chat(e["uid"], e["username"])),
+                             (tr("Stats"), PANEL_LIGHTER, lambda e=entry: self.open_friend(e["uid"]))],
                     on_click=lambda e=entry: self.open_friend(e["uid"]))
             rows.append((ROW_H, draw))
         self.draw_friends_rows(rect, rows, mouse_pos)
@@ -343,6 +352,9 @@ class FriendsPanelMixin:
 
         self.button(pygame.Rect(rect.x, rect.bottom - 40, 140, 40), tr("Back"), self.font_small_b, mouse_pos,
                     PANEL_LIGHT, PANEL_LIGHTER, WHITE, callback=self.close_friend_view, radius=10)
+        self.button(pygame.Rect(rect.centerx - 75, rect.bottom - 40, 150, 40), tr("Message"),
+                    self.font_small_b, mouse_pos, ACCENT, ACCENT_HOVER, BLACK,
+                    callback=lambda: self.open_chat(entry["uid"], entry["username"]), radius=10)
         self.button(pygame.Rect(rect.right - 170, rect.bottom - 40, 170, 40), tr("Remove friend"),
                     self.font_small_b, mouse_pos, PANEL_LIGHT, BAD, WHITE,
                     callback=lambda: self.remove_friend(entry["uid"]), radius=10,

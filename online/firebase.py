@@ -10,6 +10,7 @@ import re
 import threading
 import time
 import traceback
+import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -247,6 +248,11 @@ def fs_decode(value):
 
 def fs_fields(doc):
     return {k: fs_decode(v) for k, v in (doc.get("fields") or {}).items()}
+
+
+def new_doc_id():
+    """Id novo para um documento (o mesmo formato que o Firestore usa: 20 caracteres)."""
+    return uuid.uuid4().hex[:20]
 
 
 def feedback_from_doc(doc):
@@ -807,6 +813,68 @@ class FirebaseClient:
             {"delete": "%s/users/%s/friends/%s" % (self.docs_root, friend_uid, uid)},
         ]}
         self._fs("POST", ":commit", body)
+
+    # ---------------------------------------------------------------- chat entre amigos
+    def chat_id(self, other_uid):
+        """Id da conversa: os dois uid por ordem alfabética, separados por "__". Assim os dois lados
+        chegam sempre ao mesmo sítio e as regras conseguem confirmar quem lá pode entrar."""
+        uid = self._need_uid()
+        a, b = sorted([str(uid), str(other_uid)])
+        return "%s__%s" % (a, b)
+
+    def send_message(self, other_uid, text):
+        cid = self.chat_id(other_uid)
+        uid = self._need_uid()
+        name = "%s/chats/%s/messages" % (self.docs_root, cid)
+        body = {"writes": [
+            {"update": {"name": "%s/%s" % (name, new_doc_id()), "fields": {
+                "from_uid": fs_encode(uid),
+                "to_uid": fs_encode(str(other_uid)),
+                "text": fs_encode(str(text)),
+            }},
+             "updateTransforms": [{"fieldPath": "sent_at", "setToServerValue": "REQUEST_TIME"}]},
+            # resumo da conversa: é só isto que se lê para saber se há mensagem por ver
+            # (senão era preciso ler as mensagens de todos os amigos)
+            {"update": {"name": "%s/chats/%s" % (self.docs_root, cid), "fields": {
+                "last_from": fs_encode(uid),
+            }},
+             "updateTransforms": [{"fieldPath": "last_at", "setToServerValue": "REQUEST_TIME"}]},
+        ]}
+        self._fs("POST", ":commit", body)
+
+    def get_chat_summary(self, other_uid):
+        """{"last_at", "last_from"} da conversa com este amigo, ou None se nunca falaram."""
+        cid = self.chat_id(other_uid)
+        try:
+            doc = self._fs("GET", "/chats/%s" % cid)
+        except OnlineError as e:
+            if e.code == "not_found":
+                return None
+            raise
+        f = fs_fields(doc)
+        return {"last_at": parse_timestamp(f.get("last_at")), "last_from": str(f.get("last_from") or "")}
+
+    def list_messages(self, other_uid, limit=50):
+        """As mensagens mais recentes desta conversa, da mais antiga para a mais nova."""
+        cid = self.chat_id(other_uid)
+        query = {
+            "from": [{"collectionId": "messages"}],
+            "orderBy": [{"field": {"fieldPath": "sent_at"}, "direction": "DESCENDING"}],
+            "limit": int(limit),
+        }
+        res = self._fs("POST", "/chats/%s:runQuery" % cid, {"structuredQuery": query})
+        out = []
+        for item in res if isinstance(res, list) else []:
+            doc = item.get("document") if isinstance(item, dict) else None
+            if not doc:
+                continue
+            f = fs_fields(doc)
+            out.append({"id": str(doc.get("name", "")).rsplit("/", 1)[-1],
+                        "from_uid": str(f.get("from_uid") or ""),
+                        "text": str(f.get("text") or ""),
+                        "sent_at": parse_timestamp(f.get("sent_at"))})
+        out.reverse()
+        return out
 
     # ---------------------------------------------------------------- feedback (um por conta)
     def publish_feedback(self, text):

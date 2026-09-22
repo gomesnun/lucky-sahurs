@@ -565,4 +565,11 @@ PT = {
     "%d h ago": "há %d h",
     "%d d ago": "há %d d",
 
+    # ---- chat entre amigos ----
+    "Chat": "Falar",
+    "Message": "Mensagem",
+    "Send": "Enviar",
+    "Write a message...": "Escreve uma mensagem...",
+    "No messages yet - say hi!": "Ainda não há mensagens - diz olá!",
+
 }

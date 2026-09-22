@@ -101,6 +101,7 @@ from core.game_state import GameState
 PERF_LOG = IS_ANDROID or bool(os.environ.get("LUCKY_VERITIES_PERF") or os.environ.get("LUCKY_SAHURS_PERF"))
 from i18n import set_language, tr
 from online.cloud import CloudMixin
+from online.chat import ChatMixin
 from online.feedback import FeedbackMixin
 from online.friends import FriendsMixin
 from storage import load_settings, migrate_legacy_save, save_settings
@@ -125,6 +126,7 @@ from ui.rebirth_panel import RebirthPanelMixin
 from ui.title_saves import TitleSavesMixin
 from ui.traits_panel import TraitsPanelMixin
 from ui.update_panel import UpdatePanelMixin
+from ui.chat_panel import ChatPanelMixin
 from ui.feedback_panel import FeedbackPanelMixin
 from ui.updatelog_panel import UpdateLogPanelMixin
 from ui.upgrades_panel import UpgradesPanelMixin
@@ -151,6 +153,8 @@ class Game(
     LeaderboardPanelMixin,  # ecrã da leaderboard
     FriendsMixin,           # amigos: pedidos, lista e perfis (lógica)
     FriendsPanelMixin,      # ecrã de Amigos
+    ChatMixin,              # chat entre amigos (lógica)
+    ChatPanelMixin,         # ecrã da conversa
     FeedbackMixin,          # feedback: o recado de cada conta (lógica)
     FeedbackPanelMixin,     # página de Feedback
     CreditsPanelMixin,      # página de Credits (sons e música)
@@ -442,6 +446,9 @@ class Game(
             self.friends_scroll = max(0.0, min(self.friends_max_scroll, value))
         elif key == "feedback":
             self.feedback_scroll = max(0.0, min(self.feedback_max_scroll, value))
+        elif key == "chat":
+            # a barra do chat conta ao contrario: 0 = fim da conversa
+            self.chat_scroll = max(0.0, min(self.chat_max_scroll, self.chat_max_scroll - value))
 
     def start_scrollbar_drag(self, canvas_pos):
         """Clique dentro da barra de uma scrollbar visível -> começa a arrastar. Devolve True se apanhou alguma."""
@@ -739,7 +746,8 @@ class Game(
                     self.skip_cutscene()          # qualquer tecla salta a cutscene (F11 continua a dar fullscreen)
                 elif self.screen_mode == "account" and self.handle_account_key(event):
                     pass
-                elif self.handle_friends_key(event) or self.handle_feedback_key(event):
+                elif (self.handle_chat_key(event) or self.handle_friends_key(event)
+                      or self.handle_feedback_key(event)):
                     pass
                 elif event.key == pygame.K_F11 or (
                         event.key == pygame.K_f and (event.mod & (pygame.KMOD_META | pygame.KMOD_CTRL))):
@@ -790,6 +798,8 @@ class Game(
             elif event.type == pygame.TEXTINPUT:
                 if self.friends_open and self.friends_focus and not self.update_modal_active():
                     self.friends_search.add(event.text)
+                elif self.chat_uid and self.chat_focus and not self.update_modal_active():
+                    self.chat_field.add(event.text)
                 elif self.feedback_open and self.feedback_focus and not self.update_modal_active():
                     self.feedback_field.add(event.text)
                 elif self.screen_mode == "account" and self.acc_focus and not self.update_modal_active():
@@ -882,6 +892,11 @@ class Game(
                 return True
             return False
         if self.friends_open:
+            if self.chat_uid:
+                if self.chat_list_rect.collidepoint(pos):
+                    self.chat_scroll = max(0.0, min(self.chat_max_scroll, self.chat_scroll - step))
+                    return True
+                return False
             # a página de Amigos tem lista própria (e é a única coisa clicável no ecrã)
             if self.friends_list_rect.collidepoint(pos) or self.avatar_picker:
                 self.friends_scroll = max(0.0, min(self.friends_max_scroll, self.friends_scroll + step))
