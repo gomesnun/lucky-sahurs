@@ -18,6 +18,8 @@ UPDATE_LOG = (
         "Your saves come with you - the first time you open it, everything is copied over from the "
         "old Lucky Sahurs folder.",
         "New cutscenes when a rare Verity shows up, and the Options page is now split into tabs.",
+        "On the phone this installs as a new app next to the old one (Android needs it that way for the "
+        "rename): log in to your account to bring your save across, then you can remove the old icon.",
     ]),
     ("v2.0.0", "2026-09-22", [
         "The Android build updates itself now: when a new version comes out the game downloads it and "

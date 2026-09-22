@@ -2,7 +2,7 @@
 #
 # COMO CRIAR O APK
 #   python -m pip install --user buildozer cython
-#   buildozer android debug            -> bin/luckysahurs-<versao>-debug.apk (ver package.name)
+#   buildozer android debug            -> bin/luckyverities-<versao>-debug.apk (ver package.name)
 # A primeira vez descarrega o SDK/NDK do Android (alguns GB) e demora bastante; as seguintes sao rapidas.
 # Precisa de um JDK 17 (variavel JAVA_HOME) e, em Linux, de: git zip unzip autoconf libtool pkg-config.
 #
@@ -10,10 +10,12 @@
 
 [app]
 title = Lucky Verities
-# NAO mudar: o par package.domain + package.name e a identidade da app no Android
-# (io.github.gomesnun.luckysahurs). Se mudar, o telemovel trata o APK novo como outra
-# aplicacao: nao se atualiza por cima e os saves da app antiga ficam para tras.
-package.name = luckysahurs
+# O par package.domain + package.name e a identidade da app no Android
+# (io.github.gomesnun.luckyverities). Mudou no rebrand: para o telemovel, esta e uma app NOVA -
+# fica ao lado do Lucky Sahurs em vez de o substituir, e como os saves do Android vivem na pasta
+# privada da app antiga (que o sistema nao deixa esta ler), quem jogava no telemovel recomeca
+# ou recupera o save pela conta online. Depois disto, NAO voltar a mudar.
+package.name = luckyverities
 package.domain = io.github.gomesnun
 
 source.dir = .
