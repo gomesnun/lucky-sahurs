@@ -3,11 +3,11 @@
 <p align="center">
   <b>An idle collecting game about Verities: little round creatures with big personalities.</b><br>
   Roll for pets from <i>Common</i> to <i>Transcendent</i>, stack income, rebirth for permanent power,
-  and climb the global leaderboard — solo, on any desktop.
+  add friends and climb the global leaderboard — on desktop and on Android.
 </p>
 
 <p align="center">
-  <a href="https://gomesnun.github.io/lucky-verities/"><b>🌐 Website &amp; live roll simulator</b></a> ·
+  <a href="https://gomesnun.github.io/lucky-verities/website/"><b>🌐 Website &amp; live roll simulator</b></a> ·
   <a href="https://github.com/gomesnun/lucky-verities/releases/latest"><b>⬇ Download latest release</b></a> ·
   <a href="LEIA-ME.md"><b>🇵🇹 Versão portuguesa</b></a>
 </p>
@@ -38,6 +38,8 @@ Press **ROLL**. Get a pet. The rare ones pay better. The rarest one is a **1-in-
 | **Daily missions** | rotating objectives, offline earnings while you sleep |
 | **Cloud saves** | 3 slots, Firebase-backed, optional account |
 | **Leaderboard** | global ranking |
+| **Friends** | search a player, send a request, follow their stats |
+| **Profile photo** | any Verity you own, Golden and Diamond ring included |
 | **Languages** | English + Português |
 
 Everything runs offline too — the account is optional.
