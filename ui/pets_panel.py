@@ -338,7 +338,7 @@ class PetsPanelMixin:
         gap = 8
         cols = 3
         card_w = (rect.width - ipad * 2 - gap * (cols - 1) - 6) // cols
-        card_h = 178
+        card_h = 196          # um pouco mais alto (era 178) para a imagem do verity caber por cima do nome
         top_y = content_rect.top + 6 - scroll
 
         if not entries:

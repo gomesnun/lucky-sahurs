@@ -4,7 +4,7 @@ import math
 import time
 import pygame
 
-from config import FULLSCREEN_HINT, GAME_TITLE, SAVE_SLOTS, VERSION, VIRTUAL_H
+from config import FULLSCREEN_HINT, GAME_TITLE, IS_ANDROID, SAVE_SLOTS, VERSION, VIRTUAL_H
 from core.formatting import format_number, format_playtime
 from core.game_state import GameState
 from core.offline import offline_message
@@ -81,6 +81,7 @@ class TitleSavesMixin:
 
     def go_to_menu(self):
         self.state.save()
+        self.release_session()
         self.state = GameState()
         self.reset_ui()
         self.options_open = False
@@ -92,13 +93,14 @@ class TitleSavesMixin:
         cx = self.vw // 2
         t = time.time()
 
-        # fila de cartõezinhos das raridades a "flutuar" por baixo do título
+        # fila de cartõezinhos das raridades a "flutuar" por baixo do título (com o 1.º verity de cada raridade)
         tier_pets = [RARITIES[j] for j in TIER_FIRST_PET]      # uma carta por raridade
         n = len(tier_pets)
         size, gap = 64, 16
         total = n * size + (n - 1) * gap
         x0 = cx - total // 2
         def build_card(r=None):
+            # só a cor da raridade (sem a arte do pet, para não dar spoiler de pets no ecrã inicial)
             card = pygame.Surface((size, size), pygame.SRCALPHA)
             draw_rarity_bg(card, pygame.Rect(0, 0, size, size), r, radius=10)
             pygame.draw.rect(card, OUTLINE, card.get_rect(), width=BORDER_W_SMALL, border_radius=10)
@@ -154,22 +156,22 @@ class TitleSavesMixin:
                     callback=self.toggle_update_log, radius=10, icon="updatelog")
         self.nav_mode = False
 
-        foot = self.font_small.render(tr("%s   ·   %s: fullscreen / windowed", VERSION, FULLSCREEN_HINT),
-                                      True, GREY_DIM)
+        rodape = VERSION if IS_ANDROID else tr("%s   ·   %s: fullscreen / windowed", VERSION, FULLSCREEN_HINT)
+        foot = self.font_small.render(rodape, True, GREY_DIM)
         self.canvas.blit(foot, foot.get_rect(center=(cx, VIRTUAL_H - 20)))
 
     def draw_mascot(self, cx, ground_y, size=230):
-        """Tung Tung Tung Sahur (icons/tung.png) no menu principal, com os pés em (cx, ground_y).
-        Balança-se de um lado para o outro e "respira" (cresce um pouco) sempre com o pivô nos pés.
+        """O smiley do Verity (icons/verity.png) no menu principal, com a base em (cx, ground_y).
+        Balança-se de um lado para o outro e "respira" (cresce um pouco) sempre com o pivô na base.
         Tudo isto é feito com um único rotozoom (que interpola os píxeis), por isso o movimento é
         contínuo, sem saltinhos. Com as animações desligadas fica quieto. Sem o ficheiro, não aparece."""
-        img = load_icon("tung", size)
+        img = load_icon("verity", size)
         if img is None:
             return
         cache = getattr(self, "_mascot_pad", None)
         if cache is None or cache[0] is not img:
-            # superfície com o dobro da altura: o Tung na metade de cima, por isso o CENTRO dela (que é
-            # o pivô da rotação / do zoom) fica exatamente nos pés
+            # superfície com o dobro da altura: o smiley na metade de cima, por isso o CENTRO dela (que é
+            # o pivô da rotação / do zoom) fica exatamente na base
             padded = pygame.Surface((size, size * 2), pygame.SRCALPHA)
             padded.blit(img, (0, 0))
             cache = (img, padded)
@@ -179,7 +181,7 @@ class TitleSavesMixin:
         angle = math.sin(t * 1.3) * 3.5 if self.animations else 0.0
         scale = 1.0 + 0.025 * math.sin(t * 2.0) if self.animations else 1.0
         # sombra no chão (acompanha o "respirar")
-        shadow = pygame.Surface((int(150 * scale), 26), pygame.SRCALPHA)
+        shadow = pygame.Surface((int(size * 0.66 * scale), 26), pygame.SRCALPHA)
         pygame.draw.ellipse(shadow, (0, 0, 0, 55), shadow.get_rect())
         self.canvas.blit(shadow, shadow.get_rect(center=(cx, ground_y - 2)))
         frame = pygame.transform.rotozoom(padded, angle, scale) if self.animations else padded

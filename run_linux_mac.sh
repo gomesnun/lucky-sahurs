@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lucky Sahurs - jogar no Linux ou no macOS sem criar executavel (usa o Python).
+# Lucky Verities - jogar no Linux ou no macOS sem criar executavel (usa o Python).
 # Na 1a vez instala o pygame-ce num ambiente virtual (.venv) dentro desta pasta; nas seguintes abre logo.
 cd "$(dirname "$0")"
 

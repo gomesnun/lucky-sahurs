@@ -25,33 +25,35 @@ RARITY_TIERS = [
     {"key": "transcendente", "name": "Transcendent", "color": (255, 226, 120), "color2": (120, 235, 255), "text": BLACK, "one_in": 500000000000, "income": 90000000},
 ]
 
+# Os nomes dos verities NÃO se traduzem (nunca passam por tr()) e cada um tem a sua imagem em
+# icons/pets/<nome em minúsculas>.png (ver ui/icons.py: load_pet_image).
 # Lista PLANA dos pets. ATENÇÃO: os saves guardam o ÍNDICE do pet nesta lista (chaves
 # "indice_mutacao" e o equipamento), por isso NUNCA reordenes nem removas pets - só acrescenta no fim.
 PET_DEFS = [
-    ("comum", "Trippi Troppi"),
-    ("incomum", "Bombombini Gusini"),
-    ("raro", "Frigo Camelo"),
-    ("epico", "Chimpanzini Bananini"),
-    ("lendario", "Ballerina Cappuccina"),
-    ("mitico", "Bombardiro Crocodilo"),
-    ("exotico", "Tralalero Tralala"),
-    ("secreto", "Saturno Saturnita"),
-    ("divino", "Tung Tung Tung Sahur"),
+    ("comum", "Levity"),
+    ("incomum", "Humility"),
+    ("raro", "Amity"),
+    ("epico", "Fidelity"),
+    ("lendario", "Audacity"),
+    ("mitico", "Nobility"),
+    ("exotico", "Serendipity"),
+    ("secreto", "Obscurity"),
+    ("divino", "Divinity"),
     # 2.º pet de cada raridade
-    ("comum", "Lirili Larila"),
-    ("incomum", "Cappuccino Assassino"),
-    ("raro", "Brr Brr Patapim"),
-    ("epico", "Glorbo Fruttodrillo"),
-    ("lendario", "Trulimero Trulicina"),
-    ("mitico", "Brri Brri Bicus Dicus Bombicus"),
-    ("exotico", "Orcalero Orcala"),
-    ("secreto", "Graipuss Medussi"),
-    ("divino", "La Vacca Saturno Saturnita"),
+    ("comum", "Gravity"),
+    ("incomum", "Vanity"),
+    ("raro", "Hostility"),
+    ("epico", "Duplicity"),
+    ("lendario", "Ferocity"),
+    ("mitico", "Immortality"),
+    ("exotico", "Ambiguity"),
+    ("secreto", "Anonymity"),
+    ("divino", "Sanctity"),
     # raridades novas: Cosmic e Transcendent têm 2 pets cada
-    ("cosmico", "Girafa Celestre"),
-    ("transcendente", "Dragon Cannelloni"),
-    ("cosmico", "Tralaledon"),          # 2.º Cosmic (acrescentado no fim para não mexer nos índices dos saves)
-    ("transcendente", "Ganganzelli Trulala"),   # 2.º Transcendent (idem: no fim, para não mexer nos índices dos saves)
+    ("cosmico", "Infinity"),
+    ("transcendente", "Eternity"),
+    ("cosmico", "Singularity"),          # 2.º Cosmic (acrescentado no fim para não mexer nos índices dos saves)
+    ("transcendente", "Omnity"),   # 2.º Transcendent (idem: no fim, para não mexer nos índices dos saves)
 ]
 
 TIER_INDEX = {_t["key"]: _i for _i, _t in enumerate(RARITY_TIERS)}

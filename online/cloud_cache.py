@@ -4,6 +4,7 @@ import json
 import os
 import re
 import time
+import uuid
 
 from config import SAVE_DIR
 from i18n import tr
@@ -12,9 +13,9 @@ from online.firebase import (
 )
 
 
-SESSION_PATH = os.path.join(SAVE_DIR, "lucky_sahurs_session.json")
+SESSION_PATH = os.path.join(SAVE_DIR, "lucky_verities_session.json")
 CACHE_DIR = os.path.join(SAVE_DIR, "cloud_cache")
-LEADERBOARD_CACHE_PATH = os.path.join(SAVE_DIR, "lucky_sahurs_leaderboard.json")
+LEADERBOARD_CACHE_PATH = os.path.join(SAVE_DIR, "lucky_verities_leaderboard.json")
 
 
 # ---- sessão (para não teres de iniciar sessão de cada vez que abres o jogo) ----
@@ -46,6 +47,19 @@ def clear_session():
             os.remove(SESSION_PATH)
     except OSError:
         pass
+
+
+# ---- nome deste PROCESSO (para o "uma conta, um jogo de cada vez") ----
+INSTALL_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+
+
+def install_id():
+    """Identificador NOVO a cada arranque do jogo (não fica guardado em disco). Assim, dois .exe
+    abertos ao mesmo tempo - mesmo no mesmo PC - contam sempre como dispositivos diferentes, e um
+    bloqueia mesmo o outro. Fechar o jogo normalmente larga logo a marca (ver release_session), por
+    isso reabrir a seguir no mesmo PC continua instantâneo - só um crash é que obriga a esperar os
+    SESSION_STALE segundos, tal como acontecia antes."""
+    return uuid.uuid4().hex
 
 
 # ---- cache local dos saves da conta (o jogo grava aqui de 10 em 10 s e sincroniza com a cloud) ----

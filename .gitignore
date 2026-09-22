@@ -15,3 +15,7 @@ build/
 dist/
 .venv/
 *.exe
+
+# Android (buildozer)
+.buildozer/
+bin/

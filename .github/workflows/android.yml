@@ -1,0 +1,92 @@
+# Cria o APK do Lucky Verities (Android, landscape) nos servidores do GitHub.
+#
+#   - "Run workflow" (separador Actions)  -> o APK fica em "Artifacts" no fim da execucao.
+#   - "git push" de uma tag vX.Y.Z        -> alem disso, o APK e anexado a Release dessa tag.
+#
+# A 1a execucao demora ~40-60 min (compila o Python e o pygame-ce para ARM); as seguintes usam a cache.
+name: Build Android APK
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-java@v4
+        with:                     # o Gradle do python-for-android precisa do JDK 17
+          distribution: temurin
+          java-version: "17"
+
+      - name: Instalar as dependencias do buildozer
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            git zip unzip autoconf libtool libtool-bin libltdl-dev pkg-config \
+            zlib1g-dev libncurses-dev libtinfo6 cmake libffi-dev libssl-dev ccache
+          python -m pip install --upgrade pip
+          python -m pip install buildozer cython
+
+      # O SDK/NDK e os recipes compilados sao alguns GB: sem cache cada build volta a descarregar tudo.
+      - name: Cache do SDK / NDK / p4a
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer
+            .buildozer
+          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec', 'android/p4a-recipes/**') }}
+          restore-keys: buildozer-${{ runner.os }}-
+
+      - name: Escrever a versao no jogo (so nas tags)
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* && "$GITHUB_REF_NAME" =~ ^v[0-9]+(\.[0-9]+){0,2}$ ]]; then
+            printf 'BUILD_VERSION = "%s"\n' "$GITHUB_REF_NAME" > build_version.py
+            sed -i "s/^version = .*/version = ${GITHUB_REF_NAME#v}/" buildozer.spec
+          fi
+
+      # A cache guarda o pygame ja compilado: se a recipe mudar, e preciso deita-lo fora
+      # ou o build reaproveita o .so antigo e a correcao nunca chega ao APK.
+      - name: Recompilar o pygame se a recipe mudou
+        shell: bash
+        run: |
+          H=$(cat <(find android/p4a-recipes -type f -exec sha256sum {} + | sort) .github/workflows/android.yml | sha256sum | cut -d" " -f1)
+          M=.buildozer/p4a-recipes.hash
+          if [ "$(cat "$M" 2>/dev/null)" != "$H" ]; then
+            echo "Recipes mudaram: a apagar o pygame compilado."
+            rm -rf .buildozer/android/platform/build-*/build/other_builds/pygame*
+            rm -rf .buildozer/android/platform/build-*/build/python-installs/*/*/pygame*
+            rm -rf .buildozer/android/platform/build-*/packages/pygame
+            # sem apagar a dist, o p4a limita-se a reempacotar o que ja tinha
+            rm -rf .buildozer/android/platform/build-*/dists
+            mkdir -p .buildozer && printf '%s' "$H" > "$M"
+          fi
+
+      - name: Criar o APK
+        run: buildozer android debug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Lucky-Verities-Android.apk
+          path: bin/*.apk
+          if-no-files-found: error
+
+      - name: Anexar a Release (so nas tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK="$(ls bin/*.apk | head -1)"
+          cp "$APK" "Lucky-Verities-Android.apk"
+          gh release upload "$GITHUB_REF_NAME" "Lucky-Verities-Android.apk" --clobber

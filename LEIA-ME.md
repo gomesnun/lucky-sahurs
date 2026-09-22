@@ -1,4 +1,4 @@
-# Lucky Sahurs
+# Lucky Verities
 
 Jogo feito em Python + pygame. Funciona em **Windows, Linux e macOS**.
 
@@ -17,9 +17,9 @@ O PyInstaller só cria o executável do sistema onde corre — não dá para faz
 
 | Sistema | Como | Resultado |
 |---|---|---|
-| Windows | duplo clique em `build_exe.bat` | `dist\Lucky Sahurs.exe` (com o ícone do Tung) |
-| macOS   | `./build_linux_mac.sh` | `dist/Lucky Sahurs.app` (com o ícone do Tung) |
-| Linux   | `./build_linux_mac.sh` | `dist/Lucky Sahurs` |
+| Windows | duplo clique em `build_exe.bat` | `dist\Lucky Verities.exe` (com o ícone do Verity) |
+| macOS   | `./build_linux_mac.sh` | `dist/Lucky Verities.app` (com o ícone do Verity) |
+| Linux   | `./build_linux_mac.sh` | `dist/Lucky Verities` |
 
 macOS: ao abrir uma app não assinada, o sistema pode avisar que o programador não é verificado
 (botão direito na app → Abrir). Uma app feita num Mac Apple Silicon pode não abrir em Macs Intel (e vice-versa);
@@ -30,7 +30,7 @@ nesse caso o amigo usa `./run_linux_mac.sh`.
 O ficheiro `.github/workflows/build.yml` cria os executáveis todos sozinho, nos servidores do GitHub:
 
 1. Envia esta pasta para um repositório **público** do GitHub (com a pasta `.github` e o `.gitignore`).
-2. Cria uma versão: `git tag v1.0.0` e `git push origin v1.0.0` (ou GitHub → Releases → Draft a new release).
+2. Cria uma versão: `git tag v2.0.0` e `git push origin v2.0.0` (ou GitHub → Releases → Draft a new release).
 3. Em 5-10 minutos aparecem na página **Releases** os ficheiros para Windows (`.exe`), Linux (`.tar.gz`) e macOS (`.zip`, Apple Silicon e Intel).
 4. Os amigos descarregam o do sistema deles. Só isso.
 
@@ -39,10 +39,10 @@ executáveis) para os amigos descarregarem sem conta: ver as instruções no top
 (variável `RELEASES_REPO` e segredo `RELEASES_TOKEN`). Em repositórios privados a quota grátis é de 2000 minutos
 por mês (macOS conta 10x, Windows 2x); um build completo gasta cerca de 120.
 
-Para só testar o build sem publicar: separador **Actions** → *Build Lucky Sahurs* → *Run workflow*.
+Para só testar o build sem publicar: separador **Actions** → *Build Lucky Verities* → *Run workflow*.
 
 Avisos normais de programas não assinados: no Windows, "Mais informações → Executar mesmo assim"; no macOS, botão direito
-na app → Abrir (ou `xattr -dr com.apple.quarantine "Lucky Sahurs.app"`); no Linux, `tar xzf Lucky-Sahurs-Linux.tar.gz` e `./LuckySahurs`.
+na app → Abrir (ou `xattr -dr com.apple.quarantine "Lucky Verities.app"`); no Linux, `tar xzf Lucky-Verities-Linux.tar.gz` e `./LuckyVerities`.
 
 ## Atualizações automáticas
 
@@ -52,14 +52,14 @@ Os executáveis criados pelo GitHub Actions verificam sozinhos se há uma versã
 - Se o número for **maior** que o do jogo, aparece o ecrã **Nova versão disponível** com **Atualizar agora** (descarrega,
   troca o programa e reabre sozinho) e **Não (fecha o jogo)**. O jogo tem de estar sempre atualizado.
 - **Nunca bloqueia sem certeza:** sem internet, GitHub em baixo, ou Release ainda sem o ficheiro do teu sistema → o jogo abre normalmente.
-- O número da versão vem da **tag** (`v1.0.1`): o workflow escreve-o dentro do jogo (`build_version.py`, que não vai para o
-  repositório). **Usa sempre tags no formato `vX.Y.Z`** (v1.0.1, v1.1.0, v2.0.0...), cada uma MAIOR que a anterior.
+- O número da versão vem da **tag** (`v2.0.0`): o workflow escreve-o dentro do jogo (`build_version.py`, que não vai para o
+  repositório). **Usa sempre tags no formato `vX.Y.Z`** (v2.0.0, v2.0.1, v2.1.0...), cada uma MAIOR que a anterior.
   Tags com outro formato (`v1.0.0-rc1`, `final`...) geram um programa "dev" que não verifica atualizações.
 - `python main.py`, o `build_exe.bat` (build local) e os "Run workflow" de teste **nunca pedem atualização** (versão "dev").
-- Os saves ficam em `%APPDATA%\LuckySahurs` (ou o equivalente), por isso uma atualização não mexe neles.
-- Para desligar (testes): variável de ambiente `LUCKY_SAHURS_NO_UPDATE=1`.
+- Os saves ficam em `%APPDATA%\LuckyVerities` (ou o equivalente), por isso uma atualização não mexe neles.
+- Para desligar (testes): variável de ambiente `LUCKY_VERITIES_NO_UPDATE=1`.
 
-Como a atualização é obrigatória, **testa o executável antes de publicar**: corre *Actions → Build Lucky Sahurs → Run workflow*,
+Como a atualização é obrigatória, **testa o executável antes de publicar**: corre *Actions → Build Lucky Verities → Run workflow*,
 descarrega o ficheiro de "Artifacts", experimenta, e só depois cria a tag. Uma Release estragada seria imposta a todos.
 
 ## Idioma
@@ -72,14 +72,19 @@ as instruções no topo de `i18n.py`. Texto novo que ainda não esteja traduzido
 
 Sempre na pasta de dados do sistema (nunca ao lado do jogo):
 
-- Windows: `%APPDATA%\LuckySahurs` (Win+R e escrever isso)
-- macOS: `~/Library/Application Support/LuckySahurs`
-- Linux: `~/.local/share/LuckySahurs`
+- Windows: `%APPDATA%\LuckyVerities` (Win+R e escrever isso)
+- macOS: `~/Library/Application Support/LuckyVerities`
+- Linux: `~/.local/share/LuckyVerities`
 
 Lá dentro ficam os saves (`savegame_slot*.json`), as definições, a sessão da conta e a cópia da cloud.
 Quem tinha saves ao lado do jogo (versões antigas) ganha uma cópia automática na primeira vez; os ficheiros
 antigos não são apagados (podes apagá-los depois de confirmares que está tudo bem).
-Para usar outra pasta (testes, pen drive) define a variável de ambiente `LUCKY_SAHURS_SAVE_DIR`.
+Para usar outra pasta (testes, pen drive) define a variável de ambiente `LUCKY_VERITIES_SAVE_DIR`.
+
+
+Se já jogavas ao **Lucky Sahurs** (a versão antiga), não perdes nada: na primeira vez que abres o Lucky Verities,
+os saves, as definições e a sessão são copiados de `%APPDATA%\LuckySahurs` para `%APPDATA%\LuckyVerities`
+(a pasta antiga não é apagada). Os pets mantêm os saves; só mudaram de nome e de imagem.
 
 ## Ecrã inteiro
 
@@ -88,6 +93,6 @@ Para usar outra pasta (testes, pen drive) define a variável de ambiente `LUCKY_
 ## O que está nesta pasta
 
 `main.py`, `config.py`, `storage.py`, `theme.py`, `i18n.py`, `i18n_pt.py` · `core/` (regras) · `ui/` (ecrãs) ·
-`online/` (contas e cloud) · `icons/` (imagens; `tung.ico` / `tung.icns` são os ícones do executável) ·
+`online/` (contas e cloud) · `icons/` (imagens; `icons/pets/` tem a imagem de cada verity; `verity.ico` / `verity.icns` são os ícones do executável) ·
 `sounds/` (sons e música, com `CREDITS.txt`) · scripts de build.
  

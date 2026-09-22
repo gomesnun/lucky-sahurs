@@ -11,9 +11,9 @@ class TextField:
     """Campo de texto do ecrã de conta (só guarda o texto; o desenho é feito pelo Game)."""
 
     def __init__(self, kind):
-        self.kind = kind                    # "username" | "password"
+        self.kind = kind                    # "username" | "password" | "email" | "code"
         self.text = ""
-        self.max_len = 16 if kind == "username" else 64
+        self.max_len = {"username": 16, "email": 80, "code": 6}.get(kind, 64)
 
     def add(self, s):
         for ch in s:
@@ -21,7 +21,14 @@ class TextField:
                 ch = ch.lower()
                 if not (ch.isascii() and (ch.isalnum() or ch == "_")):
                     continue
+            elif self.kind == "code":
+                if not ch.isdigit():
+                    continue
             elif not ch.isprintable():
+                continue
+            # teclados de telemóvel costumam meter um espaço a mais quando aceitam uma sugestão -
+            # não deixa começar por espaço, nem acumular mais que um a seguir a outro
+            if ch == " " and (not self.text or self.text.endswith(" ")):
                 continue
             if len(self.text) < self.max_len:
                 self.text += ch

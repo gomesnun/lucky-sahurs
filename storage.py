@@ -58,7 +58,7 @@ def delete_slot(slot):
 # ----------------------------------------------------------------------------------
 # OPÇÕES GLOBAIS (não dependem do save)
 # ----------------------------------------------------------------------------------
-SETTINGS_PATH = os.path.join(SAVE_DIR, "lucky_sahurs_settings.json")
+SETTINGS_PATH = os.path.join(SAVE_DIR, "lucky_verities_settings.json")
 # Sons (SFX) que se podem ligar/desligar um a um nas Options (chave, nome mostrado).
 # A definição guardada chama-se "sfx_<chave>" (ex.: "sfx_click"). Que som pertence a que grupo: ui/audio.py.
 SFX_CATEGORIES = (
@@ -70,12 +70,18 @@ SFX_CATEGORIES = (
     ("rebirth", "Rebirth"),
 )
 
+# Cutscenes (ver ui/cutscene_panel.py): uma ligada/desligada por raridade, para dar para escolher
+# só as que se quer ver (ex.: só Transcendent). A chave guardada é "cutscenes_<raridade>".
+CUTSCENE_RARITIES = ("secreto", "divino", "cosmico", "transcendente")
+
 DEFAULT_SETTINGS = {"sound_on": True, "volume": 0.6, "animations": True, "fullscreen": True,
                     "trait_notifications": True, "buy_mode": 1, "music_on": True,
                     "music_volume": 0.5, "sfx_volume": 1.0, "sfx_on": True,
                     "language": DEFAULT_LANGUAGE, "theme_mode": DEFAULT_THEME_MODE}
 for _key, _label in SFX_CATEGORIES:
     DEFAULT_SETTINGS["sfx_" + _key] = True
+for _key in CUTSCENE_RARITIES:
+    DEFAULT_SETTINGS["cutscenes_" + _key] = True
 
 
 def load_settings():
@@ -89,6 +95,12 @@ def load_settings():
             s["animations"] = bool(d.get("animations", True))
             s["fullscreen"] = bool(d.get("fullscreen", True))
             s["trait_notifications"] = bool(d.get("trait_notifications", True))
+            # migração do interruptor único antigo ("cutscenes_enabled"): quem tinha desligado tudo
+            # fica com as 4 raridades desligadas por omissão; o resto (ou quem nunca teve a chave
+            # antiga) fica com o normal, todas ligadas.
+            legado_default = bool(d.get("cutscenes_enabled", True))
+            for key in CUTSCENE_RARITIES:
+                s["cutscenes_" + key] = bool(d.get("cutscenes_" + key, legado_default))
             s["music_on"] = bool(d.get("music_on", True))
             # tema: "system" (segue o Windows / sistema), "dark" ou "light". Contas antigas nao tem esta chave
             # (ou tinham o interruptor antigo "dark_mode"), por isso ficam todas em "system".

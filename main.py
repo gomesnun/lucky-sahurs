@@ -1,6 +1,6 @@
 """
-LUCKY SAHURS  -  v7
-===================
+LUCKY VERITIES  -  v2.0.0
+=========================
 Roll pets, equip them to earn money, buy upgrades and collect traits.
 
 How to play:
@@ -18,15 +18,15 @@ How to run:
     python main.py
 
 Para criar o .exe (para mandar aos amigos): duplo clique em build_exe.bat
-(instala o pygame + pyinstaller e cria dist\\Lucky Sahurs.exe).
+(instala o pygame + pyinstaller e cria dist\\Lucky Verities.exe).
 
 Progress is stored in savegame_slot1.json / slot2 / slot3 in the same folder as main.py
 (an old savegame.json is copied to Slot 1 automatically).
-Settings (sound, volume, animations, fullscreen) are stored in lucky_sahurs_settings.json.
+Settings (sound, volume, animations, fullscreen) are stored in lucky_verities_settings.json.
 
 Icons: the PNGs in the "icons" folder are used for the side buttons, the money in the top bar, the
 Stats / Options / Leaderboard / Saves buttons, the red "!!" on the Rebirth button (alert.png) and the
-mascot on the main menu (tung.png). Delete or replace any of them - a missing file falls back to the
+mascot on the main menu (verity.png). Delete or replace any of them - a missing file falls back to the
 drawn icon (or simply to no icon).
 
 Sounds: the files in the "sounds" folder are the click / upgrade / achievement / rebirth sounds and the
@@ -75,8 +75,9 @@ ui/                     tudo o que se vê / ouve
     game_screen.py, gameplay.py             ecrã principal e roll / auto-roll / partículas
     pets_panel.py                           Index e Bag (Equipados / Inventory)
     upgrades_panel.py, milestones_panel.py  Upgrade Tree e Milestones
-    traits_panel.py, options_panel.py       página de Traits e Options
+    traits_panel.py, options_panel.py       página de Traits e Options (com separadores)
     rebirth_panel.py, daily_panel.py        página de Rebirths e painel de Missões Diárias
+    cutscene_panel.py                       cutscene ao apanhar um verity Secret ou melhor
     account_panel.py, leaderboard_panel.py  conta e leaderboard
     credits_panel.py                        página de Credits (sons e música)
     update_panel.py                         ecrã "Nova versão disponível" (atualização obrigatória)
@@ -90,7 +91,8 @@ import traceback
 import pygame
 
 import theme
-from config import AUTOSAVE_INTERVAL, FPS, GAME_TITLE, SAVE_DIR, VIRTUAL_H, VW_MAX, VW_MIN
+from config import (AUTOSAVE_INTERVAL, FPS, GAME_TITLE, IS_ANDROID, SAVE_DIR, TOUCH_DRAG_SLOP,
+                    VIRTUAL_H, VW_MAX, VW_MIN)
 from core.game_state import GameState
 from i18n import set_language, tr
 from online.cloud import CloudMixin
@@ -100,6 +102,7 @@ from ui.audio import AudioMixin
 from ui.base import UIBaseMixin
 from ui.cards import CardsMixin
 from ui.credits_panel import CreditsPanelMixin
+from ui.cutscene_panel import CutscenePanelMixin
 from ui.daily_panel import DailyPanelMixin
 from ui.drawing import clear_drawing_caches, make_game_background
 from ui.fonts import clear_font_caches, make_font
@@ -133,6 +136,7 @@ class Game(
     TraitsPanelMixin,       # página de Traits
     RebirthPanelMixin,      # página de Rebirths
     DailyPanelMixin,        # painel das Missões Diárias
+    CutscenePanelMixin,     # cutscene ao apanhar um verity Secret ou melhor
     CloudMixin,             # conta na cloud, sincronização, leaderboard (lógica)
     AccountPanelMixin,      # ecrã de conta
     LeaderboardPanelMixin,  # ecrã da leaderboard
@@ -155,7 +159,7 @@ class Game(
             pass
         pygame.init()
         pygame.display.set_caption(GAME_TITLE)
-        set_window_icon()               # o Tung (icons/tung.png) no lugar do ícone por defeito do pygame
+        set_window_icon()               # o smiley do Verity (icons/verity.png) no lugar do ícone por defeito do pygame
         self.mixer_ok = self.init_mixer()
 
         self.font_tiny = make_font(13, outline=1)
@@ -177,6 +181,7 @@ class Game(
         self.fullscreen = bool(self.settings.get("fullscreen", True))
         self.screen = None
         self.canvas = None
+        self.gpu_scaled = False
         self.bg_surface = None
         self.vw = 1422
         self.set_fullscreen(self.fullscreen, announce=False)
@@ -185,7 +190,8 @@ class Game(
         self.stats_open = False
         self.credits_open = False
         self.update_log_open = False
-        self.reset_options_dropdown()       # sliders / menus Volume e SFX das Options (ui/options_panel.py)
+        self.reset_options_ui()             # separadores e sliders das Options (ui/options_panel.py)
+        self.init_cutscenes()               # cutscene dos verities Secret+ (ui/cutscene_panel.py)
 
         self.reset_ui()
 
@@ -208,6 +214,12 @@ class Game(
 
         self.dragging_scrollbar = None  # key da scrollbar a ser arrastada (ver ui/base.py draw_scrollbar)
         self.scrollbar_hits = {}        # registadas de novo a cada frame, só as que estão visíveis
+
+        # Toque (Android): o botão só dispara quando o dedo levanta sem ter arrastado (ver handle_events).
+        self.touch_down = False
+        self.touch_pending = None       # onde o dedo tocou (pixéis do ecrã)
+        self.touch_last = (0, 0)
+        self.touch_dragged = False
 
         self.sounds = {}
         self.last_sfx = {}
@@ -252,6 +264,26 @@ class Game(
 
     # ---------------------------------------------------------------- ecrã
     def set_fullscreen(self, fs, announce=True):
+        if IS_ANDROID:
+            # O Android só tem ecrã inteiro (a orientação e a barra de estado ficam no buildozer.spec).
+            if not self.gpu_scaled:
+                # Primeiro abre-se o ecrã como ele é, só para saber o tamanho real e o formato.
+                real = pygame.display.set_mode((0, 0))
+                rw, rh = max(320, real.get_width()), max(240, real.get_height())
+                vw = int(round(VIRTUAL_H * rw / float(rh)))
+                vw = max(VW_MIN, min(VW_MAX, vw))
+                # Depois pede-se esse tamanho com SCALED: o SDL passa a desenhar numa imagem pequena e
+                # é a GPU que a estica até ao ecrã. Sem isto, era o CPU a esticar ~2.6 milhões de píxeis
+                # a cada frame (com um transform.scale), que é o que punha o jogo a 15 FPS no telemóvel.
+                # O SDL também já converte sozinho a posição dos toques para estas coordenadas.
+                try:
+                    self.screen = pygame.display.set_mode((vw, VIRTUAL_H), pygame.SCALED | pygame.FULLSCREEN)
+                    self.gpu_scaled = True
+                except pygame.error:
+                    self.screen = real          # sem SCALED: fica o caminho antigo, mais lento
+            self.fullscreen = True
+            self.recompute_layout()
+            return
         try:
             if fs:
                 self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
@@ -279,7 +311,11 @@ class Game(
         # a largura virtual segue o formato do ecrã -> a imagem preenche tudo, sem barras pretas
         vw = int(round(VIRTUAL_H * real_w / float(real_h)))
         self.vw = max(VW_MIN, min(VW_MAX, vw))
-        self.canvas = pygame.Surface((self.vw, VIRTUAL_H))
+        if self.gpu_scaled and (real_w, real_h) == (self.vw, VIRTUAL_H):
+            # Com SCALED o "ecrã" já tem o tamanho de desenho: pinta-se lá diretamente, sem cópia nenhuma.
+            self.canvas = self.screen
+        else:
+            self.canvas = pygame.Surface((self.vw, VIRTUAL_H))
         self.bg_surface = make_game_background(self.vw, VIRTUAL_H, theme.BG_TOP, theme.BG_BOTTOM, dark=theme.DARK_MODE)
         self.scale_x = real_w / float(self.vw)
         self.scale_y = real_h / float(VIRTUAL_H)
@@ -334,6 +370,8 @@ class Game(
         return (pos[0] / self.scale_x, pos[1] / self.scale_y)
 
     def mouse_canvas(self):
+        if IS_ANDROID and not self.touch_down:
+            return (-10000.0, -10000.0)     # sem dedo no ecrã não há nada "sob o rato" (nenhum botão aceso)
         return self.screen_to_canvas(pygame.mouse.get_pos())
 
     # ---------------------------------------------------------------- scrollbars arrastáveis
@@ -423,6 +461,7 @@ class Game(
                 self.state.playtime += dt
                 self.state.last_seen = time.time()      # mantido fresco para os ganhos offline da próxima vez
                 self.update_auto(dt)
+                self.update_cutscenes(dt)
                 self.update_roll_rate(dt)
                 self.check_milestones()
                 self.state.ensure_daily_missions()      # troca as missões sozinho se o dia mudou
@@ -454,9 +493,7 @@ class Game(
             self.frame_dt = dt
             self.draw()
 
-        self.flush_cloud_blocking()
-        self.state.save()
-        save_settings(self.settings)
+        self.save_everything()
         pygame.quit()
         sys.exit()
 
@@ -476,12 +513,14 @@ class Game(
             elif event.type == pygame.KEYDOWN:
                 if self.update_modal_active() and event.key != pygame.K_F11:
                     pass                # ecrã "Nova versão": ESC e atalhos não fazem nada (só Atualizar ou Não)
+                elif self.cutscene_active is not None and event.key != pygame.K_F11:
+                    self.skip_cutscene()          # qualquer tecla salta a cutscene (F11 continua a dar fullscreen)
                 elif self.screen_mode == "account" and self.handle_account_key(event):
                     pass
                 elif event.key == pygame.K_F11 or (
                         event.key == pygame.K_f and (event.mod & (pygame.KMOD_META | pygame.KMOD_CTRL))):
                     self.toggle_fullscreen()
-                elif event.key == pygame.K_ESCAPE:
+                elif event.key in (pygame.K_ESCAPE, pygame.K_AC_BACK):
                     if self.screen_mode == "account":
                         self.close_account()
                     elif self.leaderboard_open:
@@ -507,6 +546,7 @@ class Game(
                     elif self.left_panel.is_open:
                         self.left_panel.close()
                 elif (self.options_open or self.stats_open or self.traits_open or self.rebirth_open
+                      or self.leaderboard_open or self.credits_open or self.update_log_open
                       or self.screen_mode != "game"):
                     pass
                 elif event.key in (pygame.K_u, pygame.K_t):
@@ -525,20 +565,20 @@ class Game(
                         f.add(event.text)
 
             elif event.type == pygame.MOUSEWHEEL:
-                if self.screen_mode != "game" or self.options_open or self.stats_open or self.update_modal_active():
-                    continue
-                pos = self.mouse_canvas()
-                step = -event.y * 60
-                if self.traits_open and self.traits_list_rect.collidepoint(pos):
-                    self.traits_scroll = max(0.0, min(self.traits_max_scroll, self.traits_scroll + step))
-                elif self.rebirth_open and self.rebirth_list_rect.collidepoint(pos):
-                    self.rebirth_scroll = max(0.0, min(self.rebirth_max_scroll, self.rebirth_scroll + step))
-                elif self.right_panel.visible and self.right_rect.collidepoint(pos):
-                    self.right_panel.add_scroll(step)
-                elif self.left_panel.visible and self.left_rect.collidepoint(pos):
-                    self.left_panel.add_scroll(step)
+                self.scroll_at(self.mouse_canvas(), -event.y * 60)
 
             elif event.type == pygame.MOUSEMOTION:
+                if IS_ANDROID and self.touch_down and not self.dragging_slider and not self.dragging_scrollbar:
+                    start = self.touch_pending or event.pos
+                    if (abs(event.pos[0] - start[0]) > TOUCH_DRAG_SLOP
+                            or abs(event.pos[1] - start[1]) > TOUCH_DRAG_SLOP):
+                        self.touch_dragged = True
+                    if self.touch_dragged:
+                        # arrastar para cima empurra a lista para baixo, como em qualquer app
+                        dy = (event.pos[1] - self.touch_last[1]) / self.scale_y
+                        self.scroll_at(self.screen_to_canvas(event.pos), -dy)
+                    self.touch_last = event.pos
+                    continue
                 if self.dragging_slider:
                     self.set_slider_from_pos(self.dragging_slider, self.screen_to_canvas(event.pos))
                 elif self.dragging_scrollbar:
@@ -555,10 +595,19 @@ class Game(
                     save_settings(self.settings)
                     self.play("click")          # serve de "amostra" do novo volume
                 self.dragging_scrollbar = None
+                if IS_ANDROID:
+                    # No telemóvel o botão só dispara quando o dedo levanta: assim um arrasto faz scroll
+                    # da lista em vez de carregar no que estava por baixo.
+                    pending, dragged = self.touch_pending, self.touch_dragged
+                    self.touch_pending = None
+                    self.touch_dragged = False
+                    self.touch_down = False
+                    if pending is not None and not dragged:
+                        self.dispatch_click(self.screen_to_canvas(pending))
 
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 canvas_pos = self.screen_to_canvas(event.pos)
-                if self.options_open and not self.update_modal_active():
+                if self.options_open and not self.update_modal_active() and self.cutscene_active is None:
                     hit = next((name for name, r in self.slider_hits.items() if r.collidepoint(canvas_pos)), None)
                     if hit:
                         self.dragging_slider = hit
@@ -566,16 +615,47 @@ class Game(
                         continue
                 if self.start_scrollbar_drag(canvas_pos):
                     continue
-                handled = False
-                for rect, callback, sfx, _nav in reversed(self.buttons):
-                    if rect.collidepoint(canvas_pos):
-                        if sfx:
-                            self.play(sfx)
-                        callback()
-                        handled = True
-                        break
-                if not handled and not self.update_modal_active():
-                    self.close_overlay_on_outside_click()
+                if IS_ANDROID:
+                    self.touch_down = True
+                    self.touch_pending = event.pos
+                    self.touch_last = event.pos
+                    self.touch_dragged = False
+                    continue
+                self.dispatch_click(canvas_pos)
+
+            elif event.type in (pygame.APP_WILLENTERBACKGROUND, pygame.APP_DIDENTERBACKGROUND):
+                # O Android pode matar a app enquanto está em segundo plano: grava já.
+                self.save_everything()
+        return True
+
+    def dispatch_click(self, canvas_pos):
+        """Carrega no botão que estiver debaixo de 'canvas_pos' (ou fecha o painel aberto, se não houver nenhum)."""
+        for rect, callback, sfx, _nav in reversed(self.buttons):
+            if rect.collidepoint(canvas_pos):
+                if sfx:
+                    self.play(sfx)
+                callback()
+                return True
+        if not self.update_modal_active():
+            self.close_overlay_on_outside_click()
+        return False
+
+    def scroll_at(self, pos, step):
+        """Faz scroll da lista que estiver debaixo de 'pos' (coordenadas do canvas). 'step' em pixéis do canvas."""
+        if (self.screen_mode != "game" or self.options_open or self.stats_open
+                or self.leaderboard_open or self.credits_open or self.update_log_open
+                or self.update_modal_active() or self.cutscene_active is not None):
+            return False
+        if self.traits_open and self.traits_list_rect.collidepoint(pos):
+            self.traits_scroll = max(0.0, min(self.traits_max_scroll, self.traits_scroll + step))
+        elif self.rebirth_open and self.rebirth_list_rect.collidepoint(pos):
+            self.rebirth_scroll = max(0.0, min(self.rebirth_max_scroll, self.rebirth_scroll + step))
+        elif self.right_panel.visible and self.right_rect.collidepoint(pos):
+            self.right_panel.add_scroll(step)
+        elif self.left_panel.visible and self.left_rect.collidepoint(pos):
+            self.left_panel.add_scroll(step)
+        else:
+            return False
         return True
 
     def draw(self):
@@ -619,21 +699,31 @@ class Game(
             self.begin_modal()
             self.draw_update_log(mouse_pos)
 
-        if self.update_modal_active():          # "Nova versão disponível": por cima de tudo, bloqueia o resto
+        if self.cutscene_active is not None:     # verity Secret+ apanhado: por cima de quase tudo
+            self.draw_cutscene(mouse_pos)
+
+        if self.update_modal_active():          # "Nova versão disponível": por cima de TUDO, bloqueia o resto
             self.draw_update_modal(mouse_pos)
 
-        real_size = self.screen.get_size()
-        if self.animations:
-            scaled = pygame.transform.smoothscale(self.canvas, real_size)
-        else:
-            scaled = pygame.transform.scale(self.canvas, real_size)
-        self.screen.blit(scaled, (0, 0))
+        if self.canvas is not self.screen:
+            real_size = self.screen.get_size()
+            # O smoothscale de um ecrã inteiro custa caro no telemóvel (e a diferença nem se vê num ecrã
+            # tão pequeno), por isso no Android é sempre o scale simples.
+            if self.animations and not IS_ANDROID:
+                scaled = pygame.transform.smoothscale(self.canvas, real_size)
+            else:
+                scaled = pygame.transform.scale(self.canvas, real_size)
+            self.screen.blit(scaled, (0, 0))
         pygame.display.flip()
 
-    def quit_game(self):
+    def save_everything(self):
+        """Grava tudo (nuvem, save, definições) sem fechar o jogo. Usado ao sair e ao ir para segundo plano."""
         self.flush_cloud_blocking()
         self.state.save()
         save_settings(self.settings)
+
+    def quit_game(self):
+        self.save_everything()
         pygame.quit()
         sys.exit()
 

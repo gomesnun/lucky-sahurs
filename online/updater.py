@@ -36,15 +36,15 @@ from online.tls import ssl_context
 API_BASE = "https://api.github.com"
 API_TIMEOUT = 10.0
 DOWNLOAD_TIMEOUT = 30.0
-USER_AGENT = "LuckySahurs-Updater"
+USER_AGENT = "LuckyVerities-Updater"
 
 # Nomes dos ficheiros de cada Release (têm de ser iguais aos do .github/workflows/build.yml).
-ASSET_WINDOWS = "Lucky-Sahurs-Windows.exe"
-ASSET_LINUX = "Lucky-Sahurs-Linux.tar.gz"
-ASSET_MAC_ARM = "Lucky-Sahurs-macOS-AppleSilicon.zip"
-ASSET_MAC_INTEL = "Lucky-Sahurs-macOS-Intel.zip"
-LINUX_BINARY_NAME = "LuckySahurs"      # o ficheiro que vai dentro do .tar.gz
-MAC_APP_NAME = "Lucky Sahurs.app"      # a pasta que vai dentro do .zip
+ASSET_WINDOWS = "Lucky-Verities-Windows.exe"
+ASSET_LINUX = "Lucky-Verities-Linux.tar.gz"
+ASSET_MAC_ARM = "Lucky-Verities-macOS-AppleSilicon.zip"
+ASSET_MAC_INTEL = "Lucky-Verities-macOS-Intel.zip"
+LINUX_BINARY_NAME = "LuckyVerities"      # o ficheiro que vai dentro do .tar.gz
+MAC_APP_NAME = "Lucky Verities.app"      # a pasta que vai dentro do .zip
 WORK_PREFIX = ".lucky-update-"         # pastas de trabalho temporárias (apagadas ao arrancar)
 
 
@@ -77,9 +77,11 @@ def is_newer(latest, current):
 
 def updates_enabled(current=None):
     """True só no programa empacotado (PyInstaller) feito a partir de uma tag vX.Y.Z pelo GitHub Actions.
-    Para desligar (testes): variável de ambiente LUCKY_SAHURS_NO_UPDATE=1."""
-    if os.environ.get("LUCKY_SAHURS_NO_UPDATE"):
+    Para desligar (testes): variável de ambiente LUCKY_VERITIES_NO_UPDATE=1 (a antiga LUCKY_SAHURS_NO_UPDATE também serve)."""
+    if os.environ.get("LUCKY_VERITIES_NO_UPDATE") or os.environ.get("LUCKY_SAHURS_NO_UPDATE"):
         return False
+    if config.IS_ANDROID:
+        return False        # no Android quem atualiza e a loja / o APK, nao o jogo
     if not getattr(sys, "frozen", False):
         return False
     return parse_version(config.BUILD_VERSION if current is None else current) is not None

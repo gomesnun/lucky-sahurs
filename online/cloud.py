@@ -10,14 +10,14 @@ from core.game_state import GameState
 from core.offline import offline_message
 from i18n import tr
 from online.cloud_cache import (
-    backup_state, clear_session, delete_cache, lb_publish_period,
+    backup_state, clear_session, delete_cache, install_id, lb_publish_period,
     load_lb_cache, load_session, peek_cache, pick_save,
     read_cache, store_session, write_cache,
 )
 from online.firebase import (
     CLOUD_SYNC_INTERVAL, FirebaseClient, LEADERBOARD_MIN_GAP, LEADERBOARD_PERIOD,
     LEADERBOARD_PUBLISH_JITTER,
-    OnlineError, Worker, load_firebase_config, online_error_text,
+    OnlineError, SESSION_HEARTBEAT, Worker, load_firebase_config, online_error_text,
     save_summary,
 )
 from storage import save_slot_path
@@ -37,13 +37,19 @@ class CloudMixin:
         # conta
         self.account = None                  # {"uid", "username"} quando há sessão iniciada
         self.account_return = "title"
-        self.acc_tab = "login"               # "login" | "register"
+        self.acc_tab = "login"               # "login" | "register" | "recover"
+        self.acc_stage = "form"              # "form" | "verify" | "link_email" | "forgot" | "forgot_sent"
         self.acc_fields = {"username": TextField("username"), "password": TextField("password"),
-                           "confirm": TextField("password")}
+                           "confirm": TextField("password"), "email": TextField("email"),
+                           "code": TextField("code")}
         self.acc_focus = None
         self.acc_msg = None                  # (texto, cor)
         self.acc_busy = False
         self.acc_show_pw = False
+        self.acc_pending_email = None        # email por confirmar (ecrã "verify")
+        self.acc_reauth_email = None         # email já confirmado, à espera de re-login (ecrã "reauth")
+        self.acc_code_sent_at = 0.0          # para o "reenviar código" ter um pequeno intervalo
+        self.acc_forgot_email = None         # email para onde foi mandado o link de reset (ecrã final)
 
         # saves da conta
         self.cache_info = {}                 # slot -> resumo da cache local (para funcionar sem net)
@@ -59,6 +65,12 @@ class CloudMixin:
         self.sync_timer = 0.0
         self.sync_error = None               # None | "offline" | "conflict" | "auth" | "denied"
         self.sync_last_ok = None
+
+        # "uma conta, um jogo de cada vez"
+        self.install_id = install_id()
+        self.session_held = False            # este PC é que tem a marca de "a jogar" desta conta
+        self.session_timer = 0.0
+        self.session_inflight = False
 
         # leaderboard: publicar a pontuação
         self.pub_inflight = False
@@ -94,6 +106,24 @@ class CloudMixin:
             self.pub_last_time = 0.0
         self.refresh_slot_info()
         self.load_cloud_slots()
+        # Conta antiga sem email associado (ainda não passou pelo ecrã de link_email): verifica em
+        # segundo plano e, se for o caso, força esse ecrã assim que o jogo abre.
+        self.worker.run(self.client.get_profile, self.on_startup_profile, lambda _e: None)
+
+    def on_startup_profile(self, profile):
+        if not self.account:
+            return
+        if profile and profile.get("email_verified"):
+            # a sessão restaurada não trazia isto (restore_session só põe uid/username) - sem isto,
+            # o ecrã de conta mostrava sempre "sem email confirmado", mesmo já estando tudo certo
+            self.account["email_verified"] = True
+            self.account["email"] = profile.get("email")
+            return
+        if profile and profile.get("email"):
+            # associação a meio (código nunca confirmado) - guarda o email para o ecrã "verify" retomar
+            self.account["email"] = profile.get("email")
+            self.acc_pending_email = profile.get("email")
+        self.require_email_link()
 
     def save_session_file(self):
         if self.client and self.account and self.client.refresh_token:
@@ -101,6 +131,10 @@ class CloudMixin:
                           self.pub_last_time)
 
     def log_out(self):
+        # Não se larga a marca pela rede aqui: o log out também acontece quando a sessão expira (já não
+        # havia autorização para escrever) e uma chamada bloqueante a meio do jogo dava um encravanço de
+        # vários segundos. A marca expira sozinha passados SESSION_STALE segundos.
+        self.session_held = False
         if self.client:
             self.client.sign_out()
         self.account = None
@@ -110,6 +144,8 @@ class CloudMixin:
         self.cloud_slots_error = None
         self.cache_info = {}
         self.pub_last_time = 0.0
+        self.acc_stage = "form"
+        self.acc_pending_email = None
         clear_session()
 
     def log_out_clicked(self):
@@ -177,9 +213,35 @@ class CloudMixin:
         self.slot_starting = True
         self.show_toast(tr("Loading save..."))
 
-        def ok(cloud):
+        def job():
+            # Primeiro a marca de sessão, só depois o save: se a conta já estiver a ser jogada noutro
+            # PC nem se chega a descarregar nada.
+            held = False
+            try:
+                if self.client.session_blocker(self.install_id) is not None:
+                    return {"busy": True}
+            except OnlineError:
+                pass        # só a leitura informativa falhou (rede em baixo): não bloqueia por causa disto
+            try:
+                self.client.write_session(self.install_id, True)
+                held = True
+            except OnlineError as e:
+                if e.code == "denied":
+                    # a Firestore RECUSOU mesmo: outro dispositivo já tem a marca (apanhado aqui mesmo
+                    # que a leitura de cima não tivesse dado por isso, por causa da corrida entre os dois)
+                    return {"busy": True}
+                # falha de rede/servidor: deixa jogar na mesma, a partir da cópia local
+            return {"busy": False, "held": held, "cloud": self.client.get_save(slot)}
+
+        def ok(res):
             self.slot_starting = False
-            state_dict, base, dirty, note, loser = pick_save(cloud, cache)
+            if res["busy"]:
+                self.show_toast(tr("This account is already being played on another device. "
+                                   "Close the game there and try again."), 6.0)
+                return
+            self.session_held = res["held"]
+            self.session_timer = 0.0
+            state_dict, base, dirty, note, loser = pick_save(res["cloud"], cache)
             if loser:
                 backup_state(uid, slot, loser[0], loser[1])
             self.begin_cloud_game(slot, state_dict, base, dirty, note)
@@ -190,12 +252,14 @@ class CloudMixin:
                 self.show_toast(tr("Session expired. Please log in again."))
             elif cache and e.code in ("offline", "server", "denied"):
                 # sem ligação (ou servidor com problemas): joga a partir da cópia local, sobe mais tarde
+                self.session_held = False
+                self.session_timer = 0.0
                 self.begin_cloud_game(slot, cache["state"], cache["base_time"], True,
                                       tr("Offline: playing from this PC's copy. It will sync later."))
             else:
                 self.show_toast(online_error_text(e))
 
-        self.worker.run(lambda: self.client.get_save(slot), ok, err)
+        self.worker.run(job, ok, err)
 
     def begin_cloud_game(self, slot, state_dict, base_time, dirty, note=None):
         st = GameState()
@@ -311,6 +375,10 @@ class CloudMixin:
     def flush_cloud_blocking(self):
         """À saída do jogo: tenta enviar já o último progresso (até uns segundos). Se não der,
         o progresso fica na cache local e sobe da próxima vez que abrires o slot."""
+        self.upload_cloud_blocking()
+        self.release_session_blocking()
+
+    def upload_cloud_blocking(self):
         st = self.state
         if not (self.client and st.cloud_uid and st.slot):
             return
@@ -328,6 +396,45 @@ class CloudMixin:
         st.cloud_base_time = t
         st.dirty = False
         write_cache(st.cloud_uid, st.slot, t, False, snap)
+
+    # ================================================================ ONLINE: uma conta, um jogo de cada vez
+    def tick_session(self, dt):
+        """Renova a marca de "estou a jogar" enquanto o jogo está aberto. Se falhar não acontece nada
+        de mau: a marca expira sozinha passados SESSION_STALE segundos."""
+        if self.session_inflight:
+            return
+        self.session_timer += dt
+        if self.session_timer < SESSION_HEARTBEAT:
+            return
+        self.session_timer = 0.0
+        self.session_inflight = True
+
+        def ok(_):
+            self.session_inflight = False
+            self.session_held = True
+
+        def err(_e):
+            self.session_inflight = False
+            self.session_held = False       # outro PC ficou com ela, ou a rede foi abaixo: tenta outra vez a seguir
+
+        self.worker.run(lambda: self.client.write_session(self.install_id, True), ok, err)
+
+    def release_session(self):
+        """Larga a marca ao voltar ao menu: a conta fica logo livre, sem esperar que expire."""
+        if not (self.client and self.account and self.session_held):
+            return
+        self.session_held = False
+        self.session_timer = 0.0
+        self.worker.run(lambda: self.client.write_session(self.install_id, False))
+
+    def release_session_blocking(self):
+        if not (self.client and self.account and self.session_held):
+            return
+        self.session_held = False
+        try:
+            self.client.write_session(self.install_id, False)
+        except OnlineError:
+            pass
 
     def sync_status(self):
         if self.state.sync_conflict or self.sync_error == "conflict":
@@ -354,6 +461,7 @@ class CloudMixin:
         if self.sync_timer >= CLOUD_SYNC_INTERVAL:
             self.sync_timer = 0.0
             self.start_upload(st)
+        self.tick_session(dt)
         if not self.cloud_slots_loaded and not self.cloud_slots_loading and now >= self.slots_retry_at:
             self.slots_retry_at = now + 60.0
             self.load_cloud_slots()
