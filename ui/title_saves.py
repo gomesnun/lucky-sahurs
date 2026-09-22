@@ -17,7 +17,7 @@ from theme import (
     OUTLINE, PANEL, PANEL_LIGHT, PANEL_LIGHTER,
     WHITE,
 )
-from ui.drawing import (ALPHA_IS_SLOW, blit_smooth_y, to_colorkey, to_display_format, to_opaque,
+from ui.drawing import (ALPHA_IS_SLOW, bake_on, blit_smooth_y, to_colorkey, to_display_format, to_opaque,
                         draw_panel, draw_rarity_bg, draw_state_border)
 from ui.fonts import fit_text, wrap_text
 from ui.icons import load_icon
@@ -109,17 +109,24 @@ class TitleSavesMixin:
         for i, r in enumerate(tier_pets):
             bob = math.sin(t * 1.6 + i * 0.7) * 8 if self.animations else 0
             # posição vertical com fração de píxel (blit_smooth_y): sem isto o sobe-e-desce vê-se aos saltinhos
+            x = x0 + i * (size + gap)
             blit_smooth_y(self.canvas, ("title_card", r["key"], size), lambda r=r: build_card(r),
-                          x0 + i * (size + gap), 250 + bob)
+                          x, 250 + bob, near_color=self._bg_color_at(x + size // 2, 250 + size // 2))
 
         # título com sombra
         title = self.font_title.render(GAME_TITLE, True, WHITE)
         shadow = title.copy()
         shadow.fill((0, 0, 0, 110), special_flags=pygame.BLEND_RGBA_MULT)   # silhueta escura = sombra
-        self.canvas.blit(shadow, shadow.get_rect(center=(cx + 3, 128 + 9)))
-        self.canvas.blit(title, title.get_rect(center=(cx, 128)))
+        # O titulo, a sombra e o subtitulo estao sempre no mesmo sitio por cima do fundo (que nunca
+        # muda): mistura-se cada um com o fundo uma vez e a partir dai copiam-se sem alfa.
+        bg = getattr(self, "bg_surface", None)
+        sr = shadow.get_rect(center=(cx + 3, 128 + 9))
+        self.canvas.blit(bake_on(shadow, bg, sr.topleft), sr)
+        tr_ = title.get_rect(center=(cx, 128))
+        self.canvas.blit(bake_on(title, bg, tr_.topleft), tr_)
         sub = self.font_med.render(tr("Roll pets, equip them and fill your pockets"), True, GREY)
-        self.canvas.blit(sub, sub.get_rect(center=(cx, 212)))
+        subr = sub.get_rect(center=(cx, 212))
+        self.canvas.blit(bake_on(sub, bg, subr.topleft), subr)
 
         self.draw_account_chip(mouse_pos)
 
@@ -158,7 +165,8 @@ class TitleSavesMixin:
 
         rodape = VERSION if IS_ANDROID else tr("%s   ·   %s: fullscreen / windowed", VERSION, FULLSCREEN_HINT)
         foot = self.font_small.render(rodape, True, GREY_DIM)
-        self.canvas.blit(foot, foot.get_rect(center=(cx, VIRTUAL_H - 20)))
+        footr = foot.get_rect(center=(cx, VIRTUAL_H - 20))
+        self.canvas.blit(bake_on(foot, bg, footr.topleft), footr)
 
     def draw_mascot(self, cx, ground_y, size=230):
         """Tung Tung Tung Sahur (icons/tung.png) no menu principal, com os pés em (cx, ground_y).

@@ -6,7 +6,7 @@ from core.formatting import format_number, format_playtime
 from core.milestones import MILESTONE_CAT_ORDER, MILESTONE_DEFS, MILESTONE_REWARD_LABELS
 from i18n import tr
 from theme import ACCENT, GOOD, GREY, PANEL, PANEL_LIGHT, WHITE
-from ui.drawing import draw_panel, draw_state_border
+from ui.drawing import bake, draw_panel, draw_state_border
 
 
 class MilestonesPanelMixin:
@@ -94,18 +94,18 @@ class MilestonesPanelMixin:
                     draw_state_border(self.canvas, row_rect, ACCENT, 12)
 
                 name_txt = self.font_med.render(tr(d["label"]), True, WHITE)
-                self.canvas.blit(name_txt, (row_rect.x + 16, row_rect.y + 10))
+                self.canvas.blit(bake(name_txt, PANEL_LIGHT), (row_rect.x + 16, row_rect.y + 10))
                 reward_lbl = tr(MILESTONE_REWARD_LABELS.get(d["reward_type"], d["reward_type"]))
                 active = self.state.milestone_bonus(d["reward_type"])
                 sub_txt = self.font_tiny.render(tr("Bonus: %s  (active: +%.0f%%)", reward_lbl, active * 100),
                                                 True, GREY)
-                self.canvas.blit(sub_txt, (row_rect.x + 16, row_rect.y + 36))
+                self.canvas.blit(bake(sub_txt, PANEL_LIGHT), (row_rect.x + 16, row_rect.y + 36))
 
                 count_txt = self.font_small_b.render("%d/%d" % (claimed_n, len(tiers)), True,
                                                       GOOD if done else WHITE)
-                self.canvas.blit(count_txt, (row_rect.right - count_txt.get_width() - 40, row_rect.y + 12))
+                self.canvas.blit(bake(count_txt, PANEL_LIGHT), (row_rect.right - count_txt.get_width() - 40, row_rect.y + 12))
                 arrow_txt = self.font_med.render(">", True, GREY)
-                self.canvas.blit(arrow_txt, (row_rect.right - 26, row_rect.centery - 12))
+                self.canvas.blit(bake(arrow_txt, PANEL_LIGHT), (row_rect.right - 26, row_rect.centery - 12))
 
                 bar_rect = pygame.Rect(row_rect.x + 16, row_rect.bottom - 20, row_rect.width - 32, 10)
                 pygame.draw.rect(self.canvas, PANEL, bar_rect, border_radius=5)
@@ -142,7 +142,7 @@ class MilestonesPanelMixin:
                     draw_state_border(self.canvas, row_rect, (80, 150, 100), 10)
 
                 name_txt = self.font_small_b.render(tr("Milestone %d", i + 1), True, WHITE)
-                self.canvas.blit(name_txt, (row_rect.x + 14, row_rect.y + 8))
+                self.canvas.blit(bake(name_txt, PANEL_LIGHT), (row_rect.x + 14, row_rect.y + 8))
                 reward_txt = self.font_small_b.render(self.format_milestone_reward(d["reward_type"], value),
                                                       True, GOOD if claimed else GREY)
                 self.canvas.blit(reward_txt, (row_rect.right - reward_txt.get_width() - 14, row_rect.y + 8))

@@ -5,7 +5,7 @@ import pygame
 from core.daily_missions import mission_label
 from i18n import tr
 from theme import ACCENT, GOOD, GREY, PANEL, PANEL_LIGHT, WHITE
-from ui.drawing import draw_panel, draw_state_border
+from ui.drawing import bake, draw_panel, draw_state_border
 
 
 class DailyPanelMixin:
@@ -24,7 +24,7 @@ class DailyPanelMixin:
 
         top = rect.y + 62
         sub = self.font_small.render(tr("Resets every day - rewards are trait charges."), True, GREY)
-        self.canvas.blit(sub, (rect.x + 20, top))
+        self.canvas.blit(bake(sub, PANEL), (rect.x + 20, top))
         top += sub.get_height() + 14
 
         content_rect = pygame.Rect(rect.x, top, rect.width, rect.bottom - top)
@@ -68,13 +68,13 @@ class DailyPanelMixin:
                     draw_state_border(self.canvas, row_rect, ACCENT, 12)
 
                 name_txt = self.font_med.render(mission_label(mission), True, WHITE)
-                self.canvas.blit(name_txt, (row_rect.x + 16, row_rect.y + y_name))
+                self.canvas.blit(bake(name_txt, PANEL_LIGHT), (row_rect.x + 16, row_rect.y + y_name))
 
                 reward_txt = self.font_small_b.render(
                     tr("Reward: %d trait charge", mission["reward"]) if mission["reward"] == 1
                     else tr("Reward: %d trait charges", mission["reward"]),
                     True, GOOD if claimed else GREY)
-                self.canvas.blit(reward_txt, (row_rect.x + 16, row_rect.y + y_reward))
+                self.canvas.blit(bake(reward_txt, PANEL_LIGHT), (row_rect.x + 16, row_rect.y + y_reward))
 
                 bar_rect = pygame.Rect(row_rect.x + 16, row_rect.y + y_bar, row_rect.width - 140, bar_h)
                 pygame.draw.rect(self.canvas, PANEL, bar_rect, border_radius=6)
@@ -84,7 +84,7 @@ class DailyPanelMixin:
                     pygame.draw.rect(self.canvas, GOOD if done else ACCENT,
                                      pygame.Rect(bar_rect.x, bar_rect.y, fill_w, bar_rect.height), border_radius=6)
                 prog_txt = self.font_tiny.render("%s / %s" % (min(progress, target), target), True, GREY)
-                self.canvas.blit(prog_txt, (bar_rect.x, row_rect.y + y_prog))
+                self.canvas.blit(bake(prog_txt, PANEL_LIGHT), (bar_rect.x, row_rect.y + y_prog))
 
                 btn_rect = pygame.Rect(row_rect.right - 116, row_rect.y + (row_h - 40) // 2, 100, 40)     # centrado na vertical
                 if claimed:

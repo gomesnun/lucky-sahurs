@@ -7,10 +7,10 @@ from core.pets import MUTATIONS, MUT_ORDER, PET_ORDER, RARITIES, RARITY_TIERS, b
 from i18n import tr
 from theme import (
     ACCENT, ACCENT_HOVER, BAD, BLACK,
-    GOOD, GREY, GREY_DIM, PANEL_LIGHT,
+    GOOD, GREY, GREY_DIM, PANEL, PANEL_LIGHT,
     PANEL_LIGHTER, WHITE,
 )
-from ui.drawing import draw_panel
+from ui.drawing import bake, draw_panel
 from ui.fonts import wrap_text
 
 
@@ -80,7 +80,7 @@ class PetsPanelMixin:
             plates = [[(tr("Income"), income_line)], [(tr("Chance"), format_one_in(real_chance), base_line)]]
             locked = locked_mut or owned <= 0
             card_surf = self.render_pet_card(rarity, mutation, card, card, plates=plates, locked=locked)
-            self.canvas.blit(card_surf, crect.topleft)
+            self.canvas.blit(bake(card_surf, PANEL), crect.topleft)
 
         rows = (len(RARITIES) + cols - 1) // cols
         content_h = (top_y + scroll - content_rect.top) + rows * (card + gap) + 10
@@ -100,7 +100,7 @@ class PetsPanelMixin:
         sub = self.font_small.render(
             tr("%d/%d slots  ·  %s $/sec", len(self.state.equipped), self.state.max_slots(),
                format_number(self.state.income_per_second())), True, GREY)
-        self.canvas.blit(sub, (rect.x + 22, rect.y + 50))
+        self.canvas.blit(bake(sub, PANEL), (rect.x + 22, rect.y + 50))
 
         # ---- Inventory / Equip Best / Auto Equip Best ----
         # O Auto Equip Best compra-se na Upgrade Tree (categoria Misc). Aqui só aparece o
@@ -145,7 +145,7 @@ class PetsPanelMixin:
             hint_y = btn_bottom + 8
             for line in wrap_text(tr("Auto Equip Best is unlocked in Upgrades (Misc)."),
                                   self.font_tiny, btn_w):
-                self.canvas.blit(self.font_tiny.render(line, True, GREY_DIM), (rect.x + pad, hint_y))
+                self.canvas.blit(bake(self.font_tiny.render(line, True, GREY_DIM), PANEL), (rect.x + pad, hint_y))
                 hint_y += 16
             btn_bottom = hint_y - 8
 
@@ -202,13 +202,13 @@ class PetsPanelMixin:
             else:
                 draw_panel(self.canvas, crect, PANEL_LIGHT, radius=12, shadow=False)
                 t = self.font_small.render(tr("empty"), True, GREY_DIM)
-                self.canvas.blit(t, t.get_rect(center=crect.center))
+                self.canvas.blit(bake(t, PANEL_LIGHT), t.get_rect(center=crect.center))
 
         rows = (n_slots + cols - 1) // cols
         info_y = top_y + rows * (card + gap) + 4
         for line in wrap_text(tr("Click a pet to remove it. Open the Inventory to equip more."),
                               self.font_tiny, rect.width - pad * 2):
-            self.canvas.blit(self.font_tiny.render(line, True, GREY), (rect.x + pad, info_y))
+            self.canvas.blit(bake(self.font_tiny.render(line, True, GREY), PANEL), (rect.x + pad, info_y))
             info_y += 16
 
         return (info_y + scroll - content_rect.top) + 10

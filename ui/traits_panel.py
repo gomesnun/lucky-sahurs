@@ -10,7 +10,7 @@ from theme import (
     GOOD, GREY, PANEL, PANEL_LIGHT,
     PANEL_LIGHTER, WHITE,
 )
-from ui.drawing import dim_overlay, draw_panel
+from ui.drawing import bake, dim_overlay, draw_panel
 from ui.fonts import fit_text, wrap_text
 
 
@@ -62,7 +62,7 @@ class TraitsPanelMixin:
 
         # título + a frase de ajuda por baixo dele (antes ficava por cima e ilegível)
         title = self.font_big.render(tr("Traits"), True, WHITE)
-        self.canvas.blit(title, (rect.x + 26, rect.y + 16))
+        self.canvas.blit(bake(title, PANEL), (rect.x + 26, rect.y + 16))
         close_rect = pygame.Rect(rect.right - 48, rect.y + 18, 30, 30)
         self.button(close_rect, "X", self.font_small_b, mouse_pos, PANEL_LIGHT, BAD, WHITE,
                     callback=self.close_traits, radius=8)
@@ -70,7 +70,7 @@ class TraitsPanelMixin:
         sub_y = rect.y + 16 + title.get_height() + 2
         sub_text = fit_text(self.font_small, tr("Your collection — click a trait you own to equip it."),
                             panel_w - 52 - 60)
-        self.canvas.blit(self.font_small.render(sub_text, True, GREY), (rect.x + 26, sub_y))
+        self.canvas.blit(bake(self.font_small.render(sub_text, True, GREY), PANEL), (rect.x + 26, sub_y))
 
         content_top = sub_y + self.font_small.get_height() + 14
         content_h = rect.bottom - 22 - content_top
@@ -97,7 +97,9 @@ class TraitsPanelMixin:
                 owned = i in self.state.owned_traits
                 equipped = self.state.equipped_trait == i
                 surf = self.render_trait_card(i, card_w, card_h, owned, equipped)
-                self.canvas.blit(surf, crect.topleft)
+                # os cartoes estao em cache e ficam por cima do painel (cor lisa): mistura-se
+                # cada um com essa cor uma vez e passa a copiar-se sem alfa (ver bake())
+                self.canvas.blit(bake(surf, PANEL), crect.topleft)
                 if owned:
                     if crect.collidepoint(mouse_pos) and rect.collidepoint(mouse_pos):
                         pygame.draw.rect(self.canvas, WHITE, crect, width=2, border_radius=12)
@@ -160,7 +162,7 @@ class TraitsPanelMixin:
         else:
             draw_panel(self.canvas, card_rect, PANEL_LIGHT, radius=12)
             txt = self.font_small.render(tr("You haven't rolled any traits yet."), True, GREY)
-            self.canvas.blit(txt, txt.get_rect(center=card_rect.center))
+            self.canvas.blit(bake(txt, PANEL_LIGHT), txt.get_rect(center=card_rect.center))
             y = card_rect.bottom + 22
         charges = self.state.trait_charges
         charges_txt = self.font_med.render(tr("Charges available: %d", charges), True, GOOD if charges else GREY)
@@ -171,7 +173,7 @@ class TraitsPanelMixin:
                         self.state.trait_charge_chance() * 100)
         for line in wrap_text(chance_str, self.font_tiny, rect.width - 20):
             chance_txt = self.font_tiny.render(line, True, GREY)
-            self.canvas.blit(chance_txt, chance_txt.get_rect(center=(rect.centerx, y + chance_txt.get_height() // 2)))
+            self.canvas.blit(bake(chance_txt, PANEL), chance_txt.get_rect(center=(rect.centerx, y + chance_txt.get_height() // 2)))
             y += 16
         y += 12
 
@@ -222,8 +224,8 @@ class TraitsPanelMixin:
                 for text in (tr("No trait equipped."),
                              tr("Equip a trait from the list on the side to get its buffs.")):
                     for wline in wrap_text(text, self.font_small, inner_w):
-                        self.canvas.blit(self.font_small.render(wline, True, WHITE if ty == box_rect.y + 12 else GREY),
-                                         (box_rect.x + 12, ty))
+                        self.canvas.blit(bake(self.font_small.render(wline, True, WHITE if ty == box_rect.y + 12 else GREY),
+                                              PANEL_LIGHT), (box_rect.x + 12, ty))
                         ty += line_h
             else:
                 trait = TRAITS[eq]

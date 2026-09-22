@@ -9,7 +9,7 @@ from theme import (
     BORDER_W_SMALL, GREY_DIM, OUTLINE, PANEL,
     PANEL_LIGHT, PANEL_LIGHTER, PAUSED_RED, WHITE,
 )
-from ui.drawing import ALPHA_IS_SLOW, draw_panel, draw_state_border, rounded_box
+from ui.drawing import ALPHA_IS_SLOW, bake, bake_on, draw_panel, draw_state_border, rounded_box
 from ui.fonts import fit_text
 from ui.fonts import font_at as _font_at
 from ui.icons import load_icon
@@ -35,12 +35,22 @@ class UIBaseMixin:
             line_h = lines[0].get_height()
             w = max(t.get_width() for t in lines) + 40
             h = line_h * len(lines) + 4 * (len(lines) - 1) + 20
+            x0, y0 = self.vw // 2 - w // 2, TOPBAR_H + 10
+            if ALPHA_IS_SLOW:
+                # no telemovel desenha-se direto no ecra (opaco): a imagem com alfa deste tamanho
+                # custava ~1.7 ms por frame, os dois rectangulos custam 0.07 ms
+                box = pygame.Rect(x0, y0, w, h)
+                pygame.draw.rect(self.canvas, PANEL, box, border_radius=10)
+                pygame.draw.rect(self.canvas, OUTLINE, box, width=BORDER_W_SMALL, border_radius=10)
+                for i, t in enumerate(lines):
+                    self.canvas.blit(bake(t, PANEL), (x0 + 20, y0 + 10 + i * (line_h + 4)))
+                return
             surf = pygame.Surface((w, h), pygame.SRCALPHA)
             pygame.draw.rect(surf, (*PANEL, 245), surf.get_rect(), border_radius=10)
             pygame.draw.rect(surf, OUTLINE, surf.get_rect(), width=BORDER_W_SMALL, border_radius=10)
             for i, t in enumerate(lines):
                 surf.blit(t, (20, 10 + i * (line_h + 4)))
-            self.canvas.blit(surf, (self.vw // 2 - w // 2, TOPBAR_H + 10))
+            self.canvas.blit(surf, (x0, y0))
 
     # ---------------------------------------------------------------- clipping / botões
     def push_clip(self, rect):
@@ -93,7 +103,8 @@ class UIBaseMixin:
         if border_color:
             draw_state_border(self.canvas, rect, border_color, radius)
         if label or icon:
-            self.draw_button_content(rect, label, font, text_color if enabled else GREY_DIM, icon, enabled)
+            self.draw_button_content(rect, label, font, text_color if enabled else GREY_DIM, icon, enabled,
+                                     fill=color)
         if enabled and callback is not None:
             self.register_button(rect, callback, sfx)
         return hovering
@@ -122,7 +133,7 @@ class UIBaseMixin:
         ultima = menores[-1] if menores else font
         return ultima.render(fit_text(ultima, label, max_w - 4), True, color)      # -4: o contorno das letras
 
-    def draw_button_content(self, rect, label, font, color, icon=None, enabled=True):
+    def draw_button_content(self, rect, label, font, color, icon=None, enabled=True, fill=None):
         """Conteúdo de um botão. Sem ícone: o texto centrado. Com 'icon' (icons/<icon>.png): o ícone fica
         encostado ao lado DIREITO e o texto fica centrado no espaço que sobra à esquerda dele (assim o
         texto não fica colado ao ícone). Se o texto não couber, usa letras mais pequenas (e só em último
@@ -130,30 +141,37 @@ class UIBaseMixin:
         pad, gap = 8, 8
         img = load_icon(icon, max(16, rect.height - 12)) if icon else None
         txt = font.render(label, True, color) if label else None
+        # O botao acabou de ser pintado de uma cor lisa: o texto e o icone podem ser misturados com
+        # essa cor uma vez so e depois copiados sem alfa (ver bake() em ui/drawing.py).
+        def flat(s):
+            return bake(s, fill) if (fill is not None and s is not None) else s
         if img is None:
             if txt is not None:
                 if txt.get_width() > rect.width - 6:
                     txt = self.texto_que_cabe(label, font, color, rect.width - 2 * pad)
-                self.canvas.blit(txt, txt.get_rect(center=rect.center))
+                self.canvas.blit(flat(txt), txt.get_rect(center=rect.center))
             return
         if not enabled:
-            img = img.copy()
+            img = img.copy()          # copia nova em cada frame: nao vale a pena guardar em cache
             img.set_alpha(110)
+            flat_img = lambda s: s
+        else:
+            flat_img = flat
         if txt is None:
-            self.canvas.blit(img, img.get_rect(center=rect.center))
+            self.canvas.blit(flat_img(img), img.get_rect(center=rect.center))
             return
         icon_left = rect.right - pad - img.get_width()
         area_l, area_r = rect.x + pad, icon_left - gap            # o espaço livre para o texto
         if area_r - area_l < 24:                                   # botão muito estreito: texto + ícone lado a lado
             total = txt.get_width() + gap + img.get_width()
             x = rect.centerx - total // 2
-            self.canvas.blit(txt, txt.get_rect(midleft=(x, rect.centery)))
-            self.canvas.blit(img, img.get_rect(midleft=(x + txt.get_width() + gap, rect.centery)))
+            self.canvas.blit(flat(txt), txt.get_rect(midleft=(x, rect.centery)))
+            self.canvas.blit(flat_img(img), img.get_rect(midleft=(x + txt.get_width() + gap, rect.centery)))
             return
         if txt.get_width() > area_r - area_l:
             txt = self.texto_que_cabe(label, font, color, area_r - area_l)
-        self.canvas.blit(txt, txt.get_rect(center=((area_l + area_r) // 2, rect.centery)))
-        self.canvas.blit(img, img.get_rect(midleft=(icon_left, rect.centery)))
+        self.canvas.blit(flat(txt), txt.get_rect(center=((area_l + area_r) // 2, rect.centery)))
+        self.canvas.blit(flat_img(img), img.get_rect(midleft=(icon_left, rect.centery)))
 
     # ---------------------------------------------------------------- cabeçalho de painel
     def panel_header(self, rect, title, mouse_pos, close_cb):
@@ -162,7 +180,7 @@ class UIBaseMixin:
         draw_panel(self.canvas, rect, PANEL, radius=0, shadow=False, border=BORDER_W)
 
         ttxt = self.font_big.render(title, True, WHITE)
-        self.canvas.blit(ttxt, (rect.x + 22, rect.y + 16))
+        self.canvas.blit(bake(ttxt, PANEL), (rect.x + 22, rect.y + 16))
         close_rect = pygame.Rect(rect.right - 44, rect.y + 18, 28, 28)
         self.button(close_rect, "X", self.font_small_b, mouse_pos, PANEL_LIGHT, BAD, WHITE,
                     callback=close_cb, radius=8)
@@ -207,7 +225,8 @@ class UIBaseMixin:
             bg = PANEL_LIGHT            # lido aqui (e nao no def) para acompanhar o modo claro / escuro
         img = load_icon(kind, min(rect.width, rect.height) - 14)
         if img is not None:
-            self.canvas.blit(img, img.get_rect(center=rect.center))
+            # o botao por baixo e de cor lisa (bg): mistura-se o icone com ela uma vez (ver bake())
+            self.canvas.blit(bake(img, bg), img.get_rect(center=rect.center))
             return
         cx, cy = rect.centerx, rect.centery
         cv = self.canvas
@@ -311,7 +330,9 @@ class UIBaseMixin:
         if label:
             font = label_font or self.font_small_b
             txt = font.render(label, True, ACCENT if (hovering or active) else WHITE)
-            self.canvas.blit(txt, txt.get_rect(midtop=(rect.centerx, rect.bottom + 4)))
+            lr = txt.get_rect(midtop=(rect.centerx, rect.bottom + 4))
+            # a legenda fica por baixo do botao, sempre no mesmo sitio, por cima do fundo fixo
+            self.canvas.blit(bake_on(txt, getattr(self, "bg_surface", None), lr.topleft), lr)
         self.register_button(rect, callback)
         self.draw_badge(rect, badge)
         if alert:

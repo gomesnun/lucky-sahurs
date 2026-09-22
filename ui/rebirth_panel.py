@@ -10,7 +10,7 @@ from theme import (
     ACCENT, ACCENT_HOVER, BAD, BLACK,
     GOOD, GREY, PANEL, PANEL_LIGHT, WHITE,
 )
-from ui.drawing import draw_panel, draw_state_border
+from ui.drawing import bake, dim_overlay, draw_panel, draw_state_border
 from ui.fonts import fit_text, wrap_text
 
 REWARD_ROW_H = 68       # altura de cada recompensa na lista (a borda colorida fica ~7 px por dentro: o texto precisa de folga)
@@ -58,9 +58,9 @@ class RebirthPanelMixin:
 
     # ---------------------------------------------------------------- página de rebirths
     def draw_rebirth_page(self, mouse_pos):
-        overlay = pygame.Surface((self.vw, VIRTUAL_H), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 170))
-        self.canvas.blit(overlay, (0, 0))
+        # o mesmo veu escuro das outras paginas: em cache e, no telemovel, opaco
+        # (uma superficie do tamanho do ecra com alfa custava ~182 ms por frame)
+        self.canvas.blit(dim_overlay(self.vw, VIRTUAL_H, 170), (0, 0))
 
         panel_w = max(560, min(self.vw - 400, 760))
         top = TOPBAR_H + 12
@@ -70,7 +70,7 @@ class RebirthPanelMixin:
         self.register_button(rect, lambda: None, None)     # clicar dentro da página não fecha
 
         title = self.font_big.render(tr("Rebirth"), True, WHITE)
-        self.canvas.blit(title, (rect.x + 26, rect.y + 16))
+        self.canvas.blit(bake(title, PANEL), (rect.x + 26, rect.y + 16))
         close_rect = pygame.Rect(rect.right - 48, rect.y + 18, 30, 30)
         self.button(close_rect, "X", self.font_small_b, mouse_pos, PANEL_LIGHT, BAD, WHITE,
                     callback=self.close_rebirth, radius=8)
@@ -86,7 +86,7 @@ class RebirthPanelMixin:
                           "Pets, traits, milestones and playtime are all kept.")
         y = sub_y
         for line in wrap_text(sub_text, self.font_small, rect.width - 52):
-            self.canvas.blit(self.font_small.render(line, True, GREY), (rect.x + 26, y))
+            self.canvas.blit(bake(self.font_small.render(line, True, GREY), PANEL), (rect.x + 26, y))
             y += self.font_small.get_height() + 2
         y += 14
 
@@ -102,8 +102,8 @@ class RebirthPanelMixin:
         for label, value in lines:
             l_txt = self.font_med.render(label, True, GREY)
             v_txt = self.font_med.render(value, True, GOOD)
-            self.canvas.blit(l_txt, (card_rect.x + 18, ly))
-            self.canvas.blit(v_txt, (card_rect.right - 18 - v_txt.get_width(), ly))
+            self.canvas.blit(bake(l_txt, PANEL_LIGHT), (card_rect.x + 18, ly))
+            self.canvas.blit(bake(v_txt, PANEL_LIGHT), (card_rect.right - 18 - v_txt.get_width(), ly))
             ly += 36
         y = card_rect.bottom + 22
 
@@ -112,7 +112,7 @@ class RebirthPanelMixin:
         cost_txt = self.font_med.render(
             tr("Next rebirth costs $%s  (you have $%s)", format_number(cost), format_number(st.coins)),
             True, WHITE if can else GREY)
-        self.canvas.blit(cost_txt, cost_txt.get_rect(center=(rect.centerx, y)))
+        self.canvas.blit(bake(cost_txt, PANEL), cost_txt.get_rect(center=(rect.centerx, y)))
         y += 24
 
         btn_w = min(420, rect.width - 60)
@@ -131,13 +131,13 @@ class RebirthPanelMixin:
         note_text = (tr("Only your coins reset. Everything else (upgrades, pets, traits...) stays.") if keep else
                      tr("Only coins and upgrade levels reset. Everything else (pets, traits, milestones...) stays."))
         note = self.font_tiny.render(note_text, True, GREY)
-        self.canvas.blit(note, note.get_rect(center=(rect.centerx, y)))
+        self.canvas.blit(bake(note, PANEL), note.get_rect(center=(rect.centerx, y)))
         y += 22
 
         # ---- recompensas: um bónus permanente ao chegar a certos números de rebirths ----
         got = sum(1 for need, _n, _r in REBIRTH_REWARDS if st.rebirths >= need)
         head = self.font_med.render(tr("Rebirth Rewards  (%d/%d)", got, len(REBIRTH_REWARDS)), True, ACCENT)
-        self.canvas.blit(head, (rect.x + 26, y))
+        self.canvas.blit(bake(head, PANEL), (rect.x + 26, y))
         y += head.get_height() + 8
         list_rect = pygame.Rect(rect.x + 22, y, rect.width - 44, rect.bottom - 16 - y)
         self.draw_rebirth_rewards(list_rect, mouse_pos)
@@ -171,13 +171,13 @@ class RebirthPanelMixin:
 
             status = self.font_small_b.render(tr("Unlocked") if unlocked else "%d / %d" % (st.rebirths, need),
                                               True, GOOD if unlocked else GREY)
-            self.canvas.blit(status, (row.right - 16 - status.get_width(), row.y + text_top))
+            self.canvas.blit(bake(status, PANEL_LIGHT), (row.right - 16 - status.get_width(), row.y + text_top))
             title_txt = fit_text(self.font_small_b, tr("Rebirth %d  -  %s", need, tr(name)),
                                  row.width - 44 - status.get_width())
-            self.canvas.blit(self.font_small_b.render(title_txt, True, WHITE if (unlocked or i == nxt) else GREY),
-                             (row.x + 16, row.y + text_top))
+            self.canvas.blit(bake(self.font_small_b.render(title_txt, True, WHITE if (unlocked or i == nxt) else GREY),
+                                  PANEL_LIGHT), (row.x + 16, row.y + text_top))
             reward_txt = fit_text(self.font_small, format_rebirth_reward(rewards), row.width - 32)
-            self.canvas.blit(self.font_small.render(reward_txt, True, GOOD if unlocked else GREY),
-                             (row.x + 16, row.y + text_top + title_h + 3))
+            self.canvas.blit(bake(self.font_small.render(reward_txt, True, GOOD if unlocked else GREY),
+                                  PANEL_LIGHT), (row.x + 16, row.y + text_top + title_h + 3))
         self.pop_clip()
         self.draw_scrollbar(rect, scroll, content_h, key="rebirth", mouse_pos=mouse_pos)

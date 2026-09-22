@@ -8,7 +8,7 @@ from i18n import get_language, language_name, next_language, set_language, tr
 from storage import SFX_CATEGORIES, save_settings
 from theme import ACCENT, BAD, GREY, GREY_DIM, OUTLINE, PANEL, PANEL_LIGHT, PANEL_LIGHTER, WHITE
 from ui.audio import SLIDER_KNOB_R
-from ui.drawing import dim_overlay, draw_panel, ease_out_cubic
+from ui.drawing import bake, dim_overlay, draw_panel, ease_out_cubic
 from ui.fonts import fit_text, wrap_text
 
 DROP_H = 150            # altura do menu que expande (Volume ou SFX) quando está todo aberto
@@ -172,7 +172,7 @@ class OptionsPanelMixin:
         self.register_button(rect, lambda: None, None)     # clicar dentro da página não fecha
 
         title = self.font_big.render(tr("Options"), True, WHITE)
-        self.canvas.blit(title, (rect.x + 24, rect.y + 20))
+        self.canvas.blit(bake(title, PANEL), (rect.x + 24, rect.y + 20))
         close_rect = pygame.Rect(rect.right - 46, rect.y + 20, 28, 28)
         self.button(close_rect, "X", self.font_small_b, mouse_pos, PANEL_LIGHT, BAD, WHITE,
                     callback=self.close_options, radius=8)
@@ -277,5 +277,5 @@ class OptionsPanelMixin:
                   "lighter. Progress is saved automatically every 10 seconds.") if in_game else \
                tr("Options are shared by all saves.")
         for line in wrap_text(note, self.font_tiny, btn_w):
-            self.canvas.blit(self.font_tiny.render(line, True, GREY), (x0, y + 8))
+            self.canvas.blit(bake(self.font_tiny.render(line, True, GREY), PANEL), (x0, y + 8))
             y += 16

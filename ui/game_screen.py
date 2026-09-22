@@ -14,7 +14,7 @@ from theme import (
     GOLD_BORDER, GOOD, GREY, OUTLINE,
     PANEL, PANEL_LIGHT, PANEL_LIGHTER, PAUSED_RED, WHITE,
 )
-from ui.drawing import (dim_overlay,
+from ui.drawing import (bake, dim_overlay,
     bar_fill_surface, draw_panel, draw_rainbow_border, draw_state_border,
     rainbow_glow_surface, rarity_glow,
 )
@@ -106,15 +106,17 @@ class GameScreenMixin:
         cash = load_icon("cash", 54)              # icons/cash.png (opcional): pilha de dinheiro antes do valor
         off = 0
         if cash is not None:
-            self.canvas.blit(cash, (12, (TOPBAR_H - 54) // 2))
+            # a topbar e um rectangulo liso de PANEL: tudo o que la vai por cima pode ser
+            # misturado com essa cor uma vez e depois copiado sem alfa (ver bake() em ui/drawing.py)
+            self.canvas.blit(bake(cash, PANEL), (12, (TOPBAR_H - 54) // 2))
             off = 58
         coins_txt = self.font_big.render("$ %s" % format_number(self.state.coins), True, GOOD)
-        self.canvas.blit(coins_txt, (22 + off, 11))
+        self.canvas.blit(bake(coins_txt, PANEL), (22 + off, 11))
         dps_txt = self.font_small.render(tr("%s / sec", format_number(self.state.income_per_second())), True, GREY)
-        self.canvas.blit(dps_txt, (25 + off, 44))
+        self.canvas.blit(bake(dps_txt, PANEL), (25 + off, 44))
         pets_txt = self.font_small.render(tr("·   %d / %d pets equipped",
                                              len(self.state.equipped), self.state.max_slots()), True, GREY)
-        self.canvas.blit(pets_txt, (25 + off + dps_txt.get_width() + 14, 44))
+        self.canvas.blit(bake(pets_txt, PANEL), (25 + off + dps_txt.get_width() + 14, 44))
 
         self.nav_mode = True      # Stats / Options: clicáveis com qualquer página aberta
         stats_rect = pygame.Rect(self.vw - 320, 15, 146, 40)
@@ -154,7 +156,7 @@ class GameScreenMixin:
         self.register_button(rect, lambda: None, None)     # clicar dentro da página não fecha
 
         title = self.font_big.render(tr("Stats"), True, WHITE)
-        self.canvas.blit(title, (rect.x + 24, rect.y + 20))
+        self.canvas.blit(bake(title, PANEL), (rect.x + 24, rect.y + 20))
         close_rect = pygame.Rect(rect.right - 46, rect.y + 20, 28, 28)
         self.button(close_rect, "X", self.font_small_b, mouse_pos, PANEL_LIGHT, BAD, WHITE,
                     callback=self.close_stats, radius=8)
@@ -163,8 +165,8 @@ class GameScreenMixin:
         for label, value in lines:
             ltxt = self.font_med.render(label, True, GREY)
             vtxt = self.font_med.render(value, True, WHITE)
-            self.canvas.blit(ltxt, (rect.x + 24, y))
-            self.canvas.blit(vtxt, (rect.right - 24 - vtxt.get_width(), y))
+            self.canvas.blit(bake(ltxt, PANEL), (rect.x + 24, y))
+            self.canvas.blit(bake(vtxt, PANEL), (rect.right - 24 - vtxt.get_width(), y))
             pygame.draw.line(self.canvas, PANEL_LIGHT, (rect.x + 24, y + row_h - 6),
                              (rect.right - 24, y + row_h - 6), 1)
             y += row_h
@@ -291,7 +293,7 @@ class GameScreenMixin:
         else:
             draw_panel(self.canvas, card_rect, PANEL_LIGHT, radius=12)
             txt = self.font_med.render(tr("Click ROLL to start!"), True, GREY)
-            self.canvas.blit(txt, txt.get_rect(center=card_rect.center))
+            self.canvas.blit(bake(txt, PANEL_LIGHT), txt.get_rect(center=card_rect.center))
 
         # --- Auto Roller: em cima do cartão (com os rolls/seg ainda mais acima) ---
         if self.state.auto_unlocked():
@@ -360,7 +362,8 @@ class GameScreenMixin:
                     roll_cx = min(roll_rect.centerx, limit - roll_txt.get_width() // 2)
         self.button(roll_rect, "", self.font_huge, mouse_pos,
                     PANEL_LIGHT, PANEL_LIGHTER, WHITE, callback=self.do_roll, radius=14, sfx=None)
-        self.canvas.blit(roll_txt, roll_txt.get_rect(center=(roll_cx, roll_rect.centery)))
+        roll_fill = PANEL_LIGHTER if roll_rect.collidepoint(mouse_pos) else PANEL_LIGHT
+        self.canvas.blit(bake(roll_txt, roll_fill), roll_txt.get_rect(center=(roll_cx, roll_rect.centery)))
         if bonus_kind == "rainbow":
             draw_rainbow_border(self.canvas, roll_rect.inflate(-9, -9), 10, width=3)
         elif bonus_kind == "diamond":
@@ -422,7 +425,8 @@ class GameScreenMixin:
             else:
                 text = tr("%s in %d roll", name, left) if left == 1 else tr("%s in %d rolls", name, left)
             txt = self.font_small_b.render(text, True, WHITE)
-            self.canvas.blit(txt, txt.get_rect(center=pill.center))
+            # o texto da barra fica por cima do enchimento escuro do meio da pilula
+            self.canvas.blit(bake(txt, (20, 20, 23)), txt.get_rect(center=pill.center))
             return y + pill.height + 8
 
         y = draw_cycle_line("golden", y, self.state.cyclic_bonus_ready, "Golden Roll",

@@ -254,14 +254,68 @@ def clear_drawing_caches():
     _SHADOW_CACHE.clear()
     _DIM_CACHE.clear()
     _PANEL_CACHE.clear()
+    _BAKE_CACHE.clear()
 
 
-def blit_smooth_y(canvas, key, build, x, y):
+_BAKE_CACHE = {}
+
+
+def bake(surf, color):
+    """A mesma imagem ja misturada com a cor lisa que vai estar por baixo, guardada em cache.
+
+    No telemovel um blit com alfa por pixel custa ~228 ns/pixel e um opaco ~0.5 ns/pixel: uma linha
+    de texto por cima de um botao (que e de cor lisa) fica exatamente igual e passa a custar quase
+    nada. So se usa quando se sabe mesmo a cor que esta por baixo - senao veria-se um rectangulo."""
+    if not ALPHA_IS_SLOW:
+        return surf
+    key = (id(surf), tuple(color[:3]))
+    hit = _BAKE_CACHE.get(key)
+    if hit is None:
+        if len(_BAKE_CACHE) > 800:
+            _BAKE_CACHE.clear()
+        # guarda-se tambem a imagem de origem: assim o id() dela nunca e reaproveitado por outra
+        hit = (surf, to_opaque(surf, color))
+        _BAKE_CACHE[key] = hit
+    return hit[1]
+
+
+def bake_on(surf, backdrop, topleft):
+    """O mesmo que bake(), mas contra um pedaco do fundo do jogo (que e fixo) em vez de uma cor lisa.
+    Serve para o que se desenha sempre no mesmo sitio por cima do fundo: o titulo, o rodape.
+    Devolve a imagem original se o sitio pedido sair fora do fundo (ai nao ha o que copiar)."""
+    if not ALPHA_IS_SLOW or backdrop is None:
+        return surf
+    rect = pygame.Rect(topleft, surf.get_size())
+    if not backdrop.get_rect().contains(rect):
+        return surf
+    key = (id(surf), id(backdrop), rect.topleft)
+    hit = _BAKE_CACHE.get(key)
+    if hit is None:
+        if len(_BAKE_CACHE) > 800:
+            _BAKE_CACHE.clear()
+        flat = backdrop.subsurface(rect).copy()
+        flat.blit(surf, (0, 0))
+        try:
+            flat = flat.convert()
+        except pygame.error:
+            pass
+        hit = (surf, flat)
+        _BAKE_CACHE[key] = hit
+    return hit[1]
+
+
+def blit_smooth_y(canvas, key, build, x, y, near_color=None):
     """Desenha em (x, y) um sprite ESTÁTICO com y fracionário. 'key' identifica o sprite (para a cache) e
-    'build()' cria a Surface na primeira vez que for precisa."""
+    'build()' cria a Surface na primeira vez que for precisa.
+    'near_color' e a cor do fundo por baixo: no telemovel serve para trocar o alfa por uma cor-chave
+    (0.045 ms contra 3.8 ms por blit medidos no aparelho)."""
     variants = _VSHIFT_CACHE.get(key)
     if variants is None:
-        variants = [to_display_format(v) for v in _vshift_variants(build(), VSHIFT_STEPS)]
+        raw = _vshift_variants(build(), VSHIFT_STEPS)
+        if ALPHA_IS_SLOW and near_color is not None:
+            variants = [to_colorkey(v, near_color) for v in raw]
+        else:
+            variants = [to_display_format(v) for v in raw]
         _VSHIFT_CACHE[key] = variants
     iy = int(math.floor(y))
     k = min(VSHIFT_STEPS - 1, int((y - iy) * VSHIFT_STEPS))
@@ -293,6 +347,10 @@ def bar_fill_surface(kind, color, w, h):
         mask = pygame.Surface((w, h), pygame.SRCALPHA)
         pygame.draw.rect(mask, (255, 255, 255, 255), mask.get_rect(), border_radius=h // 2)
         surf.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+        if ALPHA_IS_SLOW:
+            # so os cantos redondos e que sao transparentes: troca-se o alfa por uma cor-chave
+            # contra o fundo escuro do meio da pilula (0.045 ms contra 3.8 ms por blit)
+            surf = to_colorkey(surf, (20, 20, 23))
         _BAR_FILL_CACHE[key] = surf
     return surf
 

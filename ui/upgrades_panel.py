@@ -9,7 +9,7 @@ from core.upgrades import UPGRADE_CATEGORIES, UPGRADE_CAT_BY_KEY, UPGRADE_DEFS
 from i18n import tr
 from storage import save_settings
 from theme import ACCENT, ACCENT_HOVER, BLACK, GOOD, GREY, PANEL, PANEL_LIGHT, WHITE
-from ui.drawing import draw_panel, draw_state_border
+from ui.drawing import bake, draw_panel, draw_state_border
 from ui.fonts import fit_text, wrap_text
 
 
@@ -152,12 +152,12 @@ class UpgradesPanelMixin:
                     draw_state_border(self.canvas, row_rect, ACCENT, 12)
 
                 name_txt = self.font_med.render(tr(cat["label"]), True, WHITE)
-                self.canvas.blit(name_txt, (row_rect.x + 16, row_rect.y + 10))
+                self.canvas.blit(bake(name_txt, PANEL_LIGHT), (row_rect.x + 16, row_rect.y + 10))
 
                 count_txt = self.font_small_b.render("%d/%d" % (lvls, mx), True, GOOD if done else WHITE)
-                self.canvas.blit(count_txt, (row_rect.right - count_txt.get_width() - 40, row_rect.y + 12))
+                self.canvas.blit(bake(count_txt, PANEL_LIGHT), (row_rect.right - count_txt.get_width() - 40, row_rect.y + 12))
                 arrow_txt = self.font_med.render(">", True, GREY)
-                self.canvas.blit(arrow_txt, (row_rect.right - 26, row_rect.centery - 12))
+                self.canvas.blit(bake(arrow_txt, PANEL_LIGHT), (row_rect.right - 26, row_rect.centery - 12))
 
                 # linha de baixo: descrição (à esquerda) e, se der para comprar algo, um aviso verde
                 ready_txt = None
@@ -166,9 +166,9 @@ class UpgradesPanelMixin:
                 # o aviso verde fica à esquerda da seta ">" (que está encostada à direita da linha)
                 max_desc_w = row_rect.width - 32 - (ready_txt.get_width() + 38 if ready_txt else 0)
                 desc = fit_text(self.font_tiny, tr(cat["desc"]), max_desc_w)
-                self.canvas.blit(self.font_tiny.render(desc, True, GREY), (row_rect.x + 16, row_rect.y + 36))
+                self.canvas.blit(bake(self.font_tiny.render(desc, True, GREY), PANEL_LIGHT), (row_rect.x + 16, row_rect.y + 36))
                 if ready_txt:
-                    self.canvas.blit(ready_txt, (row_rect.right - ready_txt.get_width() - 40, row_rect.y + 36))
+                    self.canvas.blit(bake(ready_txt, PANEL_LIGHT), (row_rect.right - ready_txt.get_width() - 40, row_rect.y + 36))
 
                 bar_rect = pygame.Rect(row_rect.x + 16, row_rect.bottom - 20, row_rect.width - 32, 10)
                 pygame.draw.rect(self.canvas, PANEL, bar_rect, border_radius=5)
@@ -209,7 +209,7 @@ class UpgradesPanelMixin:
                     draw_state_border(self.canvas, row_rect, (80, 150, 100), 10)
 
                 name_txt = self.font_med.render(tr(d["name"]), True, WHITE if not (locked_by or need_rebirths) else GREY)
-                self.canvas.blit(name_txt, (row_rect.x + 14, row_rect.y + 9))
+                self.canvas.blit(bake(name_txt, PANEL_LIGHT), (row_rect.x + 14, row_rect.y + 9))
                 lvl_txt = self.font_small.render(tr("Lv %d/%d", lvl, d["max_level"]), True,
                                                  GOOD if maxed else GREY)
                 self.canvas.blit(lvl_txt, (row_rect.right - lvl_txt.get_width() - 14, row_rect.y + 13))
