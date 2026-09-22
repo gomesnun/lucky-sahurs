@@ -10,6 +10,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Numero da versao (vX.Y.Z) a escrever no APK; vazio = build de teste, sem atualizacoes automaticas"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -51,12 +56,22 @@ jobs:
           key: buildozer-${{ runner.os }}-${{ github.event.repository.name }}-${{ hashFiles('buildozer.spec', 'android/p4a-recipes/**') }}
           restore-keys: buildozer-${{ runner.os }}-${{ github.event.repository.name }}-
 
-      - name: Escrever a versao no jogo (so nas tags)
+      - name: Escrever a versao no jogo (nas tags, ou a pedido)
         shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
+          V=""
           if [[ "$GITHUB_REF" == refs/tags/* && "$GITHUB_REF_NAME" =~ ^v[0-9]+(\.[0-9]+){0,2}$ ]]; then
-            printf 'BUILD_VERSION = "%s"\n' "$GITHUB_REF_NAME" > build_version.py
-            sed -i "s/^version = .*/version = ${GITHUB_REF_NAME#v}/" buildozer.spec
+            V="$GITHUB_REF_NAME"
+          elif [[ "$INPUT_VERSION" =~ ^v[0-9]+(\.[0-9]+){0,2}$ ]]; then
+            # "Run workflow" com um numero de versao: serve para refazer o APK de uma Release que ja
+            # existe (sem isto o APK ficaria com BUILD_VERSION "dev" e nunca se atualizaria sozinho).
+            V="$INPUT_VERSION"
+          fi
+          if [ -n "$V" ]; then
+            printf 'BUILD_VERSION = "%s"\n' "$V" > build_version.py
+            sed -i "s/^version = .*/version = ${V#v}/" buildozer.spec
           fi
 
       # A cache guarda o pygame ja compilado: se a recipe mudar, e preciso deita-lo fora
