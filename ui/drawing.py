@@ -255,9 +255,26 @@ def clear_drawing_caches():
     _DIM_CACHE.clear()
     _PANEL_CACHE.clear()
     _BAKE_CACHE.clear()
+    _BAKE_PIXELS[0] = 0
 
 
 _BAKE_CACHE = {}
+_BAKE_PIXELS = [0]
+# Limite da cache das imagens ja misturadas, em pixeis (~32 MB): o texto e pequeno, mas os cartoes
+# dos pets nao sao, e cada copia misturada e mais uma imagem na memoria do telemovel.
+BAKE_MAX_PIXELS = 8 * 1024 * 1024
+
+
+def _bake_remember(key, source, flat):
+    """Guarda a imagem ja misturada, esvaziando a cache quando passa do limite de memoria.
+    Guarda tambem a imagem de origem: assim o id() dela nunca e reaproveitado por outra."""
+    w, h = flat.get_size()
+    if _BAKE_PIXELS[0] + w * h > BAKE_MAX_PIXELS:
+        _BAKE_CACHE.clear()
+        _BAKE_PIXELS[0] = 0
+    _BAKE_CACHE[key] = (source, flat)
+    _BAKE_PIXELS[0] += w * h
+    return flat
 
 
 def bake(surf, color):
@@ -270,13 +287,9 @@ def bake(surf, color):
         return surf
     key = (id(surf), tuple(color[:3]))
     hit = _BAKE_CACHE.get(key)
-    if hit is None:
-        if len(_BAKE_CACHE) > 800:
-            _BAKE_CACHE.clear()
-        # guarda-se tambem a imagem de origem: assim o id() dela nunca e reaproveitado por outra
-        hit = (surf, to_opaque(surf, color))
-        _BAKE_CACHE[key] = hit
-    return hit[1]
+    if hit is not None:
+        return hit[1]
+    return _bake_remember(key, surf, to_opaque(surf, color))
 
 
 def bake_on(surf, backdrop, topleft):
@@ -290,18 +303,15 @@ def bake_on(surf, backdrop, topleft):
         return surf
     key = (id(surf), id(backdrop), rect.topleft)
     hit = _BAKE_CACHE.get(key)
-    if hit is None:
-        if len(_BAKE_CACHE) > 800:
-            _BAKE_CACHE.clear()
-        flat = backdrop.subsurface(rect).copy()
-        flat.blit(surf, (0, 0))
-        try:
-            flat = flat.convert()
-        except pygame.error:
-            pass
-        hit = (surf, flat)
-        _BAKE_CACHE[key] = hit
-    return hit[1]
+    if hit is not None:
+        return hit[1]
+    flat = backdrop.subsurface(rect).copy()
+    flat.blit(surf, (0, 0))
+    try:
+        flat = flat.convert()
+    except pygame.error:
+        pass
+    return _bake_remember(key, surf, flat)
 
 
 def blit_smooth_y(canvas, key, build, x, y, near_color=None):
