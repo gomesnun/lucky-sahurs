@@ -3,6 +3,7 @@
 import random
 
 from core import balance as B
+from core.global_event import event_mult
 from theme import BLACK, DIAMOND_BORDER, GOLD_BORDER, WHITE
 
 
@@ -197,6 +198,7 @@ class PetMixin:
         if tier >= TIER_TRANSCENDENT:  # só Transcendent
             m *= (1.0 + self.milestone_bonus("transcendent_luck"))
         m *= self.rebirth_luck_mult()
+        m *= event_mult("luck")                                # evento global (ver online/events.py)
         m *= (1.0 + self.rebirth_bonus("luck"))                # recompensas da página de Rebirth
         if tier >= TIER_SECRET:
             m *= (1.0 + self.rebirth_bonus("secret_luck"))

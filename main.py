@@ -102,6 +102,7 @@ PERF_LOG = IS_ANDROID or bool(os.environ.get("LUCKY_VERITIES_PERF") or os.enviro
 from i18n import set_language, tr
 from online.cloud import CloudMixin
 from online.chat import ChatMixin
+from online.events import EventsMixin
 from online.feedback import FeedbackMixin
 from online.friends import FriendsMixin
 from storage import load_settings, migrate_legacy_save, save_settings
@@ -127,6 +128,7 @@ from ui.title_saves import TitleSavesMixin
 from ui.traits_panel import TraitsPanelMixin
 from ui.update_panel import UpdatePanelMixin
 from ui.chat_panel import ChatPanelMixin
+from ui.events_panel import EventsPanelMixin
 from ui.feedback_panel import FeedbackPanelMixin
 from ui.updatelog_panel import UpdateLogPanelMixin
 from ui.upgrades_panel import UpgradesPanelMixin
@@ -155,6 +157,8 @@ class Game(
     FriendsPanelMixin,      # ecrã de Amigos
     ChatMixin,              # chat entre amigos (lógica)
     ChatPanelMixin,         # ecrã da conversa
+    EventsMixin,            # eventos globais (lógica)
+    EventsPanelMixin,       # faixa do evento + página de admin
     FeedbackMixin,          # feedback: o recado de cada conta (lógica)
     FeedbackPanelMixin,     # página de Feedback
     CreditsPanelMixin,      # página de Credits (sons e música)
@@ -470,6 +474,7 @@ class Game(
         self.update_log_open = False
         if self.feedback_open:
             self.close_feedback()
+        self.event_admin_open = False
         self.traits_open = False
         self.rebirth_open = False
         self.rebirth_confirm = False
@@ -479,7 +484,9 @@ class Game(
 
     def close_overlay_on_outside_click(self):
         """Clique fora da página de Leaderboard / Options / Stats / Traits / Rebirth -> fecha-a."""
-        if self.friends_open:
+        if self.event_admin_open:
+            self.close_event_admin()
+        elif self.friends_open:
             self.close_friends()
         elif self.feedback_open:
             self.close_feedback()
@@ -619,7 +626,8 @@ class Game(
         if self.screen_mode != "game":
             return self.screen_mode
         for flag in ("rebirth_open", "stats_open", "options_open", "traits_open",
-                     "leaderboard_open", "friends_open", "feedback_open", "credits_open", "update_log_open"):
+                     "leaderboard_open", "friends_open", "feedback_open", "credits_open",
+                     "update_log_open", "event_admin_open"):
             if getattr(self, flag, False):
                 return flag[:-5]
         if getattr(self.right_panel, "progress", 0.0) > 0.01:
@@ -755,6 +763,8 @@ class Game(
                 elif event.key in (pygame.K_ESCAPE, pygame.K_AC_BACK):
                     if self.screen_mode == "account":
                         self.close_account()
+                    elif self.event_admin_open:
+                        self.close_event_admin()
                     elif self.friends_open:
                         self.close_friends()
                     elif self.feedback_open:
@@ -783,7 +793,7 @@ class Game(
                         self.left_panel.close()
                 elif (self.options_open or self.stats_open or self.traits_open or self.rebirth_open
                       or self.leaderboard_open or self.credits_open or self.update_log_open
-                      or self.friends_open or self.feedback_open
+                      or self.friends_open or self.feedback_open or self.event_admin_open
                       or self.screen_mode != "game"):
                     pass
                 elif event.key in (pygame.K_u, pygame.K_t):
@@ -968,6 +978,10 @@ class Game(
         if self.feedback_open:
             self.begin_modal()
             self.draw_feedback(mouse_pos)
+
+        if self.event_admin_open:
+            self.begin_modal()
+            self.draw_event_admin(mouse_pos)
 
         if self.cutscene_active is not None:     # verity Secret+ apanhado: por cima de quase tudo
             self.draw_cutscene(mouse_pos)

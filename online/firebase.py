@@ -246,6 +246,11 @@ def fs_decode(value):
     return None
 
 
+def iso_timestamp(secs):
+    """segundos desde a epoca -> '2026-09-22T12:34:56Z' (o formato que o Firestore aceita)."""
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(secs)))
+
+
 def fs_fields(doc):
     return {k: fs_decode(v) for k, v in (doc.get("fields") or {}).items()}
 
@@ -253,6 +258,20 @@ def fs_fields(doc):
 def new_doc_id():
     """Id novo para um documento (o mesmo formato que o Firestore usa: 20 caracteres)."""
     return uuid.uuid4().hex[:20]
+
+
+def event_from_doc(doc):
+    """Documento /events/current -> {"kind", "mult", "ends_at", "by"} (ends_at em segundos)."""
+    f = fs_fields(doc)
+    ends = f.get("ends_at")
+    if isinstance(ends, str):
+        ends = parse_timestamp(ends)
+    return {
+        "kind": f.get("kind") or "luck",
+        "mult": float(f.get("mult") or 1.0),
+        "ends_at": ends or 0.0,
+        "by": f.get("by") or "",
+    }
 
 
 def feedback_from_doc(doc):
@@ -877,6 +896,51 @@ class FirebaseClient:
         return out
 
     # ---------------------------------------------------------------- feedback (um por conta)
+    # ================================================================ eventos globais (admin)
+    def is_admin(self):
+        """True se esta conta tem um documento em /admins/{uid}. Quem pode comecar eventos globais
+        decide-se no Console (basta criar/apagar o documento), nunca no codigo do jogo."""
+        uid = self._need_uid()
+        try:
+            self._fs("GET", "/admins/%s" % uid)
+        except OnlineError as e:
+            if e.code == "not_found":
+                return False
+            raise
+        return True
+
+    def get_event(self):
+        """O evento global a decorrer, ou None se nao houver nenhum."""
+        try:
+            doc = self._fs("GET", "/events/current")
+        except OnlineError as e:
+            if e.code == "not_found":
+                return None
+            raise
+        return event_from_doc(doc)
+
+    def start_event(self, kind, mult, seconds):
+        """Comeca (ou substitui) o evento global. So passa se as regras deixarem este uid escrever."""
+        uid = self._need_uid()
+        ends = time.time() + float(seconds)
+        fields = {
+            "kind": fs_encode(str(kind)),
+            "mult": fs_encode(float(mult)),
+            "by": fs_encode(self.username or uid),
+            "ends_at": {"timestampValue": iso_timestamp(ends)},
+        }
+        params = [("updateMask.fieldPaths", k) for k in sorted(fields)]
+        self._fs("PATCH", "/events/current", {"fields": fields}, params)
+        return {"kind": str(kind), "mult": float(mult), "ends_at": ends,
+                "by": self.username or uid}
+
+    def stop_event(self):
+        try:
+            self._fs("DELETE", "/events/current")
+        except OnlineError as e:
+            if e.code != "not_found":
+                raise
+
     def publish_feedback(self, text):
         """Cria ou reescreve o feedback desta conta. O id do documento e o uid, por isso cada conta
         so pode ter um; apagar e escrever outra vez volta a criar."""

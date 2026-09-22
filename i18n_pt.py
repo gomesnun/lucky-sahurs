@@ -572,4 +572,21 @@ PT = {
     "Write a message...": "Escreve uma mensagem...",
     "No messages yet - say hi!": "Ainda não há mensagens - diz olá!",
 
+    # ---- eventos globais (admin) ----
+    "Global event": "Evento global",
+    "Starts a bonus for every player online.": "Começa um bónus para todos os jogadores online.",
+    "Multiplier": "Multiplicador",
+    "Duration": "Duração",
+    "%d min": "%d min",
+    "Start for everyone": "Começar para toda a gente",
+    "Luck": "Sorte",
+    "Money": "Dinheiro",
+    "Auto Speed": "Velocidade Auto",
+    "No event running.": "Não há nenhum evento a decorrer.",
+    "Stop event": "Parar evento",
+    "Event started for everyone!": "Evento começado para toda a gente!",
+    "Event stopped.": "Evento parado.",
+    "GLOBAL EVENT: %sx %s - %s left": "EVENTO GLOBAL: %sx %s - faltam %s",
+    "Now: %sx %s (%d s left), by %s": "Agora: %sx %s (faltam %d s), por %s",
+
 }

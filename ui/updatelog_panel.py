@@ -13,6 +13,12 @@ from ui.fonts import wrap_text
 
 # (versão, data, linhas de descrição) - a mais recente primeiro.
 UPDATE_LOG = (
+    ("v2.4.0", "2026-09-22", [
+        "Chat: talk to your friends in the game - the Friends page now has a Chat button on each "
+        "friend, and a red dot shows up when a new message arrives.",
+        "Global events: one account can start a timed bonus (like 10x Luck for 5 minutes) that "
+        "applies to every player online, with a banner at the top while it lasts.",
+    ]),
     ("v2.3.0", "2026-09-22", [
         "Feedback: the new button next to Update Log opens a page where you leave one message for the "
         "game - you can edit it or delete it, and after deleting you can write another one.",

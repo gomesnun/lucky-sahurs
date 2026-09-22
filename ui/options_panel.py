@@ -224,6 +224,11 @@ class OptionsPanelMixin:
                     icon="leaderboard")
         y += 54
 
+        if self.event_is_admin:      # só a conta que tem /admins/{uid} na cloud é que vê isto
+            self.button(pygame.Rect(x0, y, w, 44), tr("Global event"), self.font_med, mouse_pos,
+                        PANEL_LIGHT, PANEL_LIGHTER, ACCENT, callback=self.toggle_event_admin, radius=10)
+            y += 54
+
         if in_game:
             self.button(pygame.Rect(x0, y, w, 44), tr("Save now"), self.font_med, mouse_pos,
                         PANEL_LIGHT, PANEL_LIGHTER, WHITE,

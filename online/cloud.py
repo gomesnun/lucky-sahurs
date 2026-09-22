@@ -93,6 +93,7 @@ class CloudMixin:
         self.init_friends()                  # amigos (ver online/friends.py)
         self.init_feedback()                 # feedback (ver online/feedback.py)
         self.init_chat()                     # chat entre amigos (ver online/chat.py)
+        self.init_events()                   # eventos globais (ver online/events.py)
 
         self.restore_session()
 
@@ -142,6 +143,9 @@ class CloudMixin:
         if self.client:
             self.client.sign_out()
         self.account = None
+        self.event_is_admin = False
+        self.event_admin_checked = False
+        self.event_admin_open = False
         self.cloud_slots = {}
         self.cloud_slots_loaded = False
         self.cloud_slots_loading = False
@@ -472,6 +476,7 @@ class CloudMixin:
         self.tick_publish(now)
         self.tick_friends(now)
         self.tick_chat(now)
+        self.tick_events(now)
 
     def leaderboard_values(self):
         """Pontuação da CONTA (uma linha na leaderboard):

@@ -1,6 +1,7 @@
 """Economia: dinheiro por segundo, multiplicadores e auto-roll."""
 
 from core import balance as B
+from core.global_event import event_mult
 from core.pets import MUTATIONS, RARITIES
 from core.upgrades import BASE_SLOTS
 
@@ -16,7 +17,8 @@ class EconomyMixin:
         base = ((1.0 + B.MONEY_PER_LEVEL * self.upgrade_level("money"))
                 * (1.0 + B.MONEY_PRISM_PER_LEVEL * self.upgrade_level("money_prism")))
         return (base * (1.0 + self.trait_buff("money")) * (1.0 + self.milestone_bonus("money"))
-                * self.rebirth_money_mult() * (1.0 + self.rebirth_bonus("money")) * B.INCOME_SCALE)
+                * self.rebirth_money_mult() * (1.0 + self.rebirth_bonus("money")) * B.INCOME_SCALE
+                * event_mult("money"))                         # evento global (ver online/events.py)
 
     def auto_unlocked(self):
         """O Auto Roller funciona se o compraste E já tens os rebirths que ele pede (B.AUTO_UNLOCK_REBIRTHS)."""
@@ -28,7 +30,7 @@ class EconomyMixin:
         base = B.AUTO_BASE_RPS * (1 + B.AUTO_SPEED_PER_LEVEL * self.upgrade_level("auto_speed"))
         base *= (1.0 + B.AUTO_TURBO_PER_LEVEL * self.upgrade_level("auto_turbo"))
         return (base * (1.0 + self.trait_buff("auto_speed")) * (1.0 + self.milestone_bonus("auto_speed"))
-                * (1.0 + self.rebirth_bonus("auto_speed")))
+                * (1.0 + self.rebirth_bonus("auto_speed")) * event_mult("speed"))
 
     def pet_income(self, rarity_index, mutation):
         return RARITIES[rarity_index]["income"] * MUTATIONS[mutation]["mult"] * self.money_multiplier()

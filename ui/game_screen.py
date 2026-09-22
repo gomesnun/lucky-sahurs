@@ -134,6 +134,7 @@ class GameScreenMixin:
         self.button(opt_rect, tr("Options"), self.font_med, mouse_pos, PANEL_LIGHT, PANEL_LIGHTER, WHITE,
                     callback=self.toggle_options, icon="options")
         self.nav_mode = False
+        self.draw_event_banner()        # evento global a decorrer (ver ui/events_panel.py)
 
     def draw_stats(self, mouse_pos):
         # Só os botões de navegação (Stats/Options no topo, Bag/Traits/Index/Tree/Milestones

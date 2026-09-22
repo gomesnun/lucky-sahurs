@@ -26,7 +26,7 @@ source.exclude_dirs = website,.github,android,bin,.buildozer,.venv,dist,build,__
 source.exclude_patterns = build_exe.bat,build_linux_mac.sh,run_linux_mac.sh,*.spec,rules.txt,read-problems.md,savegame*.json,lucky_sahurs_*.json,lucky_verities_*.json
 
 # Numero da versao do APK. Acompanhar as tags das Releases (v2.0.0 -> 2.0.0).
-version = 2.3.0
+version = 2.4.0
 
 # pygame-ce (recipe "pygame"), HTTPS com certificados proprios (a conta / leaderboard / saves na nuvem).
 # certifi: os certificados HTTPS. Sem eles, no Android o ssl nao encontra nenhum CA do sistema
