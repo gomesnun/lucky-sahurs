@@ -220,6 +220,8 @@ class Game(
         self._perf_frames = 0
         self._perf_window = 0
         self._perf_prof = None
+        self._perf_prof_left = 0            # frames que faltam medir na janela lenta
+        self._perf_prof_dumps = 0
         self._perf_said_format = False
         self._perf_flip = 0.0
         self._perf_bg = 0.0
@@ -540,7 +542,7 @@ class Game(
         n = self._perf_frames
         if n == 30:
             self._perf_blit_bench()
-        if n < 60 or n >= 360:
+        if not ((60 <= n < 360) or self._perf_prof_left > 0):
             self.draw()
             return
         if self._perf_prof is None:
@@ -549,7 +551,13 @@ class Game(
         self._perf_prof.enable()
         self.draw()
         self._perf_prof.disable()
-        if n == 359:
+        # A medicao do arranque acaba no frame 359; a medicao de uma janela lenta acaba quando os
+        # 300 frames dela se esgotam. Nos dois casos escreve-se o retrato e desliga-se.
+        done = (n == 359)
+        if self._perf_prof_left > 0:
+            self._perf_prof_left -= 1
+            done = self._perf_prof_left == 0
+        if done:
             # Le-se o cProfile a mao: o modulo pstats nao vem no Python do Android, e importa-lo
             # aqui rebentava com a app exatamente neste frame (fechava sem erro nenhum).
             try:
@@ -567,10 +575,25 @@ class Game(
                                           code.co_firstlineno, code.co_name)
                 rows.append((e.inlinetime, e.totaltime, e.callcount, name))
             rows.sort(reverse=True)
-            out = ["PROF 300 frames: tottime cumtime calls funcao"]
+            out = ["PROF (%s) 300 frames: tottime cumtime calls funcao" % self._perf_screen_name()]
             for inline, total, calls, name in rows[:25]:
                 out.append("PROF %8.3f %8.3f %7d %s" % (inline, total, calls, name))
             self._perf_write(out)
+            self._perf_prof = None
+
+    def _perf_screen_name(self):
+        """Que pagina esta aberta: uma janela lenta so se percebe sabendo o que estava no ecra."""
+        if self.screen_mode != "game":
+            return self.screen_mode
+        for flag in ("rebirth_open", "stats_open", "options_open", "traits_open",
+                     "leaderboard_open", "credits_open", "update_log_open"):
+            if getattr(self, flag, False):
+                return flag[:-5]
+        if getattr(self.right_panel, "progress", 0.0) > 0.01:
+            return "painel:%s" % (getattr(self.right_panel, "content", "?"),)
+        if getattr(self.left_panel, "progress", 0.0) > 0.01:
+            return "bag"
+        return "jogo"
 
     # ---------------------------------------------------------------- loop
     def run(self):
@@ -642,10 +665,21 @@ class Game(
                               % (self.screen.get_width(), self.screen.get_height(),
                                  self.screen.get_bitsize(), self.screen.get_masks(),
                                  self.canvas.get_bitsize()))
-                    self._perf_write(["PERF fps=%.1f draw=%.1fms flip=%.1fms bg=%.1fms pior=%.1fms lentos=%d/%d"
-                                      % (n / self._perf_elapsed, 1000.0 * self._perf_draw / n,
+                    from ui import drawing as _drawing
+                    from ui.fonts import StyledFont as _styled
+                    media = 1000.0 * self._perf_draw / n
+                    self._perf_write(["PERF fps=%.1f draw=%.1fms flip=%.1fms bg=%.1fms pior=%.1fms "
+                                      "lentos=%d/%d ecra=%s bake=%d/%.1fMB fonte=%d"
+                                      % (n / self._perf_elapsed, media,
                                          1000.0 * self._perf_flip / n, 1000.0 * self._perf_bg / n,
-                                         1000.0 * self._perf_worst, self._perf_slow, n)])
+                                         1000.0 * self._perf_worst, self._perf_slow, n,
+                                         self._perf_screen_name(), len(_drawing._BAKE_CACHE),
+                                         _drawing._BAKE_PIXELS[0] * 4 / 1e6, len(_styled._cache))])
+                    # Janela lenta: liga o cProfile nos 300 frames seguintes, para apanhar o culpado
+                    # no momento em que o jogo esta mesmo a arrastar (e nao so no arranque).
+                    if media > 20.0 and self._perf_prof_left == 0 and self._perf_prof_dumps < 4:
+                        self._perf_prof_dumps += 1
+                        self._perf_prof_left = 300
                     self._perf_worst = 0.0
                     self._perf_slow = 0
                     self._perf_flip = self._perf_bg = 0.0
