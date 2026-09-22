@@ -24,7 +24,7 @@ try:
     from build_version import BUILD_VERSION
 except ImportError:
     BUILD_VERSION = "dev"
-VERSION = BUILD_VERSION if BUILD_VERSION != "dev" else "v2.2.1"       # o que aparece no menu
+VERSION = BUILD_VERSION if BUILD_VERSION != "dev" else "v2.3.0"       # o que aparece no menu
 
 # Atualizações automáticas (ver online/updater.py)
 UPDATE_REPO = "gomesnun/lucky-verities"       # dono/repositório onde estão as Releases

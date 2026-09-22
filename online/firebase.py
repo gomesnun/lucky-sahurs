@@ -249,6 +249,15 @@ def fs_fields(doc):
     return {k: fs_decode(v) for k, v in (doc.get("fields") or {}).items()}
 
 
+def feedback_from_doc(doc):
+    """/feedback/{uid} -> {"uid", "username", "text", "updated_at"}."""
+    f = fs_fields(doc)
+    return {"uid": str(doc.get("name", "")).rsplit("/", 1)[-1],
+            "username": str(f.get("username") or "?"),
+            "text": str(f.get("text") or ""),
+            "updated_at": parse_timestamp(f.get("updated_at"))}
+
+
 def profile_from_doc(doc):
     """/profiles/{uid} -> {"uid", "username", "avatar_pet" (None = sem foto), "avatar_mut"}."""
     f = fs_fields(doc)
@@ -798,6 +807,54 @@ class FirebaseClient:
             {"delete": "%s/users/%s/friends/%s" % (self.docs_root, friend_uid, uid)},
         ]}
         self._fs("POST", ":commit", body)
+
+    # ---------------------------------------------------------------- feedback (um por conta)
+    def publish_feedback(self, text):
+        """Cria ou reescreve o feedback desta conta. O id do documento e o uid, por isso cada conta
+        so pode ter um; apagar e escrever outra vez volta a criar."""
+        uid = self._need_uid()
+        name = "%s/feedback/%s" % (self.docs_root, uid)
+        body = {"writes": [{
+            "update": {"name": name, "fields": {
+                "username": fs_encode(self.username or ""),
+                "text": fs_encode(str(text)),
+            }},
+            "updateTransforms": [{"fieldPath": "updated_at", "setToServerValue": "REQUEST_TIME"}],
+        }]}
+        self._fs("POST", ":commit", body)
+
+    def get_my_feedback(self):
+        uid = self._need_uid()
+        try:
+            doc = self._fs("GET", "/feedback/%s" % uid)
+        except OnlineError as e:
+            if e.code == "not_found":
+                return None
+            raise
+        return feedback_from_doc(doc)
+
+    def delete_feedback(self):
+        uid = self._need_uid()
+        try:
+            self._fs("DELETE", "/feedback/%s" % uid)
+        except OnlineError as e:
+            if e.code != "not_found":
+                raise
+
+    def list_feedback(self, limit=60):
+        """Os feedbacks mais recentes (a pagina mostra-os a toda a gente)."""
+        query = {
+            "from": [{"collectionId": "feedback"}],
+            "orderBy": [{"field": {"fieldPath": "updated_at"}, "direction": "DESCENDING"}],
+            "limit": int(limit),
+        }
+        res = self._fs("POST", ":runQuery", {"structuredQuery": query})
+        out = []
+        for item in res if isinstance(res, list) else []:
+            doc = item.get("document") if isinstance(item, dict) else None
+            if doc:
+                out.append(feedback_from_doc(doc))
+        return out
 
     def top_entries(self, field, limit, min_value=None):
         """Top 'limit' contas por 'field'. min_value: ignora quem tem menos que isto (ex.: rebirths >= 1,

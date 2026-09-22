@@ -91,6 +91,7 @@ class CloudMixin:
         self.lb_refetch_done = 0.0           # pub_last_time para o qual já se voltou a pedir a leaderboard (ver ensure_leaderboard)
 
         self.init_friends()                  # amigos (ver online/friends.py)
+        self.init_feedback()                 # feedback (ver online/feedback.py)
 
         self.restore_session()
 

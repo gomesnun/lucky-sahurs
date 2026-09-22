@@ -15,7 +15,7 @@ class TextField:
         self.kind = kind                    # "username" | "password" | "email" | "code"
         self.text = ""
         self.caret = 0                      # quantas letras ficam à esquerda do cursor
-        self.max_len = {"username": 16, "email": 80, "code": 6}.get(kind, 64)
+        self.max_len = {"username": 16, "email": 80, "code": 6, "text": 280}.get(kind, 64)
 
     def set_text(self, text=""):
         self.text = text
@@ -39,7 +39,10 @@ class TextField:
             # de telemóvel metem um espaço a mais ao aceitar uma sugestão: ficavam nomes com espaço no
             # fim que depois não davam com ninguém na procura
             if ch == " ":
-                continue
+                # o campo de feedback leva espaços; os outros (nome, email, código, palavra-passe) não,
+                # e os teclados de telemóvel metem um espaço a mais ao aceitar uma sugestão
+                if self.kind != "text" or not self.text.strip() or self.text.endswith("  "):
+                    continue
             if len(self.text) >= self.max_len:
                 break
             self._clamp()

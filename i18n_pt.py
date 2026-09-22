@@ -541,4 +541,28 @@ PT = {
     "%s is now your friend.": "%s é agora teu amigo.",
     "Your friends list is full (%d).": "A tua lista de amigos está cheia (%d).",
 
+    # ---------------- feedback ----------------
+    "Feedback": "Feedback",
+    "One message per player - you can edit or delete yours.":
+        "Um recado por jogador - podes editar ou apagar o teu.",
+    "Log in from the main menu to leave feedback.":
+        "Inicia sessão no menu principal para deixares feedback.",
+    "You haven't left feedback yet.": "Ainda não deixaste feedback.",
+    "Write feedback": "Escrever",
+    "Your feedback": "O teu feedback",
+    "What would make the game better?": "O que tornaria o jogo melhor?",
+    "Publish": "Publicar",
+    "Sending...": "A enviar...",
+    "Edit": "Editar",
+    "Delete": "Apagar",
+    "Confirm delete": "Confirmar",
+    "Write a bit more before sending.": "Escreve um pouco mais antes de enviar.",
+    "Thanks! Your feedback is published.": "Obrigado! O teu feedback está publicado.",
+    "Feedback deleted. You can write a new one.": "Feedback apagado. Podes escrever outro.",
+    "No feedback yet. Be the first!": "Ainda não há feedback. Sê o primeiro!",
+    "just now": "agora mesmo",
+    "%d min ago": "há %d min",
+    "%d h ago": "há %d h",
+    "%d d ago": "há %d d",
+
 }

@@ -26,10 +26,12 @@ source.exclude_dirs = website,.github,android,bin,.buildozer,.venv,dist,build,__
 source.exclude_patterns = build_exe.bat,build_linux_mac.sh,run_linux_mac.sh,*.spec,rules.txt,read-problems.md,savegame*.json,lucky_sahurs_*.json,lucky_verities_*.json
 
 # Numero da versao do APK. Acompanhar as tags das Releases (v2.0.0 -> 2.0.0).
-version = 2.2.1
+version = 2.3.0
 
 # pygame-ce (recipe "pygame"), HTTPS com certificados proprios (a conta / leaderboard / saves na nuvem).
-requirements = python3,pygame,openssl,pyjnius,android
+# certifi: os certificados HTTPS. Sem eles, no Android o ssl nao encontra nenhum CA do sistema
+# e TUDO o que e online (conta, leaderboard, amigos, feedback) falha com CERTIFICATE_VERIFY_FAILED.
+requirements = python3,pygame,openssl,pyjnius,android,certifi
 
 icon.filename = %(source.dir)s/icons/verity.png
 presplash.filename = %(source.dir)s/icons/verity.png

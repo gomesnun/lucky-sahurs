@@ -172,6 +172,9 @@ class TitleSavesMixin:
         self.nav_mode = True      # continua clicável com o painel aberto (para o fechar)
         self.button(log_rect, tr("Update Log"), self.font_small_b, mouse_pos, PANEL_LIGHT, PANEL_LIGHTER, WHITE,
                     callback=self.toggle_update_log, radius=10, icon="updatelog")
+        fb_rect = pygame.Rect(log_rect.right + 12, log_rect.y, 160, 44)
+        self.button(fb_rect, tr("Feedback"), self.font_small_b, mouse_pos, PANEL_LIGHT, PANEL_LIGHTER, WHITE,
+                    callback=self.toggle_feedback, radius=10, icon="feedback")
         self.nav_mode = False
 
         rodape = VERSION if IS_ANDROID else tr("%s   ·   %s: fullscreen / windowed", VERSION, FULLSCREEN_HINT)

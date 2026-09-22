@@ -1,0 +1,24 @@
+// FEEDBACK - regras a ACRESCENTAR às regras do Firestore que o projeto já tem
+// (Firebase Console -> Firestore Database -> Rules). Cola este bloco DENTRO do
+// "match /databases/{database}/documents { ... }" que já lá está, sem apagar o resto.
+//
+// Sem isto, a página de Feedback mostra "sem autorização".
+
+// Um recado por conta: o id do documento É o uid, por isso ninguém pode ter dois.
+// Toda a gente autenticada lê (a página mostra os recados de todos); escrever e apagar,
+// só o dono. Apagar liberta a vaga e pode voltar a criar.
+match /feedback/{uid} {
+  allow read: if request.auth != null;
+  allow create, update: if request.auth != null && request.auth.uid == uid
+                        && request.resource.data.keys().hasOnly(['username', 'text', 'updated_at'])
+                        && request.resource.data.username is string
+                        && request.resource.data.username.matches('[a-z0-9_]{3,16}')
+                        // o nome tem de ser o da própria conta (o email interno é <username>@luckysahurs.invalid)
+                        && request.auth.token.email == request.resource.data.username + '@luckysahurs.invalid'
+                        && request.resource.data.text is string
+                        && request.resource.data.text.size() >= 4
+                        && request.resource.data.text.size() <= 280
+                        // a hora tem de ser a do servidor (não dá para falsificar)
+                        && request.resource.data.updated_at == request.time;
+  allow delete: if request.auth != null && request.auth.uid == uid;
+}

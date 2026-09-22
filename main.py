@@ -101,6 +101,7 @@ from core.game_state import GameState
 PERF_LOG = IS_ANDROID or bool(os.environ.get("LUCKY_VERITIES_PERF") or os.environ.get("LUCKY_SAHURS_PERF"))
 from i18n import set_language, tr
 from online.cloud import CloudMixin
+from online.feedback import FeedbackMixin
 from online.friends import FriendsMixin
 from storage import load_settings, migrate_legacy_save, save_settings
 from ui.account_panel import AccountPanelMixin
@@ -124,6 +125,7 @@ from ui.rebirth_panel import RebirthPanelMixin
 from ui.title_saves import TitleSavesMixin
 from ui.traits_panel import TraitsPanelMixin
 from ui.update_panel import UpdatePanelMixin
+from ui.feedback_panel import FeedbackPanelMixin
 from ui.updatelog_panel import UpdateLogPanelMixin
 from ui.upgrades_panel import UpgradesPanelMixin
 from ui.widgets import SlidePanel
@@ -147,8 +149,10 @@ class Game(
     CloudMixin,             # conta na cloud, sincronização, leaderboard (lógica)
     AccountPanelMixin,      # ecrã de conta
     LeaderboardPanelMixin,  # ecrã da leaderboard
-FriendsMixin,           # amigos: pedidos, lista e perfis (lógica)
-FriendsPanelMixin,      # ecrã de Amigos
+    FriendsMixin,           # amigos: pedidos, lista e perfis (lógica)
+    FriendsPanelMixin,      # ecrã de Amigos
+    FeedbackMixin,          # feedback: o recado de cada conta (lógica)
+    FeedbackPanelMixin,     # página de Feedback
     CreditsPanelMixin,      # página de Credits (sons e música)
     UpdateLogPanelMixin,    # página de Update Log (novidades do jogo)
     UpdatePanelMixin,       # "Nova versão disponível": atualização automática pelo GitHub (obrigatória)
@@ -436,6 +440,8 @@ FriendsPanelMixin,      # ecrã de Amigos
             self.lb_scroll = max(0.0, min(self.lb_max_scroll, value))
         elif key == "friends":
             self.friends_scroll = max(0.0, min(self.friends_max_scroll, value))
+        elif key == "feedback":
+            self.feedback_scroll = max(0.0, min(self.feedback_max_scroll, value))
 
     def start_scrollbar_drag(self, canvas_pos):
         """Clique dentro da barra de uma scrollbar visível -> começa a arrastar. Devolve True se apanhou alguma."""
@@ -455,6 +461,8 @@ FriendsPanelMixin,      # ecrã de Amigos
         self.stats_open = False
         self.credits_open = False
         self.update_log_open = False
+        if self.feedback_open:
+            self.close_feedback()
         self.traits_open = False
         self.rebirth_open = False
         self.rebirth_confirm = False
@@ -466,6 +474,8 @@ FriendsPanelMixin,      # ecrã de Amigos
         """Clique fora da página de Leaderboard / Options / Stats / Traits / Rebirth -> fecha-a."""
         if self.friends_open:
             self.close_friends()
+        elif self.feedback_open:
+            self.close_feedback()
         elif self.leaderboard_open:
             self.close_leaderboard()
         elif self.options_open:
@@ -602,7 +612,7 @@ FriendsPanelMixin,      # ecrã de Amigos
         if self.screen_mode != "game":
             return self.screen_mode
         for flag in ("rebirth_open", "stats_open", "options_open", "traits_open",
-                     "leaderboard_open", "friends_open", "credits_open", "update_log_open"):
+                     "leaderboard_open", "friends_open", "feedback_open", "credits_open", "update_log_open"):
             if getattr(self, flag, False):
                 return flag[:-5]
         if getattr(self.right_panel, "progress", 0.0) > 0.01:
@@ -729,7 +739,7 @@ FriendsPanelMixin,      # ecrã de Amigos
                     self.skip_cutscene()          # qualquer tecla salta a cutscene (F11 continua a dar fullscreen)
                 elif self.screen_mode == "account" and self.handle_account_key(event):
                     pass
-                elif self.handle_friends_key(event):
+                elif self.handle_friends_key(event) or self.handle_feedback_key(event):
                     pass
                 elif event.key == pygame.K_F11 or (
                         event.key == pygame.K_f and (event.mod & (pygame.KMOD_META | pygame.KMOD_CTRL))):
@@ -739,6 +749,8 @@ FriendsPanelMixin,      # ecrã de Amigos
                         self.close_account()
                     elif self.friends_open:
                         self.close_friends()
+                    elif self.feedback_open:
+                        self.close_feedback()
                     elif self.leaderboard_open:
                         self.close_leaderboard()
                     elif self.options_open:
@@ -763,7 +775,7 @@ FriendsPanelMixin,      # ecrã de Amigos
                         self.left_panel.close()
                 elif (self.options_open or self.stats_open or self.traits_open or self.rebirth_open
                       or self.leaderboard_open or self.credits_open or self.update_log_open
-                      or self.friends_open
+                      or self.friends_open or self.feedback_open
                       or self.screen_mode != "game"):
                     pass
                 elif event.key in (pygame.K_u, pygame.K_t):
@@ -778,6 +790,8 @@ FriendsPanelMixin,      # ecrã de Amigos
             elif event.type == pygame.TEXTINPUT:
                 if self.friends_open and self.friends_focus and not self.update_modal_active():
                     self.friends_search.add(event.text)
+                elif self.feedback_open and self.feedback_focus and not self.update_modal_active():
+                    self.feedback_field.add(event.text)
                 elif self.screen_mode == "account" and self.acc_focus and not self.update_modal_active():
                     f = self.acc_fields.get(self.acc_focus)
                     if f:
@@ -862,6 +876,11 @@ FriendsPanelMixin,      # ecrã de Amigos
 
     def scroll_at(self, pos, step):
         """Faz scroll da lista que estiver debaixo de 'pos' (coordenadas do canvas). 'step' em pixéis do canvas."""
+        if self.feedback_open:
+            if self.feedback_list_rect.collidepoint(pos):
+                self.feedback_scroll = max(0.0, min(self.feedback_max_scroll, self.feedback_scroll + step))
+                return True
+            return False
         if self.friends_open:
             # a página de Amigos tem lista própria (e é a única coisa clicável no ecrã)
             if self.friends_list_rect.collidepoint(pos) or self.avatar_picker:
@@ -930,6 +949,10 @@ FriendsPanelMixin,      # ecrã de Amigos
         if self.update_log_open:
             self.begin_modal()
             self.draw_update_log(mouse_pos)
+
+        if self.feedback_open:
+            self.begin_modal()
+            self.draw_feedback(mouse_pos)
 
         if self.cutscene_active is not None:     # verity Secret+ apanhado: por cima de quase tudo
             self.draw_cutscene(mouse_pos)

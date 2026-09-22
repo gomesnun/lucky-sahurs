@@ -13,6 +13,12 @@ from ui.fonts import wrap_text
 
 # (versão, data, linhas de descrição) - a mais recente primeiro.
 UPDATE_LOG = (
+    ("v2.3.0", "2026-09-22", [
+        "Feedback: the new button next to Update Log opens a page where you leave one message for the "
+        "game - you can edit it or delete it, and after deleting you can write another one.",
+        "Android: everything online (account, leaderboard, friends, feedback) was failing on the phone "
+        "because the app had no HTTPS certificates. Fixed.",
+    ]),
     ("v2.2.1", "2026-09-22", [
         "Friend search now also finds players who have not opened the Friends page yet.",
         "Typing anywhere in the game: arrow keys, Home/End and Delete move the cursor, and clicking "

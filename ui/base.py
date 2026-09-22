@@ -119,6 +119,69 @@ class UIBaseMixin:
 
         self.register_button(rect, clicked, None)
 
+    def wrap_indices(self, text, font, max_w):
+        """Como o wrap_text, mas devolve (inicio, fim) de cada linha no texto original: é assim que o
+        cursor de um campo de várias linhas sabe em que linha está."""
+        lines, start, last_space = [], 0, -1
+        i = 0
+        while i < len(text):
+            if text[i] == " ":
+                last_space = i
+            if font.render(text[start:i + 1], True, WHITE).get_width() > max_w and i > start:
+                cut = last_space + 1 if last_space > start else i
+                lines.append((start, cut))
+                start = cut
+                last_space = -1
+                continue
+            i += 1
+        lines.append((start, len(text)))
+        return lines
+
+    def draw_text_area(self, rect, field, placeholder, focused, on_focus):
+        """Caixa de escrita com várias linhas (página de Feedback): o texto parte-se sozinho, o cursor
+        anda com as setas e um clique põe-no na letra em que se clicou."""
+        font = self.font_small_b
+        pygame.draw.rect(self.canvas, (22, 22, 25), rect, border_radius=10)
+        pygame.draw.rect(self.canvas, ACCENT if focused else OUTLINE, rect, width=3, border_radius=10)
+        text = field.text
+        max_w = rect.width - 28
+        line_h = font.get_height() + 4
+        x0, y0 = rect.x + 14, rect.y + 12
+        caret = max(0, min(len(text), field.caret))
+
+        if not text:
+            ph = font.render(placeholder, True, GREY_DIM)
+            self.canvas.blit(ph, (x0, y0))
+        spans = self.wrap_indices(text, font, max_w)
+        for n, (a, b) in enumerate(spans):
+            y = y0 + n * line_h
+            if y + line_h > rect.bottom - 6:
+                break
+            if text[a:b]:
+                self.canvas.blit(font.render(text[a:b], True, WHITE), (x0, y))
+            if focused and a <= caret <= b and (caret < b or n == len(spans) - 1
+                                                or caret < spans[n + 1][0]):
+                if int(pygame.time.get_ticks() / 500) % 2 == 0:
+                    cx = x0 + font.render(text[a:caret], True, WHITE).get_width()
+                    pygame.draw.line(self.canvas, WHITE, (cx, y - 1), (cx, y + font.get_height()), 2)
+
+        def clicked(f=field, t=text, sp=spans, fnt=font):
+            on_focus()
+            pos = self.last_click_pos
+            if not pos:
+                return
+            n = max(0, min(len(sp) - 1, int((pos[1] - y0) // line_h)))
+            a, b = sp[n]
+            best, best_dx = a, abs(pos[0] - x0)
+            for i in range(a + 1, b + 1):
+                dx = abs(pos[0] - (x0 + fnt.render(t[a:i], True, WHITE).get_width()))
+                if dx > best_dx:
+                    break
+                best, best_dx = i, dx
+            f.caret = best
+
+        self.register_button(rect, clicked, None)
+
     def begin_modal(self):
         """Chamado mesmo antes de desenhar uma página por cima de tudo (Options / Stats / Traits):
         só ficam clicáveis os botões de navegação (Stats/Options no topo e os laterais).
