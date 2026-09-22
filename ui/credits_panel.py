@@ -6,7 +6,7 @@ import pygame
 from config import VIRTUAL_H
 from i18n import tr
 from theme import ACCENT, BAD, GREY, GREY_DIM, PANEL, PANEL_LIGHT, PANEL_LIGHTER, WHITE
-from ui.drawing import draw_panel, draw_state_border
+from ui.drawing import bake, dim_overlay, draw_panel, draw_state_border
 from ui.fonts import fit_text, wrap_text
 
 # (título, autor, licença, link, onde é usado no jogo)
@@ -52,9 +52,9 @@ class CreditsPanelMixin:
             self.show_toast(tr("Couldn't open the browser."))
 
     def draw_credits(self, mouse_pos):
-        overlay = pygame.Surface((self.vw, VIRTUAL_H), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 170))
-        self.canvas.blit(overlay, (0, 0))
+        # o mesmo veu escuro das outras paginas: em cache e, no telemovel, opaco
+        # (uma superficie do tamanho do ecra com alfa custava ~182 ms por frame)
+        self.canvas.blit(dim_overlay(self.vw, VIRTUAL_H, 170), (0, 0))
 
         panel_w = 660
         row_h, gap = 76, 8
@@ -71,30 +71,31 @@ class CreditsPanelMixin:
         self.button(close_rect, "X", self.font_small_b, mouse_pos, PANEL_LIGHT, BAD, WHITE,
                     callback=self.close_credits, radius=8)
         sub = self.font_small.render(tr("Sound effects and music, from Freesound.org"), True, GREY)
-        self.canvas.blit(sub, (rect.x + 26, rect.y + 18 + title.get_height() + 2))
+        self.canvas.blit(bake(sub, PANEL), (rect.x + 26, rect.y + 18 + title.get_height() + 2))
 
         y = rect.y + head_h
         for name, author, license_name, url, used_for in CREDITS:
             row = pygame.Rect(rect.x + 22, y, panel_w - 44, row_h)
             hovering = row.collidepoint(mouse_pos)
-            pygame.draw.rect(self.canvas, PANEL_LIGHTER if hovering else PANEL_LIGHT, row, border_radius=10)
+            row_fill = PANEL_LIGHTER if hovering else PANEL_LIGHT      # a cor sob o texto desta linha
+            pygame.draw.rect(self.canvas, row_fill, row, border_radius=10)
             if hovering:
                 draw_state_border(self.canvas, row, ACCENT, 10)
 
             lic = self.font_small_b.render(license_name, True, ACCENT)
-            self.canvas.blit(lic, (row.right - 16 - lic.get_width(), row.y + 10))
+            self.canvas.blit(bake(lic, row_fill), (row.right - 16 - lic.get_width(), row.y + 10))
             title_txt = fit_text(self.font_med, name, row.width - 32 - lic.get_width() - 12)
-            self.canvas.blit(self.font_med.render(title_txt, True, WHITE), (row.x + 16, row.y + 8))
+            self.canvas.blit(bake(self.font_med.render(title_txt, True, WHITE), row_fill), (row.x + 16, row.y + 8))
             by = fit_text(self.font_small, tr("by %s", author), row.width - 32)
-            self.canvas.blit(self.font_small.render(by, True, GREY), (row.x + 16, row.y + 34))
+            self.canvas.blit(bake(self.font_small.render(by, True, GREY), row_fill), (row.x + 16, row.y + 34))
             short_url = url.replace("https://", "")
             line3 = fit_text(self.font_tiny, tr("Used for: %s   -   %s", tr(used_for), short_url), row.width - 32)
-            self.canvas.blit(self.font_tiny.render(line3, True, GREY_DIM), (row.x + 16, row.y + 54))
+            self.canvas.blit(bake(self.font_tiny.render(line3, True, GREY_DIM), row_fill), (row.x + 16, row.y + 54))
 
             self.register_button(row, lambda u=url: self.open_url(u))
             y += row_h + gap
 
         ny = y + 2
         for line in note_lines:
-            self.canvas.blit(self.font_tiny.render(line, True, GREY), (rect.x + 26, ny))
+            self.canvas.blit(bake(self.font_tiny.render(line, True, GREY), PANEL), (rect.x + 26, ny))
             ny += 16

@@ -17,7 +17,7 @@ from theme import (
     OUTLINE, PANEL, PANEL_LIGHT, PANEL_LIGHTER,
     WHITE,
 )
-from ui.drawing import (ALPHA_IS_SLOW, bake_on, blit_smooth_y, to_colorkey, to_display_format, to_opaque,
+from ui.drawing import (ALPHA_IS_SLOW, bake, bake_on, blit_smooth_y, to_colorkey, to_display_format, to_opaque,
                         draw_panel, draw_rarity_bg, draw_state_border)
 from ui.fonts import fit_text, wrap_text
 from ui.icons import load_icon
@@ -264,21 +264,24 @@ class TitleSavesMixin:
         for label, value in rows:
             l_txt = self.font_small.render(label, True, GREY)
             v_txt = self.font_small_b.render(value, True, WHITE)
-            self.canvas.blit(l_txt, (rect.x + 28, ry))
-            self.canvas.blit(v_txt, (rect.right - 28 - v_txt.get_width(), ry))
+            self.canvas.blit(bake(l_txt, PANEL), (rect.x + 28, ry))
+            self.canvas.blit(bake(v_txt, PANEL), (rect.right - 28 - v_txt.get_width(), ry))
             ry += 30
 
     def draw_saves(self, mouse_pos):
         cx = self.vw // 2
         title = self.font_huge.render(tr("Saves"), True, WHITE)
-        self.canvas.blit(title, title.get_rect(center=(cx, 70)))
+        tr_ = title.get_rect(center=(cx, 70))
+        bg = getattr(self, "bg_surface", None)
+        self.canvas.blit(bake_on(title, bg, tr_.topleft), tr_)
         if self.account:
             sub_text = tr("%s's saves - synced to your account (up to %d slots).",
                           self.account["username"], SAVE_SLOTS)
         else:
             sub_text = tr("Pick a slot to play (up to %d saves).", SAVE_SLOTS)
         sub = self.font_small.render(fit_text(self.font_small, sub_text, self.vw - 340), True, GREY)
-        self.canvas.blit(sub, sub.get_rect(center=(cx, 114)))
+        subr = sub.get_rect(center=(cx, 114))
+        self.canvas.blit(bake_on(sub, bg, subr.topleft), subr)
         self.draw_account_chip(mouse_pos)
 
         gap = 32
@@ -294,7 +297,7 @@ class TitleSavesMixin:
             rect = pygame.Rect(x0 + i * (card_w + gap), y0, card_w, card_h)
             draw_panel(self.canvas, rect, PANEL, radius=16)
             head = self.font_big.render(tr("Slot %d", slot), True, WHITE)
-            self.canvas.blit(head, head.get_rect(center=(rect.centerx, rect.y + 38)))
+            self.canvas.blit(bake(head, PANEL), head.get_rect(center=(rect.centerx, rect.y + 38)))
             play_rect = pygame.Rect(rect.x + 24, rect.bottom - 118, rect.width - 48, 50)
 
             if not self.account:
@@ -313,7 +316,7 @@ class TitleSavesMixin:
                                 BAD, WHITE, callback=lambda s=slot: self.request_delete(s), radius=10, sfx=None)
                 else:
                     empty = self.font_med.render(tr("Empty"), True, GREY_DIM)
-                    self.canvas.blit(empty, empty.get_rect(center=(rect.centerx, rect.centery - 20)))
+                    self.canvas.blit(bake(empty, PANEL), empty.get_rect(center=(rect.centerx, rect.centery - 20)))
                     self.button(play_rect, tr("New Game"), self.font_med, mouse_pos,
                                 ACCENT, ACCENT_HOVER, BLACK, callback=lambda s=slot: self.start_slot(s),
                                 radius=12)

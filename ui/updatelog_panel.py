@@ -8,7 +8,7 @@ import pygame
 from config import VIRTUAL_H
 from i18n import tr
 from theme import BAD, GREY, GREY_DIM, PANEL, PANEL_LIGHT, WHITE
-from ui.drawing import dim_overlay, draw_panel
+from ui.drawing import bake, dim_overlay, draw_panel
 from ui.fonts import wrap_text
 
 # (versão, data, linhas de descrição) - a mais recente primeiro. Vazio por agora.
@@ -68,8 +68,8 @@ class UpdateLogPanelMixin:
         draw_panel(self.canvas, rect, PANEL, radius=16)
         self.register_button(rect, lambda: None, None)     # clicar dentro da página não fecha
 
-        self.canvas.blit(title, (rect.x + pad, rect.y + title_y))
-        self.canvas.blit(sub, (rect.x + pad + 2, rect.y + sub_y))
+        self.canvas.blit(bake(title, PANEL), (rect.x + pad, rect.y + title_y))
+        self.canvas.blit(bake(sub, PANEL), (rect.x + pad + 2, rect.y + sub_y))
         close_rect = pygame.Rect(rect.right - pad - 32, rect.y + title_y + 2, 32, 32)
         self.button(close_rect, "X", self.font_small_b, mouse_pos, PANEL_LIGHT, BAD, WHITE,
                     callback=self.close_update_log, radius=8)
@@ -81,7 +81,7 @@ class UpdateLogPanelMixin:
             ny = box.y + box_pad
             for line in note_lines:
                 t_surf = self.font_small.render(line, True, GREY_DIM)
-                self.canvas.blit(t_surf, t_surf.get_rect(midtop=(box.centerx, ny)))
+                self.canvas.blit(bake(t_surf, PANEL_LIGHT), t_surf.get_rect(midtop=(box.centerx, ny)))
                 ny += 24
             return
 

@@ -15,7 +15,7 @@ from theme import (
     GOOD, GREY, GREY_DIM, PANEL,
     PANEL_LIGHT, PANEL_LIGHTER, WHITE,
 )
-from ui.drawing import draw_panel
+from ui.drawing import bake, dim_overlay, draw_panel
 from ui.fonts import fit_text, wrap_text
 from ui.icons import load_icon
 
@@ -119,9 +119,9 @@ class LeaderboardPanelMixin:
 
     def draw_leaderboard(self, mouse_pos):
         self.ensure_leaderboard()
-        overlay = pygame.Surface((self.vw, VIRTUAL_H), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 170))
-        self.canvas.blit(overlay, (0, 0))
+        # o mesmo veu escuro das outras paginas: em cache e, no telemovel, opaco
+        # (uma superficie do tamanho do ecra com alfa custava ~182 ms por frame)
+        self.canvas.blit(dim_overlay(self.vw, VIRTUAL_H, 170), (0, 0))
 
         panel_w = 640
         top = TOPBAR_H + 12                    # por baixo da barra do topo (não tapa Stats / Options)
@@ -131,7 +131,7 @@ class LeaderboardPanelMixin:
         self.register_button(rect, lambda: None, None)     # clicar dentro da página não fecha
 
         title = self.font_big.render(tr("Leaderboard"), True, WHITE)
-        self.canvas.blit(title, (rect.x + 26, rect.y + 16))
+        self.canvas.blit(bake(title, PANEL), (rect.x + 26, rect.y + 16))
         close_rect = pygame.Rect(rect.right - 48, rect.y + 18, 30, 30)
         self.button(close_rect, "X", self.font_small_b, mouse_pos, PANEL_LIGHT, BAD, WHITE,
                     callback=self.close_leaderboard, radius=8)
@@ -139,7 +139,7 @@ class LeaderboardPanelMixin:
         sub = fit_text(self.font_small, tr("Top %d players - updates every %d minutes.",
                                            LEADERBOARD_SIZE, LEADERBOARD_PERIOD // 60),
                        panel_w - 52 - 60)
-        self.canvas.blit(self.font_small.render(sub, True, GREY), (rect.x + 26, sub_y))
+        self.canvas.blit(bake(self.font_small.render(sub, True, GREY), PANEL), (rect.x + 26, sub_y))
 
         # separadores Money / Playtime / Rolls / Rebirths
         tabs_y = sub_y + self.font_small.get_height() + 12
@@ -268,7 +268,7 @@ class LeaderboardPanelMixin:
                    tr("Log in from the main menu to appear on the leaderboard.")
             t = self.font_small.render(fit_text(self.font_small, text, rect.width - (150 if can_login else 30)),
                                        True, GREY)
-            self.canvas.blit(t, (rect.x + 16, rect.centery - t.get_height() // 2))
+            self.canvas.blit(bake(t, PANEL_LIGHT), (rect.x + 16, rect.centery - t.get_height() // 2))
             if can_login:
                 self.button(pygame.Rect(rect.right - 122, rect.y + 6, 112, rect.height - 12), tr("Log in"),
                             self.font_small_b, mouse_pos, ACCENT, ACCENT_HOVER, BLACK,
