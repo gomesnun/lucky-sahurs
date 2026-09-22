@@ -217,6 +217,7 @@ FriendsPanelMixin,      # ecrã de Amigos
 
         self.autosave_timer = 0.0
         self.buttons = []
+        self.last_click_pos = None      # onde foi o último clique (os campos de texto usam-no para o cursor)
         self.nav_mode = False           # True enquanto se registam botões de navegação (topo / laterais)
         self.clip_stack = []
         self.clock = pygame.time.Clock()
@@ -848,6 +849,7 @@ FriendsPanelMixin,      # ecrã de Amigos
 
     def dispatch_click(self, canvas_pos):
         """Carrega no botão que estiver debaixo de 'canvas_pos' (ou fecha o painel aberto, se não houver nenhum)."""
+        self.last_click_pos = canvas_pos
         for rect, callback, sfx, _nav in reversed(self.buttons):
             if rect.collidepoint(canvas_pos):
                 if sfx:

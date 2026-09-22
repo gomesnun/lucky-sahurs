@@ -104,8 +104,24 @@ class FriendsMixin:
         if k in (pygame.K_RETURN, pygame.K_KP_ENTER):
             self.submit_friend_search()
             return True
+        f = self.friends_search
         if k == pygame.K_BACKSPACE:
-            self.friends_search.backspace()
+            f.backspace()
+            return True
+        if k == pygame.K_DELETE:
+            f.delete()
+            return True
+        if k == pygame.K_LEFT:
+            f.move(-1)
+            return True
+        if k == pygame.K_RIGHT:
+            f.move(1)
+            return True
+        if k in (pygame.K_HOME, pygame.K_UP):
+            f.home()
+            return True
+        if k in (pygame.K_END, pygame.K_DOWN):
+            f.end()
             return True
         if k == pygame.K_v and (event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)):
             from ui.widgets import clipboard_text

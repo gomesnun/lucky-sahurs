@@ -289,23 +289,8 @@ class FriendsPanelMixin:
 
     def draw_friends_field(self, rect):
         """Campo de procura (mesmo aspeto do ecrã de conta: caixa escura, contorno ACCENT com foco)."""
-        focused = self.friends_focus
-        pygame.draw.rect(self.canvas, (22, 22, 25), rect, border_radius=10)
-        pygame.draw.rect(self.canvas, ACCENT if focused else OUTLINE, rect, width=3, border_radius=10)
-        shown = self.friends_search.text
-        max_w = rect.width - 28
-        while len(shown) > 1 and self.font_med.render(shown, True, WHITE).get_width() > max_w:
-            shown = shown[1:]
-        if shown:
-            txt = self.font_med.render(shown, True, WHITE)
-        else:
-            txt = self.font_med.render(tr("username"), True, GREY_DIM)
-        pos = (rect.x + 14, rect.centery - txt.get_height() // 2)
-        self.canvas.blit(txt, pos)
-        if focused and int(time.time() * 2) % 2 == 0:
-            cx = min(pos[0] + (txt.get_width() + 2 if shown else 0), rect.right - 12)
-            pygame.draw.line(self.canvas, WHITE, (cx, rect.y + 10), (cx, rect.bottom - 10), 2)
-        self.register_button(rect, lambda: self.set_friends_focus(True), None)
+        self.draw_text_field(rect, self.friends_search, self.friends_search.text, tr("username"),
+                             self.friends_focus, lambda: self.set_friends_focus(True))
 
     # ---------------------------------------------------------------- stats de um amigo
     def draw_friend_details(self, rect, mouse_pos):

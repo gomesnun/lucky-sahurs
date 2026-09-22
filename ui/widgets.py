@@ -8,12 +8,21 @@ from ui.drawing import ease_out_cubic
 
 
 class TextField:
-    """Campo de texto do ecrã de conta (só guarda o texto; o desenho é feito pelo Game)."""
+    """Campo de texto do ecrã de conta / da procura de amigos (só guarda o texto e a posição do
+    cursor; o desenho é feito pelo Game, em ui/base.py)."""
 
     def __init__(self, kind):
         self.kind = kind                    # "username" | "password" | "email" | "code"
         self.text = ""
+        self.caret = 0                      # quantas letras ficam à esquerda do cursor
         self.max_len = {"username": 16, "email": 80, "code": 6}.get(kind, 64)
+
+    def set_text(self, text=""):
+        self.text = text
+        self.caret = len(text)
+
+    def _clamp(self):
+        self.caret = max(0, min(len(self.text), self.caret))
 
     def add(self, s):
         for ch in s:
@@ -26,15 +35,36 @@ class TextField:
                     continue
             elif not ch.isprintable():
                 continue
-            # teclados de telemóvel costumam meter um espaço a mais quando aceitam uma sugestão -
-            # não deixa começar por espaço, nem acumular mais que um a seguir a outro
-            if ch == " " and (not self.text or self.text.endswith(" ")):
+            # nenhum destes campos leva espaços (nome, email, código, palavra-passe), e os teclados
+            # de telemóvel metem um espaço a mais ao aceitar uma sugestão: ficavam nomes com espaço no
+            # fim que depois não davam com ninguém na procura
+            if ch == " ":
                 continue
-            if len(self.text) < self.max_len:
-                self.text += ch
+            if len(self.text) >= self.max_len:
+                break
+            self._clamp()
+            self.text = self.text[:self.caret] + ch + self.text[self.caret:]
+            self.caret += 1
 
     def backspace(self):
-        self.text = self.text[:-1]
+        self._clamp()
+        if self.caret:
+            self.text = self.text[:self.caret - 1] + self.text[self.caret:]
+            self.caret -= 1
+
+    def delete(self):
+        """Tecla Delete: apaga a letra à direita do cursor."""
+        self._clamp()
+        self.text = self.text[:self.caret] + self.text[self.caret + 1:]
+
+    def move(self, step):
+        self.caret = max(0, min(len(self.text), self.caret + step))
+
+    def home(self):
+        self.caret = 0
+
+    def end(self):
+        self.caret = len(self.text)
 
 
 def clipboard_text():

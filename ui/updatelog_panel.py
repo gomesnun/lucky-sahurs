@@ -13,6 +13,12 @@ from ui.fonts import wrap_text
 
 # (versão, data, linhas de descrição) - a mais recente primeiro.
 UPDATE_LOG = (
+    ("v2.2.1", "2026-09-22", [
+        "Friend search now also finds players who have not opened the Friends page yet.",
+        "Typing anywhere in the game: arrow keys, Home/End and Delete move the cursor, and clicking "
+        "inside a box puts the cursor where you clicked.",
+        "No more stray space at the end of what you type (it was breaking the friend search).",
+    ]),
     ("v2.2.0", "2026-09-22", [
         "Friends: the new button next to Stats opens a page where you search a player by username, "
         "send a friend request and, once they accept, see their stats.",

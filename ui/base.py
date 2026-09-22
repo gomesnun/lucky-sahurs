@@ -69,6 +69,56 @@ class UIBaseMixin:
                 return
         self.buttons.append((rect, callback, sfx, self.nav_mode))
 
+    # ---------------------------------------------------------------- campos de texto
+    def draw_text_field(self, rect, field, display, placeholder, focused, on_focus):
+        """Caixa de texto (ecrã de conta e procura de amigos): mostra a parte do texto onde está o
+        cursor, desenha o cursor e, ao clicar, põe o cursor na letra onde se clicou.
+        'display' é o que se vê (a palavra-passe aparece com '*'), letra a letra igual ao texto."""
+        font = self.font_med
+        pygame.draw.rect(self.canvas, (22, 22, 25), rect, border_radius=10)
+        pygame.draw.rect(self.canvas, ACCENT if focused else OUTLINE, rect, width=3, border_radius=10)
+        max_w = rect.width - 28
+        caret = max(0, min(len(display), field.caret))
+
+        # a fonte tem contorno (fica mais larga do que font.size() diz) - por isso medimos sempre pelo
+        # que vai mesmo aparecer no ecrã (render), nunca pela largura "crua" da letra
+        def width(sub):
+            return font.render(sub, True, WHITE).get_width() if sub else 0
+
+        # janela visível: começa onde for preciso para o cursor aparecer, e sem deixar espaço a mais no fim
+        start = 0
+        while start < caret and width(display[start:]) > max_w:
+            start += 1
+        while start > 0 and width(display[start - 1:]) <= max_w:
+            start -= 1
+        shown = display[start:]
+        while len(shown) > 1 and width(shown) > max_w:
+            shown = shown[:-1]
+
+        if display:
+            txt = font.render(shown, True, WHITE)
+        else:
+            txt = font.render(placeholder, True, GREY_DIM)
+        pos = (rect.x + 14, rect.centery - txt.get_height() // 2)
+        self.canvas.blit(txt, pos)
+        if focused and int(pygame.time.get_ticks() / 500) % 2 == 0:
+            cx = min(pos[0] + (width(display[start:caret]) + 1 if display else 0), rect.right - 12)
+            pygame.draw.line(self.canvas, WHITE, (cx, rect.y + 10), (cx, rect.bottom - 10), 2)
+
+        def clicked(f=field, d=display, st=start, x0=pos[0], w=width, on=on_focus):
+            on()
+            mx = self.last_click_pos[0] if self.last_click_pos else x0
+            # a letra mais perto do sítio onde se clicou
+            best, best_dx = st, abs(mx - x0)
+            for i in range(st + 1, len(d) + 1):
+                dx = abs(mx - (x0 + w(d[st:i])))
+                if dx > best_dx:
+                    break
+                best, best_dx = i, dx
+            f.caret = best
+
+        self.register_button(rect, clicked, None)
+
     def begin_modal(self):
         """Chamado mesmo antes de desenhar uma página por cima de tudo (Options / Stats / Traits):
         só ficam clicáveis os botões de navegação (Stats/Options no topo e os laterais).

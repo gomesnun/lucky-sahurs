@@ -652,7 +652,38 @@ class FirebaseClient:
             doc = item.get("document") if isinstance(item, dict) else None
             if doc:
                 return profile_from_doc(doc)
-        return None
+        # Sem perfil publicado (a conta ainda nao abriu a pagina dos Amigos nesta versao): procura-se
+        # na leaderboard, que tambem e publica e tem o username, e so depois no mapa /usernames.
+        return self._find_profile_fallback(username)
+
+    def _find_profile_fallback(self, username):
+        query = {
+            "from": [{"collectionId": "leaderboard"}],
+            "where": {"fieldFilter": {"field": {"fieldPath": "username"}, "op": "EQUAL",
+                                      "value": fs_encode(str(username))}},
+            "limit": 1,
+        }
+        uid = ""
+        try:
+            res = self._fs("POST", ":runQuery", {"structuredQuery": query})
+            for item in res if isinstance(res, list) else []:
+                doc = item.get("document") if isinstance(item, dict) else None
+                if doc:
+                    uid = str(doc.get("name", "")).rsplit("/", 1)[-1]
+                    break
+        except OnlineError:
+            uid = ""
+        if not uid:
+            # Ultimo recurso: /usernames/{username}. Este documento tambem guarda o email de login da
+            # conta - le-se so o "uid" e mais nada, que o email nunca sai daqui.
+            try:
+                doc = self._fs("GET", "/usernames/%s" % username)
+            except OnlineError:
+                return None
+            uid = str(fs_fields(doc).get("uid") or "")
+        if not uid:
+            return None
+        return {"uid": uid, "username": str(username), "avatar_pet": None, "avatar_mut": "normal"}
 
     def get_public_profile(self, uid):
         try:

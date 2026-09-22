@@ -121,6 +121,21 @@ class AccountPanelMixin:
         if k == pygame.K_BACKSPACE:
             f.backspace()
             return True
+        if k == pygame.K_DELETE:
+            f.delete()
+            return True
+        if k == pygame.K_LEFT:
+            f.move(-1)
+            return True
+        if k == pygame.K_RIGHT:
+            f.move(1)
+            return True
+        if k in (pygame.K_HOME, pygame.K_UP):
+            f.home()
+            return True
+        if k in (pygame.K_END, pygame.K_DOWN):
+            f.end()
+            return True
         if k == pygame.K_v and (event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)):
             f.add(clipboard_text())
             return True
@@ -180,7 +195,7 @@ class AccountPanelMixin:
         self.acc_msg = None
         self.acc_show_pw = False
         for f in self.acc_fields.values():
-            f.text = ""
+            f.set_text()
         if registered:
             # conta nova: já tem email (campo obrigatório no registo) -> manda logo o código
             self.begin_email_verification(email, welcome_new=True)
@@ -254,14 +269,14 @@ class AccountPanelMixin:
     # ---------------------------------------------------------------- verificação por código
     def enter_link_email_stage(self):
         self.acc_stage = "link_email"
-        self.acc_fields["email"].text = ""
+        self.acc_fields["email"].set_text()
         self.acc_focus = "email"
         self.acc_msg = None
         self.start_text_input()
 
     def enter_verify_stage(self):
         self.acc_stage = "verify"
-        self.acc_fields["code"].text = ""
+        self.acc_fields["code"].set_text()
         self.acc_focus = "code"
         self.acc_msg = None
         self.start_text_input()
@@ -383,7 +398,7 @@ class AccountPanelMixin:
         e isso exige um login "fresco" com a password (a sessão restaurada do disco é velha demais)."""
         self.acc_reauth_email = email
         self.acc_stage = "reauth"
-        self.acc_fields["password"].text = ""
+        self.acc_fields["password"].set_text()
         self.acc_focus = "password"
         self.acc_msg = (tr("Your session is a bit old. Enter your password to finish confirming your email."), GREY)
         self.start_text_input()
@@ -462,28 +477,12 @@ class AccountPanelMixin:
     # ---------------------------------------------------------------- desenho: peças partilhadas
     def draw_field(self, rect, key):
         f = self.acc_fields[key]
-        focused = self.acc_focus == key
-        pygame.draw.rect(self.canvas, (22, 22, 25), rect, border_radius=10)
-        pygame.draw.rect(self.canvas, ACCENT if focused else OUTLINE, rect, width=3, border_radius=10)
-        shown = ("*" * len(f.text)) if (f.kind == "password" and not self.acc_show_pw) else f.text
-        # a fonte tem contorno (fica mais larga do que font.size() diz) - por isso medimos sempre pelo
-        # que vai mesmo aparecer no ecrã (render), nunca pela largura "crua" da letra
-        max_w = rect.width - 28
-        while len(shown) > 1 and self.font_med.render(shown, True, WHITE).get_width() > max_w:
-            shown = shown[1:]                       # mostra o fim do texto (onde estás a escrever)
-        if shown:
-            txt = self.font_med.render(shown, True, WHITE)
-        else:
-            placeholder = {"username": tr("your username"), "password": tr("your password"),
-                           "confirm": tr("repeat the password"), "email": tr("your email"),
-                           "code": tr("6-digit code")}[key]
-            txt = self.font_med.render(placeholder, True, GREY_DIM)
-        pos = (rect.x + 14, rect.centery - txt.get_height() // 2)
-        self.canvas.blit(txt, pos)
-        if focused and int(time.time() * 2) % 2 == 0:
-            cx = min(pos[0] + (txt.get_width() + 2 if shown else 0), rect.right - 12)
-            pygame.draw.line(self.canvas, WHITE, (cx, rect.y + 10), (cx, rect.bottom - 10), 2)
-        self.register_button(rect, lambda k=key: self.set_focus(k), None)
+        display = ("*" * len(f.text)) if (f.kind == "password" and not self.acc_show_pw) else f.text
+        placeholder = {"username": tr("your username"), "password": tr("your password"),
+                       "confirm": tr("repeat the password"), "email": tr("your email"),
+                       "code": tr("6-digit code")}[key]
+        self.draw_text_field(rect, f, display, placeholder, self.acc_focus == key,
+                             lambda k=key: self.set_focus(k))
 
     def draw_acc_message(self, cx, y, card_w):
         if not self.acc_msg:
