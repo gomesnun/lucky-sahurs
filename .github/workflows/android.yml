@@ -1,4 +1,4 @@
-# Cria o APK do Lucky Sahurs (Android, landscape) nos servidores do GitHub.
+# Cria o APK do Lucky Verities (Android, landscape) nos servidores do GitHub.
 #
 #   - "Run workflow" (separador Actions)  -> o APK fica em "Artifacts" no fim da execucao.
 #   - "git push" de uma tag vX.Y.Z        -> alem disso, o APK e anexado a Release dessa tag.
@@ -124,7 +124,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Lucky-Sahurs-Android.apk
+          name: Lucky-Verities-Android.apk
           path: bin/*.apk
           if-no-files-found: error
 
@@ -134,5 +134,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           APK="$(ls bin/*.apk | head -1)"
-          cp "$APK" "Lucky-Sahurs-Android.apk"
-          gh release upload "$GITHUB_REF_NAME" "Lucky-Sahurs-Android.apk" --clobber
+          cp "$APK" "Lucky-Verities-Android.apk"
+          gh release upload "$GITHUB_REF_NAME" "Lucky-Verities-Android.apk" --clobber

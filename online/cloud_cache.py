@@ -13,10 +13,9 @@ from online.firebase import (
 )
 
 
-SESSION_PATH = os.path.join(SAVE_DIR, "lucky_sahurs_session.json")
-INSTALL_PATH = os.path.join(SAVE_DIR, "lucky_sahurs_install.json")
+SESSION_PATH = os.path.join(SAVE_DIR, "lucky_verities_session.json")
 CACHE_DIR = os.path.join(SAVE_DIR, "cloud_cache")
-LEADERBOARD_CACHE_PATH = os.path.join(SAVE_DIR, "lucky_sahurs_leaderboard.json")
+LEADERBOARD_CACHE_PATH = os.path.join(SAVE_DIR, "lucky_verities_leaderboard.json")
 
 
 # ---- sessão (para não teres de iniciar sessão de cada vez que abres o jogo) ----
@@ -50,30 +49,17 @@ def clear_session():
         pass
 
 
-# ---- nome deste PC (para o "uma conta, um jogo de cada vez") ----
+# ---- nome deste PROCESSO (para o "uma conta, um jogo de cada vez") ----
 INSTALL_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 
 
 def install_id():
-    """Nome fixo desta instalação. É o mesmo entre arranques, por isso reabrir o jogo no MESMO PC
-    reaproveita a marca de sessão em vez de ter de esperar que ela expire."""
-    try:
-        with open(INSTALL_PATH, "r", encoding="utf-8") as f:
-            found = str(json.load(f).get("install_id", ""))
-        if INSTALL_ID_RE.match(found):
-            return found
-    except (OSError, ValueError, AttributeError, TypeError):
-        pass
-    fresh = uuid.uuid4().hex
-    try:
-        os.makedirs(SAVE_DIR, exist_ok=True)
-        tmp = INSTALL_PATH + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump({"install_id": fresh}, f)
-        os.replace(tmp, INSTALL_PATH)
-    except OSError:
-        pass            # não deu para gravar: usa-se um nome novo a cada arranque (só custa esperar 90 s)
-    return fresh
+    """Identificador NOVO a cada arranque do jogo (não fica guardado em disco). Assim, dois .exe
+    abertos ao mesmo tempo - mesmo no mesmo PC - contam sempre como dispositivos diferentes, e um
+    bloqueia mesmo o outro. Fechar o jogo normalmente larga logo a marca (ver release_session), por
+    isso reabrir a seguir no mesmo PC continua instantâneo - só um crash é que obriga a esperar os
+    SESSION_STALE segundos, tal como acontecia antes."""
+    return uuid.uuid4().hex
 
 
 # ---- cache local dos saves da conta (o jogo grava aqui de 10 em 10 s e sincroniza com a cloud) ----

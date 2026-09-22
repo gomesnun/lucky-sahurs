@@ -243,7 +243,7 @@ class GameScreenMixin:
     def main_card_rect(self):
         """Cartão do último pet: fica EXATAMENTE no centro do ecrã (na vertical, o meio da janela;
         na horizontal, o meio da zona livre entre os painéis, que acompanha o slide)."""
-        card_w, card_h = 236, 236          # quase quadrado (estilo "brainrot"): não ocupa o ecrã todo
+        card_w, card_h = 236, 236          # quase quadrado: não ocupa o ecrã todo
         cx = self.main_center_x()
         cy = VIRTUAL_H // 2
         return pygame.Rect(cx - card_w // 2, cy - card_h // 2, card_w, card_h)

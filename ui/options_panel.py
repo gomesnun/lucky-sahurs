@@ -1,23 +1,26 @@
-"""Painel de Options."""
+"""Painel de Options, com separadores (Gameplay / Interface / Volume / SFX / Game): cada separador
+mostra só o que é dele, por isso a página tem sempre a MESMA altura (não cresce nem encolhe
+quando se troca de separador, ao contrário do menu antigo que expandia por baixo)."""
 
 import pygame
 
-import theme
 from config import IS_ANDROID, VIRTUAL_H
+from core.pets import RARITIES, RARITY_TIERS, TIER_INDEX
 from i18n import get_language, language_name, next_language, set_language, tr
-from storage import SFX_CATEGORIES, save_settings
+from storage import CUTSCENE_RARITIES, SFX_CATEGORIES, save_settings
 from theme import ACCENT, BAD, GREY, GREY_DIM, OUTLINE, PANEL, PANEL_LIGHT, PANEL_LIGHTER, WHITE
 from ui.audio import SLIDER_KNOB_R
-from ui.drawing import bake, dim_overlay, draw_panel, ease_out_cubic
+from ui.drawing import bake, dim_overlay, draw_panel
 from ui.fonts import fit_text, wrap_text
 
-DROP_H = 150            # altura do menu que expande (Volume ou SFX) quando está todo aberto
-DROP_GAP = 10           # espaço entre o menu que expande e o botão seguinte
-DROP_SPEED = 7.0        # velocidade da animação (1 / segundos para abrir por completo)
-ROW_H = 46              # distância entre linhas dentro do menu que expande
+ROW_H = 46               # distância entre linhas nos separadores Volume / SFX / cutscenes
+CONTENT_H = 230           # altura fixa da área de conteúdo (a maior de todos os separadores cabe aqui)
+TAB_H = 42
 OFF_COLOR = (66, 52, 52)      # cor de um botão desligado (igual aos outros botões das Options)
-DROP_BG = (42, 42, 46)        # fundo do menu que expande
 TRACK_BG = (22, 22, 25)       # fundo da barra dos sliders
+
+TABS = (("gameplay", "Gameplay"), ("interface", "Interface"), ("volume", "Volume"),
+        ("sfx", "SFX"), ("game", "Game"))
 
 
 class OptionsPanelMixin:
@@ -34,11 +37,11 @@ class OptionsPanelMixin:
         self.leaderboard_open = False
         self.credits_open = False
         self.options_open = True
-        self.reset_options_dropdown()
+        self.dragging_slider = None
 
     def close_options(self):
         self.options_open = False
-        self.reset_options_dropdown()
+        self.dragging_slider = None
         save_settings(self.settings)
 
     def toggle_options(self):
@@ -47,15 +50,17 @@ class OptionsPanelMixin:
         else:
             self.open_options()
 
-    # ---------------------------------------------------------------- menus que expandem (Volume / SFX)
-    def reset_options_dropdown(self):
-        """As Options abrem sempre com o Volume e o SFX fechados."""
+    # ---------------------------------------------------------------- estado inicial / separadores
+    def reset_options_ui(self):
+        """Chamado uma vez ao abrir o jogo. O separador escolhido fica guardado entre aberturas."""
         self.dragging_slider = None
         self.slider_bars = {}
         self.slider_hits = {}
-        self.options_section = None       # o que o jogador quer aberto: None | "volume" | "sfx"
-        self.options_shown = None         # o que está a ser mostrado (só muda quando o outro acaba de fechar)
-        self.options_prog = 0.0           # 0 = fechado, 1 = aberto por completo
+        self.options_tab = "gameplay"
+
+    def set_options_tab(self, name):
+        self.options_tab = name
+        self.dragging_slider = None
 
     def cycle_language(self):
         """Botão Language: passa ao idioma seguinte (English -> Português -> ...), guarda e avisa.
@@ -64,19 +69,6 @@ class OptionsPanelMixin:
         self.settings["language"] = code
         save_settings(self.settings)
         self.show_toast(tr("Language: %s", language_name(code)))
-
-    def toggle_options_section(self, name):
-        self.options_section = None if self.options_section == name else name
-
-    def update_options_dropdown(self, dt):
-        """Só um menu de cada vez: ao passar do Volume para o SFX, o primeiro fecha e depois o segundo abre."""
-        if self.options_shown != self.options_section:
-            self.dragging_slider = None
-            self.options_prog = max(0.0, self.options_prog - dt * DROP_SPEED)
-            if self.options_prog <= 0.0:
-                self.options_shown = self.options_section
-        elif self.options_shown is not None:
-            self.options_prog = min(1.0, self.options_prog + dt * DROP_SPEED)
 
     def draw_slider(self, bar, value, active):
         """Slider com contorno: barra escura, enchimento dourado e bolinha branca com contorno preto."""
@@ -91,14 +83,7 @@ class OptionsPanelMixin:
         pygame.draw.circle(self.canvas, OUTLINE, (knob_x, bar.centery), r + 2)
         pygame.draw.circle(self.canvas, WHITE if active else GREY, (knob_x, bar.centery), r - 1)
 
-    def draw_dropdown_arrow(self, rect, is_open):
-        cx, cy = rect.right - 20, rect.centery
-        if is_open:
-            pts = [(cx - 6, cy + 3), (cx + 6, cy + 3), (cx, cy - 4)]
-        else:
-            pts = [(cx - 6, cy - 3), (cx + 6, cy - 3), (cx, cy + 4)]
-        pygame.draw.polygon(self.canvas, WHITE, pts)
-
+    # ---------------------------------------------------------------- separador: Volume
     def draw_volume_section(self, box, mouse_pos):
         """Master / Music / SFX: cada um com o seu slider (clica ou arrasta) e um botão On/Off."""
         cfg = self.settings
@@ -131,12 +116,13 @@ class OptionsPanelMixin:
             bar = pygame.Rect(inner_x, ry + 26, inner_w, 16)
             self.draw_slider(bar, vol, active)
             hit = pygame.Rect(bar.x - SLIDER_KNOB_R, bar.y - 6, bar.width + 2 * SLIDER_KNOB_R, bar.height + 8)
-            if self.clip_stack:          # a parte que ainda está escondida (a abrir/fechar) não responde ao rato
+            if self.clip_stack:          # não deve acontecer aqui (a página já não tem clip animado), mas por segurança
                 hit = hit.clip(self.clip_stack[-1])
             self.slider_bars[slider] = bar
             if hit.width > 0 and hit.height > 0:
                 self.slider_hits[slider] = hit
 
+    # ---------------------------------------------------------------- separador: SFX
     def draw_sfx_section(self, box, mouse_pos):
         """Um botão por grupo de sons (2 colunas), para ligar/desligar cada um."""
         inner_x, inner_w = box.x + 12, box.width - 24
@@ -149,50 +135,9 @@ class OptionsPanelMixin:
                         PANEL_LIGHT if on else OFF_COLOR, PANEL_LIGHTER, WHITE,
                         callback=lambda c=cat: self.toggle_sfx_category(c), radius=9, sfx=None)
 
-    # ---------------------------------------------------------------- opções
-    def draw_options(self, mouse_pos):
-        # Idem: só os botões de navegação ficam clicáveis por baixo (ver begin_modal).
-        self.canvas.blit(dim_overlay(self.vw, VIRTUAL_H, 170), (0, 0))
-
-        self.update_options_dropdown(self.frame_dt)
-        self.slider_hits = {}          # voltam a ser registados abaixo, só se o menu Volume estiver aberto
-
-        in_game = self.screen_mode == "game"
-        panel_w = 420
-        # Altura sem o menu que expande: título + linhas de botões + nota. A página fica sempre centrada no
-        # ecrã: quando o menu Volume / SFX abre ela cresce para cima e para baixo, e volta a centrar-se ao fechar.
-        rows = 4 + 1 + 1 + 1 + (2 if in_game else 0)     # 4 toggles, Language, Volume|SFX, Leaderboard, [Save now, Main Menu|Quit]
-        base_h = 72 + 54 * rows + 76
-        open_amount = ease_out_cubic(self.options_prog) if self.options_shown else 0.0
-        extra = int((DROP_H + DROP_GAP) * open_amount)       # quanto o menu já cresceu
-        panel_h = base_h + extra
-        top = max(8, VIRTUAL_H // 2 - panel_h // 2)
-        rect = pygame.Rect(self.vw // 2 - panel_w // 2, top, panel_w, panel_h)
-        draw_panel(self.canvas, rect, PANEL, radius=16)
-        self.register_button(rect, lambda: None, None)     # clicar dentro da página não fecha
-
-        title = self.font_big.render(tr("Options"), True, WHITE)
-        self.canvas.blit(bake(title, PANEL), (rect.x + 24, rect.y + 20))
-        close_rect = pygame.Rect(rect.right - 46, rect.y + 20, 28, 28)
-        self.button(close_rect, "X", self.font_small_b, mouse_pos, PANEL_LIGHT, BAD, WHITE,
-                    callback=self.close_options, radius=8)
-
-        y = rect.y + 72
-        btn_w = panel_w - 48
-        x0 = rect.x + 24
-
-        if not IS_ANDROID:          # no telemóvel o jogo é sempre em ecrã inteiro
-            self.button(pygame.Rect(x0, y, btn_w, 44),
-                        tr("Fullscreen: %s", tr("On") if self.fullscreen else tr("Off")),
-                        self.font_med, mouse_pos, PANEL_LIGHT, PANEL_LIGHTER, WHITE,
-                        callback=self.toggle_fullscreen, radius=10)
-            y += 54
-
-        self.button(pygame.Rect(x0, y, btn_w, 44),
-                    tr("Theme: %s", self.theme_mode_label()),
-                    self.font_med, mouse_pos, PANEL_LIGHT, PANEL_LIGHTER, WHITE,
-                    callback=self.cycle_theme_mode, radius=10)
-        y += 54
+    # ---------------------------------------------------------------- separador: Gameplay
+    def draw_options_gameplay_tab(self, box, mouse_pos):
+        x0, y, w = box.x, box.y, box.width
 
         def toggle_anim():
             self.settings["animations"] = not self.animations
@@ -200,7 +145,7 @@ class OptionsPanelMixin:
             save_settings(self.settings)
             self.show_toast(tr("Animations on") if self.animations else tr("Animations off"))
 
-        self.button(pygame.Rect(x0, y, btn_w, 44),
+        self.button(pygame.Rect(x0, y, w, 44),
                     tr("Animations: %s", tr("On") if self.animations else tr("Off")),
                     self.font_med, mouse_pos,
                     PANEL_LIGHT if self.animations else OFF_COLOR, PANEL_LIGHTER, WHITE,
@@ -215,53 +160,72 @@ class OptionsPanelMixin:
             save_settings(self.settings)
 
         trait_notifs = self.settings.get("trait_notifications", True)
-        self.button(pygame.Rect(x0, y, btn_w, 44),
+        self.button(pygame.Rect(x0, y, w, 44),
                     tr("Trait notifications: %s", tr("On") if trait_notifs else tr("Off")),
                     self.font_med, mouse_pos,
                     PANEL_LIGHT if trait_notifs else OFF_COLOR, PANEL_LIGHTER, WHITE,
                     callback=toggle_trait_notifs, radius=10)
         y += 54
 
-        # ---- idioma: um botão que passa ao idioma seguinte (mostra sempre o nome no próprio idioma) ----
-        self.button(pygame.Rect(x0, y, btn_w, 44), tr("Language: %s", language_name()),
+        # Cutscenes (Secret+): um interruptor por raridade, para dar para escolher só as que se
+        # quer ver (ex.: só Transcendent) em vez de "tudo ligado" ou "tudo desligado".
+        header = self.font_small_b.render(tr("Cutscenes (catching Secret+)") + ":", True, GREY)
+        self.canvas.blit(header, (x0, y))
+        y += 22
+
+        col_w = (w - 8) // 2
+        for i, key in enumerate(CUTSCENE_RARITIES):
+            col, row = i % 2, i // 2
+            r = pygame.Rect(x0 + col * (col_w + 8), y + row * ROW_H, col_w, 40)
+            on = self.settings.get("cutscenes_" + key, True)
+            rarity_name = tr(RARITY_TIERS[TIER_INDEX[key]]["name"])
+
+            def toggle_cutscene_rarity(k=key):
+                on2 = not self.settings.get("cutscenes_" + k, True)
+                self.settings["cutscenes_" + k] = on2
+                save_settings(self.settings)
+                if not on2:
+                    # limpa da fila só as desta raridade que estavam à espera; as outras ficam
+                    self.cutscene_queue = [q for q in self.cutscene_queue if RARITIES[q[0]]["key"] != k]
+                self.show_toast(tr("%s cutscenes: %s", tr(RARITY_TIERS[TIER_INDEX[k]]["name"]),
+                                   tr("On") if on2 else tr("Off")))
+
+            self.button(r, "%s: %s" % (rarity_name, tr("On") if on else tr("Off")), self.font_small_b,
+                        mouse_pos, PANEL_LIGHT if on else OFF_COLOR, PANEL_LIGHTER, WHITE,
+                        callback=toggle_cutscene_rarity, radius=9, sfx=None)
+
+    # ---------------------------------------------------------------- separador: Interface
+    def draw_options_interface_tab(self, box, mouse_pos):
+        x0, y, w = box.x, box.y, box.width
+        if not IS_ANDROID:          # no telemóvel o jogo é sempre em ecrã inteiro
+            self.button(pygame.Rect(x0, y, w, 44),
+                        tr("Fullscreen: %s", tr("On") if self.fullscreen else tr("Off")),
+                        self.font_med, mouse_pos, PANEL_LIGHT, PANEL_LIGHTER, WHITE,
+                        callback=self.toggle_fullscreen, radius=10)
+            y += 54
+
+        self.button(pygame.Rect(x0, y, w, 44),
+                    tr("Theme: %s", self.theme_mode_label()),
+                    self.font_med, mouse_pos, PANEL_LIGHT, PANEL_LIGHTER, WHITE,
+                    callback=self.cycle_theme_mode, radius=10)
+        y += 54
+
+        self.button(pygame.Rect(x0, y, w, 44), tr("Language: %s", language_name()),
                     self.font_med, mouse_pos, PANEL_LIGHT, PANEL_LIGHTER, WHITE,
                     callback=self.cycle_language, radius=10)
-        y += 54
 
-        # ---- Volume | SFX: dois botões lado a lado; cada um expande um menu por baixo (só um aberto de cada vez) ----
-        half = (btn_w - 10) // 2
-        for i, (name, label) in enumerate((("volume", tr("Volume")), ("sfx", tr("SFX")))):
-            hb = pygame.Rect(x0 + i * (half + 10), y, half if i == 0 else btn_w - half - 10, 44)
-            is_open = self.options_section == name
-            self.button(hb, label, self.font_med, mouse_pos,
-                        PANEL_LIGHTER if is_open else PANEL_LIGHT, PANEL_LIGHTER, WHITE,
-                        callback=lambda n=name: self.toggle_options_section(n), radius=10,
-                        border_color=ACCENT if is_open else None)
-            self.draw_dropdown_arrow(hb, is_open)
-        y += 54
+    # ---------------------------------------------------------------- separador: Game
+    def draw_options_game_tab(self, box, mouse_pos, in_game):
+        x0, y, w = box.x, box.y, box.width
+        half = (w - 10) // 2
 
-        box_h = extra - DROP_GAP
-        if box_h > 0:
-            box = pygame.Rect(x0, y, btn_w, box_h)
-            pygame.draw.rect(self.canvas, DROP_BG, box, border_radius=10)
-            self.push_clip(box)
-            # o conteúdo tem posição fixa e vai sendo revelado à medida que a caixa cresce
-            content = pygame.Rect(box.x, box.y, box.width, DROP_H)
-            if self.options_shown == "volume":
-                self.draw_volume_section(content, mouse_pos)
-            elif self.options_shown == "sfx":
-                self.draw_sfx_section(content, mouse_pos)
-            self.pop_clip()
-            pygame.draw.rect(self.canvas, OUTLINE, box, width=3, border_radius=10)
-        y += extra
-
-        self.button(pygame.Rect(x0, y, btn_w, 44), tr("Leaderboard"), self.font_med, mouse_pos,
+        self.button(pygame.Rect(x0, y, w, 44), tr("Leaderboard"), self.font_med, mouse_pos,
                     PANEL_LIGHT, PANEL_LIGHTER, ACCENT, callback=self.open_leaderboard, radius=10,
                     icon="leaderboard")
         y += 54
 
         if in_game:
-            self.button(pygame.Rect(x0, y, btn_w, 44), tr("Save now"), self.font_med, mouse_pos,
+            self.button(pygame.Rect(x0, y, w, 44), tr("Save now"), self.font_med, mouse_pos,
                         PANEL_LIGHT, PANEL_LIGHTER, WHITE,
                         callback=lambda: (self.state.save(), self.show_toast(tr("Progress saved!"))),
                         radius=10, icon="saves")
@@ -269,13 +233,67 @@ class OptionsPanelMixin:
             # Main Menu à esquerda, Quit Game à direita (lado a lado, para as Options não ficarem tão altas)
             self.button(pygame.Rect(x0, y, half, 44), tr("Main Menu"), self.font_med, mouse_pos,
                         PANEL_LIGHT, PANEL_LIGHTER, WHITE, callback=self.go_to_menu, radius=10)
-            self.button(pygame.Rect(x0 + half + 10, y, btn_w - half - 10, 44), tr("Quit Game"), self.font_med,
+            self.button(pygame.Rect(x0 + half + 10, y, w - half - 10, 44), tr("Quit Game"), self.font_med,
                         mouse_pos, BAD, (250, 120, 120), WHITE, callback=self.quit_game, radius=10)
-            y += 54
 
+    # ---------------------------------------------------------------- opções
+    def draw_options(self, mouse_pos):
+        # Idem: só os botões de navegação ficam clicáveis por baixo (ver begin_modal).
+        self.canvas.blit(dim_overlay(self.vw, VIRTUAL_H, 170), (0, 0))
+        self.slider_hits = {}          # só voltam a ser registados abaixo se o separador Volume estiver aberto
+
+        in_game = self.screen_mode == "game"
+        panel_w = 460
+        # A página tem SEMPRE a mesma altura, esteja qual separador estiver aberto (CONTENT_H já é
+        # grande o suficiente para o separador com mais linhas): nunca "cresce" nem "encolhe".
+        panel_h = 72 + TAB_H + 14 + CONTENT_H + 14 + 60
+        top = max(8, VIRTUAL_H // 2 - panel_h // 2)
+        rect = pygame.Rect(self.vw // 2 - panel_w // 2, top, panel_w, panel_h)
+        draw_panel(self.canvas, rect, PANEL, radius=16)
+        self.register_button(rect, lambda: None, None)     # clicar dentro da página não fecha
+
+        title = self.font_big.render(tr("Options"), True, WHITE)
+        self.canvas.blit(bake(title, PANEL), (rect.x + 24, rect.y + 20))
+        close_rect = pygame.Rect(rect.right - 46, rect.y + 20, 28, 28)
+        self.button(close_rect, "X", self.font_small_b, mouse_pos, PANEL_LIGHT, BAD, WHITE,
+                    callback=self.close_options, radius=8)
+
+        x0 = rect.x + 24
+        btn_w = panel_w - 48
+
+        # ---- separadores ----
+        tab_y = rect.y + 72
+        gap = 6
+        tab_w = (btn_w - gap * (len(TABS) - 1)) // len(TABS)
+        tx = x0
+        for key, label in TABS:
+            active = self.options_tab == key
+            tab_rect = pygame.Rect(tx, tab_y, tab_w, TAB_H)
+            self.button(tab_rect, tr(label), self.font_small_b, mouse_pos,
+                        PANEL_LIGHTER if active else PANEL_LIGHT, PANEL_LIGHTER, WHITE,
+                        callback=lambda k=key: self.set_options_tab(k), radius=9,
+                        border_color=ACCENT if active else None)
+            tx += tab_w + gap
+
+        content_top = tab_y + TAB_H + 14
+        content_box = pygame.Rect(x0, content_top, btn_w, CONTENT_H)
+
+        tab = self.options_tab
+        if tab == "gameplay":
+            self.draw_options_gameplay_tab(content_box, mouse_pos)
+        elif tab == "interface":
+            self.draw_options_interface_tab(content_box, mouse_pos)
+        elif tab == "volume":
+            self.draw_volume_section(content_box, mouse_pos)
+        elif tab == "sfx":
+            self.draw_sfx_section(content_box, mouse_pos)
+        else:
+            self.draw_options_game_tab(content_box, mouse_pos, in_game)
+
+        y = content_top + CONTENT_H + 14
         note = tr("Turning animations off removes the particles and the card effect — the game gets much "
                   "lighter. Progress is saved automatically every 10 seconds.") if in_game else \
                tr("Options are shared by all saves.")
         for line in wrap_text(note, self.font_tiny, btn_w):
-            self.canvas.blit(bake(self.font_tiny.render(line, True, GREY), PANEL), (x0, y + 8))
+            self.canvas.blit(bake(self.font_tiny.render(line, True, GREY), PANEL), (x0, y))
             y += 16

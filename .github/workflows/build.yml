@@ -1,11 +1,11 @@
-# Cria os executaveis do Lucky Sahurs para Windows, Linux e macOS (Apple Silicon + Intel)
+# Cria os executaveis do Lucky Verities para Windows, Linux e macOS (Apple Silicon + Intel)
 # e publica-os numa "Release" do GitHub, de onde os amigos descarregam.
 #
 # COMO USAR
 #   1) Publicar uma versao:   git tag v1.0.0 && git push origin v1.0.0
 #      (ou no GitHub: Releases > Draft a new release > criar a tag v1.0.0 > Publish)
 #      -> constroi os 4 ficheiros e anexa-os a Release dessa tag (demora uns 5 a 10 minutos).
-#   2) So testar o build:     separador Actions > "Build Lucky Sahurs" > Run workflow
+#   2) So testar o build:     separador Actions > "Build Lucky Verities" > Run workflow
 #      -> os ficheiros ficam em "Artifacts" no fim da execucao (sem criar Release).
 #
 # CODIGO PRIVADO + RELEASES PUBLICAS (os amigos descarregam sem conta e nao veem o codigo)
@@ -17,7 +17,7 @@
 # QUOTA (repo privada): 2000 min/mes; Windows conta 2x e macOS 10x. Cada build completo gasta ~120 min.
 #   Para gastar menos, apaga a linha do "macOS (Intel)" na lista de baixo (poupa cerca de metade).
 
-name: Build Lucky Sahurs
+name: Build Lucky Verities
 
 on:
   push:
@@ -35,13 +35,13 @@ jobs:
       fail-fast: false            # se um sistema falhar, os outros continuam
       matrix:
         include:
-          - { name: "Windows",                os: windows-latest, asset: "Lucky-Sahurs-Windows.exe" }
+          - { name: "Windows",                os: windows-latest, asset: "Lucky-Verities-Windows.exe" }
           # ubuntu-24.04: o binario precisa de glibc >= 2.39 (Ubuntu 24.04+, Fedora 40+, Mint 22+, Arch...).
           # Em distros mais antigas usa-se ./run_linux_mac.sh.
-          - { name: "Linux",                  os: ubuntu-24.04,   asset: "Lucky-Sahurs-Linux.tar.gz" }
-          - { name: "macOS (Apple Silicon)",  os: macos-latest,   asset: "Lucky-Sahurs-macOS-AppleSilicon.zip" }
+          - { name: "Linux",                  os: ubuntu-24.04,   asset: "Lucky-Verities-Linux.tar.gz" }
+          - { name: "macOS (Apple Silicon)",  os: macos-latest,   asset: "Lucky-Verities-macOS-AppleSilicon.zip" }
           # macos-15-intel e o ultimo runner Intel do GitHub (disponivel ate agosto de 2027).
-          - { name: "macOS (Intel)",          os: macos-15-intel, asset: "Lucky-Sahurs-macOS-Intel.zip" }
+          - { name: "macOS (Intel)",          os: macos-15-intel, asset: "Lucky-Verities-macOS-Intel.zip" }
 
     steps:
       - uses: actions/checkout@v4
@@ -70,7 +70,7 @@ jobs:
       - name: Verificar que o codigo compila
         run: python -m compileall -q main.py config.py storage.py theme.py i18n.py i18n_pt.py build_version.py core ui online
 
-      # ---------------------------------------------------------------- Windows: um unico .exe com o icone do Tung
+      # ---------------------------------------------------------------- Windows: um unico .exe com o icone do Verity
       - name: Criar o .exe (Windows)
         if: runner.os == 'Windows'
         shell: bash
@@ -78,10 +78,10 @@ jobs:
           MSYS_NO_PATHCONV: "1"
         run: |
           python -m PyInstaller --noconfirm --clean --onefile --windowed \
-            --icon "icons/tung.ico" \
+            --icon "icons/verity.ico" \
             --add-data "icons;icons" --add-data "sounds;sounds" --add-data "fonts;fonts" \
-            --name "Lucky Sahurs" main.py
-          mv "dist/Lucky Sahurs.exe" "dist/${{ matrix.asset }}"
+            --name "Lucky Verities" main.py
+          mv "dist/Lucky Verities.exe" "dist/${{ matrix.asset }}"
 
       # ---------------------------------------------------------------- Linux: um unico binario dentro de um .tar.gz
       # (o .tar.gz guarda a permissao de executavel, que um upload simples perderia)
@@ -90,19 +90,19 @@ jobs:
         run: |
           python -m PyInstaller --noconfirm --clean --onefile --windowed \
             --add-data "icons:icons" --add-data "sounds:sounds" --add-data "fonts:fonts" \
-            --name "LuckySahurs" main.py
-          tar -czf "dist/${{ matrix.asset }}" -C dist LuckySahurs
+            --name "LuckyVerities" main.py
+          tar -czf "dist/${{ matrix.asset }}" -C dist LuckyVerities
 
-      # ---------------------------------------------------------------- macOS: uma .app com o icone do Tung, dentro de um .zip
+      # ---------------------------------------------------------------- macOS: uma .app com o icone do Verity, dentro de um .zip
       # (o "ditto" e o que o proprio macOS usa para comprimir: preserva permissoes e ligacoes da .app)
       - name: Criar a .app (macOS)
         if: runner.os == 'macOS'
         run: |
           python -m PyInstaller --noconfirm --clean --windowed \
-            --icon "icons/tung.icns" \
+            --icon "icons/verity.icns" \
             --add-data "icons:icons" --add-data "sounds:sounds" --add-data "fonts:fonts" \
-            --name "Lucky Sahurs" main.py
-          ditto -c -k --sequesterRsrc --keepParent "dist/Lucky Sahurs.app" "dist/${{ matrix.asset }}"
+            --name "Lucky Verities" main.py
+          ditto -c -k --sequesterRsrc --keepParent "dist/Lucky Verities.app" "dist/${{ matrix.asset }}"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -146,6 +146,6 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" release/* --clobber
           else
-            gh release create "$TAG" release/* --title "Lucky Sahurs $TAG" \
+            gh release create "$TAG" release/* --title "Lucky Verities $TAG" \
               --notes "Descarrega o ficheiro do teu sistema: Windows (.exe), Linux (.tar.gz) ou macOS (.zip)."
           fi

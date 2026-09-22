@@ -1,6 +1,6 @@
 """
-LUCKY SAHURS  -  v7
-===================
+LUCKY VERITIES  -  v2.0.0
+=========================
 Roll pets, equip them to earn money, buy upgrades and collect traits.
 
 How to play:
@@ -18,15 +18,15 @@ How to run:
     python main.py
 
 Para criar o .exe (para mandar aos amigos): duplo clique em build_exe.bat
-(instala o pygame + pyinstaller e cria dist\\Lucky Sahurs.exe).
+(instala o pygame + pyinstaller e cria dist\\Lucky Verities.exe).
 
 Progress is stored in savegame_slot1.json / slot2 / slot3 in the same folder as main.py
 (an old savegame.json is copied to Slot 1 automatically).
-Settings (sound, volume, animations, fullscreen) are stored in lucky_sahurs_settings.json.
+Settings (sound, volume, animations, fullscreen) are stored in lucky_verities_settings.json.
 
 Icons: the PNGs in the "icons" folder are used for the side buttons, the money in the top bar, the
 Stats / Options / Leaderboard / Saves buttons, the red "!!" on the Rebirth button (alert.png) and the
-mascot on the main menu (tung.png). Delete or replace any of them - a missing file falls back to the
+mascot on the main menu (verity.png). Delete or replace any of them - a missing file falls back to the
 drawn icon (or simply to no icon).
 
 Sounds: the files in the "sounds" folder are the click / upgrade / achievement / rebirth sounds and the
@@ -75,8 +75,9 @@ ui/                     tudo o que se vê / ouve
     game_screen.py, gameplay.py             ecrã principal e roll / auto-roll / partículas
     pets_panel.py                           Index e Bag (Equipados / Inventory)
     upgrades_panel.py, milestones_panel.py  Upgrade Tree e Milestones
-    traits_panel.py, options_panel.py       página de Traits e Options
+    traits_panel.py, options_panel.py       página de Traits e Options (com separadores)
     rebirth_panel.py, daily_panel.py        página de Rebirths e painel de Missões Diárias
+    cutscene_panel.py                       cutscene ao apanhar um verity Secret ou melhor
     account_panel.py, leaderboard_panel.py  conta e leaderboard
     credits_panel.py                        página de Credits (sons e música)
     update_panel.py                         ecrã "Nova versão disponível" (atualização obrigatória)
@@ -105,6 +106,7 @@ from ui.audio import AudioMixin
 from ui.base import UIBaseMixin
 from ui.cards import CardsMixin
 from ui.credits_panel import CreditsPanelMixin
+from ui.cutscene_panel import CutscenePanelMixin
 from ui.daily_panel import DailyPanelMixin
 from ui.drawing import clear_drawing_caches, make_game_background
 from ui.fonts import clear_font_caches, make_font
@@ -138,6 +140,7 @@ class Game(
     TraitsPanelMixin,       # página de Traits
     RebirthPanelMixin,      # página de Rebirths
     DailyPanelMixin,        # painel das Missões Diárias
+    CutscenePanelMixin,     # cutscene ao apanhar um verity Secret ou melhor
     CloudMixin,             # conta na cloud, sincronização, leaderboard (lógica)
     AccountPanelMixin,      # ecrã de conta
     LeaderboardPanelMixin,  # ecrã da leaderboard
@@ -160,7 +163,7 @@ class Game(
             pass
         pygame.init()
         pygame.display.set_caption(GAME_TITLE)
-        set_window_icon()               # o Tung (icons/tung.png) no lugar do ícone por defeito do pygame
+        set_window_icon()               # o smiley do Verity (icons/verity.png) no lugar do ícone por defeito do pygame
         self.mixer_ok = self.init_mixer()
 
         self.font_tiny = make_font(13, outline=1)
@@ -191,7 +194,8 @@ class Game(
         self.stats_open = False
         self.credits_open = False
         self.update_log_open = False
-        self.reset_options_dropdown()       # sliders / menus Volume e SFX das Options (ui/options_panel.py)
+        self.reset_options_ui()             # separadores e sliders das Options (ui/options_panel.py)
+        self.init_cutscenes()               # cutscene dos verities Secret+ (ui/cutscene_panel.py)
 
         self.reset_ui()
 
@@ -471,7 +475,7 @@ class Game(
     def _perf_write(self, lines):
         """Escreve as medicoes num ficheiro ao lado dos saves. No telemovel o logcat e inutilizavel
         (o log da camara enche o buffer e as linhas do jogo desaparecem); um ficheiro le-se depois
-        com "adb shell run-as <pacote> cat files/LuckySahurs/perf_profile.txt"."""
+        com "adb shell run-as <pacote> cat files/LuckyVerities/perf_profile.txt"."""
         for line in lines:
             print(line)
         try:
@@ -612,6 +616,7 @@ class Game(
                 self.state.playtime += dt
                 self.state.last_seen = time.time()      # mantido fresco para os ganhos offline da próxima vez
                 self.update_auto(dt)
+                self.update_cutscenes(dt)
                 self.update_roll_rate(dt)
                 self.check_milestones()
                 self.state.ensure_daily_missions()      # troca as missões sozinho se o dia mudou
@@ -708,6 +713,8 @@ class Game(
             elif event.type == pygame.KEYDOWN:
                 if self.update_modal_active() and event.key != pygame.K_F11:
                     pass                # ecrã "Nova versão": ESC e atalhos não fazem nada (só Atualizar ou Não)
+                elif self.cutscene_active is not None and event.key != pygame.K_F11:
+                    self.skip_cutscene()          # qualquer tecla salta a cutscene (F11 continua a dar fullscreen)
                 elif self.screen_mode == "account" and self.handle_account_key(event):
                     pass
                 elif event.key == pygame.K_F11 or (
@@ -800,7 +807,7 @@ class Game(
 
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 canvas_pos = self.screen_to_canvas(event.pos)
-                if self.options_open and not self.update_modal_active():
+                if self.options_open and not self.update_modal_active() and self.cutscene_active is None:
                     hit = next((name for name, r in self.slider_hits.items() if r.collidepoint(canvas_pos)), None)
                     if hit:
                         self.dragging_slider = hit
@@ -837,7 +844,7 @@ class Game(
         """Faz scroll da lista que estiver debaixo de 'pos' (coordenadas do canvas). 'step' em pixéis do canvas."""
         if (self.screen_mode != "game" or self.options_open or self.stats_open
                 or self.leaderboard_open or self.credits_open or self.update_log_open
-                or self.update_modal_active()):
+                or self.update_modal_active() or self.cutscene_active is not None):
             return False
         if self.traits_open and self.traits_list_rect.collidepoint(pos):
             self.traits_scroll = max(0.0, min(self.traits_max_scroll, self.traits_scroll + step))
@@ -894,7 +901,10 @@ class Game(
             self.begin_modal()
             self.draw_update_log(mouse_pos)
 
-        if self.update_modal_active():          # "Nova versão disponível": por cima de tudo, bloqueia o resto
+        if self.cutscene_active is not None:     # verity Secret+ apanhado: por cima de quase tudo
+            self.draw_cutscene(mouse_pos)
+
+        if self.update_modal_active():          # "Nova versão disponível": por cima de TUDO, bloqueia o resto
             self.draw_update_modal(mouse_pos)
 
         t_flip = time.perf_counter()

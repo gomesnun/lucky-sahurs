@@ -24,7 +24,7 @@ UPDATE_LOG = (
         "(34 ms of the 40 ms each frame took); they are now blended into the background once.",
         "Blended images that nothing asks for any more are thrown away, so a long session no "
         "longer gets slower and slower.",
-        "The phone build is on the Releases page: Lucky-Sahurs-Android.apk.",
+        "The phone build is on the Releases page: Lucky-Verities-Android.apk.",
     ]),
 )
 
@@ -55,7 +55,7 @@ class UpdateLogPanelMixin:
         pad = 28                      # margem interior do painel
         box_pad = 18                  # margem interior das caixas de conteúdo
         title = self.font_big.render(tr("Update Log"), True, WHITE)
-        sub = self.font_small.render(tr("What's new in Lucky Sahurs"), True, GREY)
+        sub = self.font_small.render(tr("What's new in Lucky Verities"), True, GREY)
         title_y = 24
         sub_y = title_y + title.get_height() + 6
         head_h = sub_y + sub.get_height() + 22          # onde começa o conteúdo (relativo ao topo do painel)

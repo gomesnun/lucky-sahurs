@@ -42,8 +42,39 @@ def load_icon(name, size):
     return surf
 
 
-def set_window_icon(name="tung", size=64):
-    """Põe o Tung (icons/<name>.png) como ícone da janela / da barra de tarefas, no lugar do ícone por
+_pet_cache = {}
+
+
+def load_pet_image(pet_name, size, silhouette=False):
+    """Imagem do verity (icons/pets/<nome em minúsculas>.png) numa surface quadrada size x size com
+    transparência, ou None se o ficheiro não existir (o cartão volta então ao desenho só com texto).
+    silhouette=True devolve a mesma imagem escurecida (para os verities que ainda não tens no Index).
+    O resultado fica em cache: não o alteres."""
+    key = (pet_name, size, silhouette)
+    if key in _pet_cache:
+        return _pet_cache[key]
+    surf = None
+    slug = "".join(c for c in pet_name.lower() if c.isalnum())
+    for folder in _icon_dirs():
+        path = os.path.join(folder, "pets", slug + ".png")
+        if not os.path.isfile(path):
+            continue
+        try:
+            img = pygame.image.load(path).convert_alpha()
+            surf = pygame.transform.smoothscale(img, (size, size))
+            if silhouette:
+                surf.fill((24, 26, 44, 255), special_flags=pygame.BLEND_RGB_MULT)
+            break
+        except (pygame.error, OSError):
+            continue
+    if len(_pet_cache) > 400:
+        _pet_cache.clear()
+    _pet_cache[key] = surf
+    return surf
+
+
+def set_window_icon(name="verity", size=64):
+    """Põe o smiley do Verity (icons/<name>.png) como ícone da janela / da barra de tarefas, no lugar do ícone por
     defeito do pygame. Chama-se ANTES de criar a janela (por isso não se usa convert_alpha aqui).
     O ícone do próprio .exe / .app é outra coisa: vem do --icon do PyInstaller (ver build_exe.bat e o .spec)."""
     for folder in _icon_dirs():

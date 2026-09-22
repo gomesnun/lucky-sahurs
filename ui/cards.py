@@ -1,5 +1,5 @@
-"""Cartões dos pets e das traits (estilo "brainrot": nome grande com contorno, raridade numa pílula e o
-rendimento / a chance em placas escuras). Os cartões são quase quadrados para não ocuparem o ecrã todo."""
+"""Cartões dos verities e das traits (a imagem do verity, o nome grande com contorno, a raridade numa
+pílula e o rendimento / a chance em placas escuras). Os cartões são quase quadrados para não ocuparem o ecrã todo."""
 
 import pygame
 
@@ -10,6 +10,7 @@ from i18n import tr
 from theme import BORDER_W_SMALL, GOLD_BORDER, OUTLINE, PANEL_LIGHT, WHITE
 from ui.drawing import to_display_format, draw_rarity_bg, mix, rounded_gradient, shade
 from ui.fonts import fit_text, wrap_text
+from ui.icons import load_pet_image
 
 # Cor "viva" de cada raridade: o texto da pílula, o brilho por trás do cartão principal e as faíscas.
 RARITY_GLOW = {
@@ -25,6 +26,11 @@ PLATE_SUB = (150, 156, 184)            # a linha pequenina por baixo (chance bas
 LOCKED_MARK = (150, 156, 184)          # o "?" dos pets / traits que ainda não tens
 
 import collections
+
+# As imagens dos verities (icons/pets/*.png) são 512x512 com a bola no meio: a bola ocupa 56% da largura e o
+# centro dela fica a 54,2% da altura. Com isto o cartão sabe posicionar a bola onde quer, seja qual for o tamanho.
+BALL_FRAC = 0.56
+BALL_CY = 0.542
 
 _CARD_CACHE = collections.OrderedDict()
 _OVERLAY_CACHE = collections.OrderedDict()
@@ -62,6 +68,19 @@ def _shade_overlay(w, h, radius):
     pygame.draw.rect(mask, (255, 255, 255, 255), mask.get_rect(), border_radius=radius)
     surf.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
     return _remember(_OVERLAY_CACHE, key, surf)
+
+
+def _round_mask(w, h, radius, inset):
+    """Retângulo branco de cantos redondos, afastado 'inset' píxeis das bordas (o que sai fora fica transparente):
+    usa-se para cortar a imagem do verity, para ela nunca tapar a borda do cartão."""
+    key = ("mask", w, h, radius, inset)
+    surf = _OVERLAY_CACHE.get(key)
+    if surf is None:
+        surf = pygame.Surface((w, h), pygame.SRCALPHA)
+        pygame.draw.rect(surf, (255, 255, 255, 255), pygame.Rect(inset, inset, w - 2 * inset, h - 2 * inset),
+                         border_radius=max(2, radius - inset))
+        _remember(_OVERLAY_CACHE, key, surf)
+    return surf
 
 
 def _pill(text_surf, edge=None, pad_x=10, pad_y=2):
@@ -156,9 +175,39 @@ class CardsMixin:
         return [font.render(t, True, WHITE) for t in lines], pitch, total
 
     # ---------------------------------------------------------------- cartões de pet
+    def _draw_pet_art(self, surf, rarity, locked, area_top, area_bottom, inner_w, s, radius, inset, pill):
+        """Layout COM a imagem do verity, na zona livre entre o topo do cartão e as placas: a raridade (pílula)
+        em cima, o verity grande no meio e o nome por cima da parte de baixo dele (o contorno grosso do texto
+        lê-se bem em cima da imagem). Bloqueado (Index): a imagem fica uma silhueta escura e o nome é um '?'."""
+        w, h = surf.get_size()
+        if locked:
+            font = self.font_at(max(16, int(round(30 * s))), heavy=True)
+            lines = [font.render("?", True, LOCKED_MARK)]
+            pitch = total = font.get_height() - 4
+        else:
+            lines, pitch, total = self._fit_name(rarity["pet"], max(13, int(round(28 * s))), inner_w - 4,
+                                                 int((area_bottom - area_top) * 0.45), 0)
+        ball_top = area_top + int(pill.get_height() * 0.7)            # a pílula tapa um bocadinho o topo da imagem
+        ball_bottom = area_bottom - int(total * 0.5)                  # e o nome tapa a metade de baixo da bola
+        diameter = ball_bottom - ball_top
+        if diameter >= 18:
+            side = min(int(diameter / BALL_FRAC), int(w * 1.15))
+            art = load_pet_image(rarity["pet"], side, silhouette=locked)
+            if art is not None:
+                layer = pygame.Surface((w, h), pygame.SRCALPHA)
+                cy = (ball_top + ball_bottom) // 2
+                layer.blit(art, (w // 2 - side // 2, int(cy - BALL_CY * side)))
+                layer.blit(_round_mask(w, h, radius, inset), (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+                surf.blit(layer, (0, 0))
+        surf.blit(pill, pill.get_rect(midtop=(w // 2, area_top)))
+        y = area_bottom - total
+        for t in lines:
+            surf.blit(t, t.get_rect(midtop=(w // 2, y)))
+            y += pitch
+
     def render_pet_card(self, rarity, mutation, w, h, plates=(), footer_h=0, locked=False):
-        """Cartão do pet, quase quadrado: nome grande com contorno, a raridade numa pílula e, em baixo,
-        placas escuras com o rendimento e a chance. A mutação é só a borda (dourada / azul); o fundo é
+        """Cartão do verity, quase quadrado: a imagem dele, o nome grande com contorno, a raridade numa pílula e,
+        em baixo, placas escuras com o rendimento e a chance. A mutação é só a borda (dourada / azul); o fundo é
         sempre a cor da raridade.
 
         plates    lista de placas; cada placa é uma lista de 1 ou 2 células (etiqueta, valor[, linha pequena]),
@@ -209,7 +258,10 @@ class CardsMixin:
         accent = rarity_glow_color(rarity)
         pill_size = max(11, int(round(16 * s)))
         pill = _pill(self.font_at(pill_size, heavy=True).render(tr(rarity["name"]), True, accent), edge=accent)
-        if locked:
+        if load_pet_image(rarity["pet"], 16) is not None:
+            self._draw_pet_art(surf, rarity, locked, area_top, area_bottom, inner_w, s, radius,
+                               6 if border else 3, pill)
+        elif locked:                     # sem a imagem do verity (ficheiro em falta): o layout antigo, só com texto
             q = self.font_at(max(20, int(round(58 * s))), heavy=True).render("?", True, LOCKED_MARK)
             block_h = q.get_height() - 8 + gap + pill.get_height()
             y = area_top + max(0, (area_bottom - area_top - block_h) // 2)
@@ -270,19 +322,19 @@ class CardsMixin:
         else:
             pygame.draw.rect(surf, OUTLINE, rect, width=BORDER_W_SMALL, border_radius=radius)
 
-        # nome grande com contorno e, se estiver equipada, a pílula EQUIPPED por baixo dele
-        pill = None
-        if equipped:
-            pill = _pill(self.font_at(max(11, int(round(13 * s))), heavy=True).render(tr("EQUIPPED"), True, GOLD_BORDER),
-                         edge=GOLD_BORDER)
-        pill_h = (pill.get_height() + 3) if pill else 0
+        # nome grande com contorno (ocupa a área toda; já não perde espaço para a pílula EQUIPPED)
         lines, pitch, total = self._fit_name(tr(trait["name"]), max(14, int(round(32 * s))), w - 2 * pad - 4,
-                                             area_h, pill_h)
+                                             area_h, 0)
         y = pad + max(0, (area_h - total) // 2)
         for t in lines:
             surf.blit(t, t.get_rect(midtop=(w // 2, y)))
             y += pitch
-        if pill:
-            surf.blit(pill, pill.get_rect(midtop=(w // 2, y + 3)))
+
+        # pílula EQUIPPED no canto superior direito, por cima do nome
+        if equipped:
+            pill = _pill(self.font_at(max(11, int(round(13 * s))), heavy=True).render(tr("EQUIPPED"), True, GOLD_BORDER),
+                         edge=GOLD_BORDER)
+            corner_pad = max(6, int(round(8 * s)))
+            surf.blit(pill, pill.get_rect(topright=(w - corner_pad, corner_pad)))
         self._draw_plate(surf, plate_rect, cells, fonts, s)
         return _remember(_CARD_CACHE, key, surf)

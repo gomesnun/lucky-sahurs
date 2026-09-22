@@ -42,6 +42,8 @@ class GameplayMixin:
                 best_r, best_m = r, m
             if gained:
                 gained_charges += 1
+        if best_r >= 0:
+            self.trigger_cutscene(best_r, best_m)      # não faz nada abaixo de Secret (ver ui/cutscene_panel.py)
         self.roll_anim_start = time.time()
         if self.animations and self.state.last_roll:
             self.spawn_roll_particles(self.state.last_roll[0])
@@ -71,6 +73,7 @@ class GameplayMixin:
         was_ready = (self.state.cyclic_bonus_ready, self.state.diamond_bonus_ready,
                     self.state.rainbow_bonus_ready)
         r_idx, mut, gained_charge, _used_bonus = self.state.roll()
+        self.trigger_cutscene(r_idx, mut)      # não faz nada abaixo de Secret (ver ui/cutscene_panel.py)
         self.roll_anim_start = time.time()
         self.spawn_roll_particles(r_idx)
         self.play_roll_sfx(r_idx, mut, manual=True)

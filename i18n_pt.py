@@ -93,6 +93,23 @@ PT = {
     "Quit Game": "Sair",
     "Options are shared by all saves.": "As opções são partilhadas por todos os saves.",
     "Turning animations off removes the particles and the card effect — the game gets much lighter. Progress is saved automatically every 10 seconds.": "Desligar as animações remove as partículas e o efeito das cartas — o jogo fica muito mais leve. O progresso é guardado automaticamente de 10 em 10 segundos.",
+
+    # ---------------- separadores das Options ----------------
+    "Gameplay": "Jogabilidade",
+    "Interface": "Interface",
+    "Game": "Jogo",
+
+    # ---------------- cutscenes (Secret+) ----------------
+    "Cutscenes: %s": "Cutscenes: %s",
+    "Cutscenes on": "Cutscenes ligadas",
+    "Cutscenes off": "Cutscenes desligadas",
+    "Cutscenes (catching Secret+)": "Cutscenes (ao apanhar Secreto+)",
+    "%s cutscenes: %s": "Cutscenes de %s: %s",
+    "SECRET PET!": "PET SECRETO!",
+    "DIVINE PET!": "PET DIVINO!",
+    "COSMIC PET!": "PET CÓSMICO!",
+    "TRANSCENDENT PET!": "PET TRANSCENDENTE!",
+    "Click or press any key to continue": "Clica ou carrega numa tecla para continuar",
     "Clicks": "Cliques",
     "Rolling": "Rolls",
     "Traits": "Atributos",
@@ -366,6 +383,9 @@ PT = {
     "Create account": "Criar conta",
     "No email needed. There is no password recovery, so remember your password. Your local saves are never touched.": "Não é preciso email. Não há recuperação de palavra-passe, por isso não te esqueças dela. Os teus saves locais nunca são tocados.",
     "Log in to use your cloud saves and join the leaderboard.": "Inicia sessão para usares os teus saves da cloud e entrares no ranking.",
+    "Log in with the email you confirmed for your account.": "Inicia sessão com o email que confirmaste na tua conta.",
+    "For accounts made before emails were required and never confirmed one - username and password, same as always. You'll be asked to add an email right after.": "Para contas criadas antes dos emails serem obrigatórios e que nunca confirmaram um - nome de utilizador e palavra-passe, como sempre. Vais ser convidado a acrescentar um email logo a seguir.",
+    "Wrong email or password.": "Email ou palavra-passe errados.",
     "Username: 3 to 16 characters, only letters, numbers and _": "Nome de utilizador: 3 a 16 caracteres, só letras, números e _",
     "Password must have at least %d characters.": "A palavra-passe tem de ter pelo menos %d caracteres.",
     "The two passwords don't match.": "As duas palavras-passe não coincidem.",
@@ -375,6 +395,13 @@ PT = {
     "Welcome back, %s!": "Bem-vindo de volta, %s!",
     "Online features aren't set up yet. Add your Firebase keys to the script (or to firebase_config.json) - see FIREBASE_SETUP.md.": "As funcionalidades online ainda não estão configuradas. Acrescenta as tuas chaves do Firebase ao script (ou ao firebase_config.json) - vê o FIREBASE_SETUP.md.",
     "Online features aren't set up yet - see FIREBASE_SETUP.md.": "As funcionalidades online ainda não estão configuradas - vê o FIREBASE_SETUP.md.",
+    "Confirm your password": "Confirma a tua palavra-passe",
+    "Your session is a bit old. Enter your password to finish confirming your email.": "A tua sessão está um pouco desatualizada. Introduz a tua palavra-passe para acabares de confirmar o teu email.",
+    "Your email was confirmed, but your session is a bit old. Enter your password once more to finish.": "O teu email ficou confirmado, mas a tua sessão está um pouco desatualizada. Introduz a tua palavra-passe mais uma vez para terminar.",
+    "Confirming...": "A confirmar...",
+    "Confirm": "Confirmar",
+    "Checking...": "A verificar...",
+    "This account already has an email. Use \"Log in\" instead.": "Esta conta já tem um email. Usa o \"Iniciar sessão\" em vez disto.",
 
     # ---------------- ranking ----------------
     "Top %d players - updates every %d minutes.": "Top %d jogadores - atualiza a cada %d minutos.",
@@ -408,7 +435,7 @@ PT = {
     "background music": "música de fundo",
     "Click an entry to open its page on Freesound.org. The sounds were converted to .ogg. CC BY = Creative Commons Attribution; CC0 = public domain (no credit needed).": "Clica numa entrada para abrir a página dela no Freesound.org. Os sons foram convertidos para .ogg. CC BY = Creative Commons Atribuição; CC0 = domínio público (não é preciso dar crédito).",
     "Couldn't open the browser.": "Não foi possível abrir o navegador.",
-    "What's new in Lucky Sahurs": "Novidades do Lucky Sahurs",
+    "What's new in Lucky Verities": "Novidades do Lucky Verities",
     "Nothing here yet - future updates will be listed on this page.": "Ainda não há nada aqui - as próximas atualizações vão aparecer nesta página.",
 
     # ---------------- atualização automática ----------------

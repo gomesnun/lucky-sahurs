@@ -1,7 +1,7 @@
-<h1 align="center">Lucky Sahurs</h1>
+<h1 align="center">Lucky Verities</h1>
 
 <p align="center">
-  <b>An idle pet-collecting game built on pure Italian-brainrot chaos.</b><br>
+  <b>An idle collecting game about Verities: little round creatures with big personalities.</b><br>
   Roll for pets from <i>Common</i> to <i>Transcendent</i>, stack income, rebirth for permanent power,
   and climb the global leaderboard — solo, on any desktop.
 </p>
@@ -30,7 +30,7 @@ Press **ROLL**. Get a pet. The rare ones pay better. The rarest one is a **1-in-
 | | |
 |---|---|
 | **11** rarity tiers | Common → Uncommon → Rare → Epic → Legendary → Mythic → Exotic → Secret → Divine → Cosmic → Transcendent |
-| **22** collectible pets | each with its own income curve |
+| **22** collectible Verities | each with its own income curve |
 | **3** mutations | Golden / Diamond / and the one you find yourself |
 | **12** traits | permanent modifiers rolled on top of pets |
 | **Milestones** | long-run reward tracks across every category |
@@ -51,14 +51,14 @@ Pick your platform. Fastest path is the prebuilt download; no Python needed.
 ### 🪟 Windows
 
 1. Open the [latest release](https://github.com/gomesnun/lucky-sahurs/releases/latest).
-2. Download `Lucky-Sahurs-Windows.exe`.
+2. Download `Lucky-Verities-Windows.exe`.
 3. Double-click it. SmartScreen may warn about an unknown publisher → **More info → Run anyway** (the build is unsigned).
 
 
 ### 🍎 macOS (Apple Silicon &amp; Intel)
 
 1. Open the [latest release](https://github.com/gomesnun/lucky-sahurs/releases/latest).
-2. Download `Lucky-Sahurs-macOS-AppleSilicon.zip` (M1/M2/M3/M4) or `Lucky-Sahurs-macOS-Intel.zip`.
+2. Download `Lucky-Verities-macOS-AppleSilicon.zip` (M1/M2/M3/M4) or `Lucky-Verities-macOS-Intel.zip`.
 3. Unzip it, then **right-click the app → Open** the first time (the app is unsigned, so a plain double-click is blocked).
 
 ### 🐧 Linux
@@ -67,8 +67,8 @@ Pick your platform. Fastest path is the prebuilt download; no Python needed.
 2. Download the Linux `.tar.gz` and extract it.
 3. Make it runnable and start it:
    ```bash
-   chmod +x "Lucky Sahurs"
-   ./"Lucky Sahurs"
+   chmod +x "Lucky Verities"
+   ./"Lucky Verities"
    ```
    The binary needs **glibc ≥ 2.39** (Ubuntu 24.04+, Fedora 40+, Mint 22+, Arch).
 
@@ -78,7 +78,7 @@ Landscape, touch-first: tap to roll and to press buttons, drag to scroll a list,
 open panel. Account, cloud saves and the leaderboard work the same as on desktop.
 
 1. Open the [latest release](https://github.com/gomesnun/lucky-sahurs/releases/latest) on your phone.
-2. Download `Lucky-Sahurs-Android.apk`.
+2. Download `Lucky-Verities-Android.apk`.
 3. Android will ask to allow installs from your browser — allow it, then tap **Install**. The APK is
    debug-signed, so Play Protect shows an "unknown app" warning: **More details → Install anyway**.
 

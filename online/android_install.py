@@ -89,7 +89,7 @@ def _publish_mediastore(autoclass, cast, activity, path, name):
     collection = MediaStore.EXTERNAL_CONTENT_URI
 
     # Uma atualização anterior deixou um ficheiro com este nome: sem isto o Android guardava
-    # "Lucky-Sahurs-Android (1).apk" e a pasta enchia-se de cópias.
+    # "Lucky-Verities-Android (1).apk" e a pasta enchia-se de cópias.
     try:
         resolver.delete(collection, MediaColumns.DISPLAY_NAME + "=?", [name])
     except Exception:

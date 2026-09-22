@@ -96,13 +96,14 @@ class TitleSavesMixin:
         cx = self.vw // 2
         t = time.time()
 
-        # fila de cartõezinhos das raridades a "flutuar" por baixo do título
+        # fila de cartõezinhos das raridades a "flutuar" por baixo do título (com o 1.º verity de cada raridade)
         tier_pets = [RARITIES[j] for j in TIER_FIRST_PET]      # uma carta por raridade
         n = len(tier_pets)
         size, gap = 64, 16
         total = n * size + (n - 1) * gap
         x0 = cx - total // 2
         def build_card(r=None):
+            # só a cor da raridade (sem a arte do pet, para não dar spoiler de pets no ecrã inicial)
             card = pygame.Surface((size, size), pygame.SRCALPHA)
             draw_rarity_bg(card, pygame.Rect(0, 0, size, size), r, radius=10)
             pygame.draw.rect(card, OUTLINE, card.get_rect(), width=BORDER_W_SMALL, border_radius=10)
@@ -179,19 +180,19 @@ class TitleSavesMixin:
         self.canvas.blit(bake_on(foot, bg, footr.topleft), footr)
 
     def draw_mascot(self, cx, ground_y, size=230):
-        """Tung Tung Tung Sahur (icons/tung.png) no menu principal, com os pés em (cx, ground_y).
-        Balança-se de um lado para o outro e "respira" (cresce um pouco) sempre com o pivô nos pés.
+        """O smiley do Verity (icons/verity.png) no menu principal, com a base em (cx, ground_y).
+        Balança-se de um lado para o outro e "respira" (cresce um pouco) sempre com o pivô na base.
         Tudo isto é feito com um único rotozoom (que interpola os píxeis), por isso o movimento é
         contínuo, sem saltinhos. Com as animações desligadas fica quieto. Sem o ficheiro, não aparece."""
-        img = load_icon("tung", size)
+        img = load_icon("verity", size)
         if img is None:
             return
         cache = getattr(self, "_mascot_pad", None)
         if cache is None or cache[0] is not img:
             self._mascot_frames = {}
             self._mascot_shadows = {}
-            # superfície com o dobro da altura: o Tung na metade de cima, por isso o CENTRO dela (que é
-            # o pivô da rotação / do zoom) fica exatamente nos pés
+            # superfície com o dobro da altura: o smiley na metade de cima, por isso o CENTRO dela (que é
+            # o pivô da rotação / do zoom) fica exatamente na base
             padded = pygame.Surface((size, size * 2), pygame.SRCALPHA)
             padded.blit(img, (0, 0))
             cache = (img, padded)
@@ -201,7 +202,7 @@ class TitleSavesMixin:
         angle = math.sin(t * 1.3) * 3.5 if self.animations else 0.0
         scale = 1.0 + 0.025 * math.sin(t * 2.0) if self.animations else 1.0
         # sombra no chão (acompanha o "respirar")
-        shadow_w = int(150 * scale)
+        shadow_w = int(size * 0.66 * scale)
         shadow = self._mascot_shadows.get(shadow_w)
         if shadow is None:
             shadow = pygame.Surface((shadow_w, 26), pygame.SRCALPHA)

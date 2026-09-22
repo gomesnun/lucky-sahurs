@@ -37,13 +37,19 @@ class CloudMixin:
         # conta
         self.account = None                  # {"uid", "username"} quando há sessão iniciada
         self.account_return = "title"
-        self.acc_tab = "login"               # "login" | "register"
+        self.acc_tab = "login"               # "login" | "register" | "recover"
+        self.acc_stage = "form"              # "form" | "verify" | "link_email" | "forgot" | "forgot_sent"
         self.acc_fields = {"username": TextField("username"), "password": TextField("password"),
-                           "confirm": TextField("password")}
+                           "confirm": TextField("password"), "email": TextField("email"),
+                           "code": TextField("code")}
         self.acc_focus = None
         self.acc_msg = None                  # (texto, cor)
         self.acc_busy = False
         self.acc_show_pw = False
+        self.acc_pending_email = None        # email por confirmar (ecrã "verify")
+        self.acc_reauth_email = None         # email já confirmado, à espera de re-login (ecrã "reauth")
+        self.acc_code_sent_at = 0.0          # para o "reenviar código" ter um pequeno intervalo
+        self.acc_forgot_email = None         # email para onde foi mandado o link de reset (ecrã final)
 
         # saves da conta
         self.cache_info = {}                 # slot -> resumo da cache local (para funcionar sem net)
@@ -100,6 +106,24 @@ class CloudMixin:
             self.pub_last_time = 0.0
         self.refresh_slot_info()
         self.load_cloud_slots()
+        # Conta antiga sem email associado (ainda não passou pelo ecrã de link_email): verifica em
+        # segundo plano e, se for o caso, força esse ecrã assim que o jogo abre.
+        self.worker.run(self.client.get_profile, self.on_startup_profile, lambda _e: None)
+
+    def on_startup_profile(self, profile):
+        if not self.account:
+            return
+        if profile and profile.get("email_verified"):
+            # a sessão restaurada não trazia isto (restore_session só põe uid/username) - sem isto,
+            # o ecrã de conta mostrava sempre "sem email confirmado", mesmo já estando tudo certo
+            self.account["email_verified"] = True
+            self.account["email"] = profile.get("email")
+            return
+        if profile and profile.get("email"):
+            # associação a meio (código nunca confirmado) - guarda o email para o ecrã "verify" retomar
+            self.account["email"] = profile.get("email")
+            self.acc_pending_email = profile.get("email")
+        self.require_email_link()
 
     def save_session_file(self):
         if self.client and self.account and self.client.refresh_token:
@@ -120,6 +144,8 @@ class CloudMixin:
         self.cloud_slots_error = None
         self.cache_info = {}
         self.pub_last_time = 0.0
+        self.acc_stage = "form"
+        self.acc_pending_email = None
         clear_session()
 
     def log_out_clicked(self):
@@ -194,10 +220,17 @@ class CloudMixin:
             try:
                 if self.client.session_blocker(self.install_id) is not None:
                     return {"busy": True}
+            except OnlineError:
+                pass        # só a leitura informativa falhou (rede em baixo): não bloqueia por causa disto
+            try:
                 self.client.write_session(self.install_id, True)
                 held = True
-            except OnlineError:
-                pass        # rede em baixo, ou as regras ainda não foram publicadas: deixa jogar na mesma
+            except OnlineError as e:
+                if e.code == "denied":
+                    # a Firestore RECUSOU mesmo: outro dispositivo já tem a marca (apanhado aqui mesmo
+                    # que a leitura de cima não tivesse dado por isso, por causa da corrida entre os dois)
+                    return {"busy": True}
+                # falha de rede/servidor: deixa jogar na mesma, a partir da cópia local
             return {"busy": False, "held": held, "cloud": self.client.get_save(slot)}
 
         def ok(res):

@@ -24,6 +24,8 @@ from online.tls import ssl_context
 # FIREBASE_SETUP.md. Com as chaves vazias o jogo funciona como antes (só saves locais) e os
 # botões online avisam que ainda não estão configurados.
 FIREBASE_API_KEY = "AIzaSyDDRAionwoM0sZ0RWGwqNk14RY77zY1KvI"        # Project settings -> General -> "Web API Key"
+# (O projeto Firebase e o domínio abaixo mantêm o nome antigo de propósito: as contas e as rules do Firestore
+# dependem deles. NÃO os mudes, senão as contas existentes deixam de entrar.)
 FIREBASE_PROJECT_ID = "lucky-sahurs"     # Project settings -> General -> "Project ID"
 FIREBASE_CONFIG_PATH = os.path.join(SAVE_DIR, "firebase_config.json")   # {"api_key": "...", "project_id": "..."}
 
@@ -299,8 +301,8 @@ class FirebaseClient:
             except (TypeError, ValueError):
                 self.expires_at = time.time() + 3000
 
-    def _auth_call(self, action, username, password):
-        body = {"email": username_to_email(username), "password": password, "returnSecureToken": True}
+    def _auth_call(self, action, email, password, username):
+        body = {"email": email, "password": password, "returnSecureToken": True}
         url = "%s/accounts:%s?key=%s" % (self.identity_base, action, urllib.parse.quote(self.api_key))
         r = http_json("POST", url, body)
         try:
@@ -309,10 +311,130 @@ class FirebaseClient:
             raise OnlineError("server", "unexpected login response")
 
     def sign_up(self, username, password):
-        self._auth_call("signUp", username, password)
+        """Conta nova: o email de login no Firebase continua a ser o falso (<username>@...invalid) até
+        o jogador verificar um email a sério (ver confirm_email / change_login_email)."""
+        self._auth_call("signUp", username_to_email(username), password, username)
+
+    def resolve_login_email(self, username):
+        """O email de login ATUAL desta conta: o de verdade, se já tiver sido associado e verificado
+        (ver /usernames/{username} no Firestore), ou o falso de sempre, para contas antigas/não migradas."""
+        try:
+            doc = self._fs("GET", "/usernames/%s" % username)
+        except OnlineError as e:
+            if e.code == "not_found":
+                return username_to_email(username)
+            raise
+        email = fs_fields(doc).get("email")
+        return email if email else username_to_email(username)
 
     def sign_in(self, username, password):
-        self._auth_call("signInWithPassword", username, password)
+        email = self.resolve_login_email(username)
+        self._auth_call("signInWithPassword", email, password, username)
+
+    def find_username_by_email(self, email):
+        """Procura no /usernames o username cujo email de login ATUAL é este. Serve para o ecrã de
+        "Log in" poder pedir o email em vez do username: continuamos, por baixo, a autenticar-nos por
+        username como sempre - só invertemos a pesquisa. Leitura pública (mesma regra do resolve_login_email),
+        por isso funciona mesmo antes de teres sessão."""
+        body = {"structuredQuery": {
+            "from": [{"collectionId": "usernames"}],
+            "where": {"fieldFilter": {"field": {"fieldPath": "email"}, "op": "EQUAL",
+                                      "value": {"stringValue": email}}},
+            "limit": 1,
+        }}
+        url = "%s/%s:runQuery?key=%s" % (self.firestore_base, self.docs_root, urllib.parse.quote(self.api_key))
+        results = http_json("POST", url, body)
+        for item in (results or []):
+            doc = item.get("document") if isinstance(item, dict) else None
+            if doc and doc.get("name"):
+                return doc["name"].rsplit("/", 1)[-1]      # o id do documento = o username
+        return None
+
+    def sign_in_by_email(self, email, password):
+        """Login "normal" (ecrã Log in): pede o email, mas resolve para o username e faz o login de
+        sempre. Só funciona para contas já migradas (com email confirmado) - é para essas que existe
+        uma entrada em /usernames. Contas antigas sem email continuam a entrar pelo separador "Old account"."""
+        username = self.find_username_by_email(email)
+        if not username:
+            raise OnlineError("bad_request", "EMAIL_NOT_FOUND")
+        self.sign_in(username, password)
+        return username
+
+    def reauth_pending_link(self, username, password):
+        """Renova o login a meio da associação de email (ver change_login_email). Usa SEMPRE o email
+        falso interno, nunca resolve_login_email: nesta fase o Firestore (/usernames) já pode estar a
+        apontar para o email novo (publish_username_email corre antes de change_login_email), mas o
+        Firebase Auth só passa a aceitar esse email novo se change_login_email tiver mesmo sucedido -
+        e é precisamente porque isso falhou que aqui estamos."""
+        self._auth_call("signInWithPassword", username_to_email(username), password, username)
+
+    # ---- email a sério: verificação por código + troca do email de login ----
+    def get_profile(self):
+        """{"email", "email_verified", "pending_code", "code_created"} desta conta, ou None se ainda
+        não existir (conta antiga que nunca associou um email)."""
+        uid = self._need_uid()
+        try:
+            doc = self._fs("GET", "/users/%s/account/profile" % uid)
+        except OnlineError as e:
+            if e.code == "not_found":
+                return None
+            raise
+        f = fs_fields(doc)
+        return {"email": f.get("email"), "email_verified": bool(f.get("email_verified")),
+                "pending_code": f.get("pending_code") or None,
+                "code_created": parse_timestamp(f.get("code_created"))}
+
+    def set_pending_code(self, email, code):
+        """Grava o email (ainda por confirmar) e o código de 6 dígitos pendente. A hora do código é a
+        do SERVIDOR (para a expiração não depender do relógio do jogador)."""
+        uid = self._need_uid()
+        name = "%s/users/%s/account/profile" % (self.docs_root, uid)
+        body = {"writes": [{
+            "update": {"name": name, "fields": {
+                "email": fs_encode(email), "email_verified": fs_encode(False), "pending_code": fs_encode(str(code)),
+            }},
+            "updateTransforms": [{"fieldPath": "code_created", "setToServerValue": "REQUEST_TIME"}],
+        }]}
+        self._fs("POST", ":commit", body)
+
+    def confirm_email(self):
+        """Marca o email como verificado e apaga o código (já usado)."""
+        uid = self._need_uid()
+        name = "%s/users/%s/account/profile" % (self.docs_root, uid)
+        body = {"writes": [{
+            "update": {"name": name, "fields": {"email_verified": fs_encode(True), "pending_code": fs_encode("")}},
+            "updateMask": {"fieldPaths": ["email_verified", "pending_code"]},
+        }]}
+        self._fs("POST", ":commit", body)
+
+    def publish_username_email(self, username, email):
+        """/usernames/{username} = o email de login ATUAL desta conta (para o login por username
+        continuar a funcionar depois de troc-armos o email de verdade no Auth). Escrito ENQUANTO o
+        token ainda tem o email falso: é isso que as rules usam para confirmar que o dono é mesmo quem
+        diz ser (só quem está autenticado como <username>@...invalid pode escrever aqui)."""
+        uid = self._need_uid()
+        name = "%s/usernames/%s" % (self.docs_root, username)
+        body = {"writes": [{"update": {"name": name, "fields": {"uid": fs_encode(uid), "email": fs_encode(email)}}}]}
+        self._fs("POST", ":commit", body)
+
+    def change_login_email(self, new_email):
+        """Troca o email de login desta conta no Firebase Auth (de <username>@...invalid para o email
+        de verdade, já verificado pelo nosso código). Faz-se DEPOIS do publish_username_email."""
+        uid = self._need_uid()
+        url = "%s/accounts:update?key=%s" % (self.identity_base, urllib.parse.quote(self.api_key))
+        body = {"idToken": self.ensure_token(), "email": new_email, "returnSecureToken": True}
+        r = http_json("POST", url, body)
+        try:
+            self._set_tokens(uid, self.username, r.get("refreshToken", self.refresh_token),
+                             r["idToken"], r.get("expiresIn", "3600"))
+        except (KeyError, TypeError):
+            raise OnlineError("server", "unexpected update response")
+
+    def send_password_reset(self, email):
+        """Pede ao Firebase para mandar o EMAIL OFICIAL de reset de password (link seguro, gerado e
+        validado só por eles) para este endereço."""
+        url = "%s/accounts:sendOobCode?key=%s" % (self.identity_base, urllib.parse.quote(self.api_key))
+        http_json("POST", url, {"requestType": "PASSWORD_RESET", "email": email})
 
     def restore(self, uid, username, refresh_token):
         with self._lock:
