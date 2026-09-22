@@ -45,8 +45,11 @@ jobs:
           path: |
             ~/.buildozer
             .buildozer
-          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec', 'android/p4a-recipes/**') }}
-          restore-keys: buildozer-${{ runner.os }}-
+          # O nome da repo entra na chave: o que esta em cache guarda caminhos absolutos
+          # (/home/runner/work/<repo>/<repo>/...), por isso uma cache feita com outro nome de repo
+          # rebenta o build ("No such file or directory: .../hostpython3/native-build/.../pip3").
+          key: buildozer-${{ runner.os }}-${{ github.event.repository.name }}-${{ hashFiles('buildozer.spec', 'android/p4a-recipes/**') }}
+          restore-keys: buildozer-${{ runner.os }}-${{ github.event.repository.name }}-
 
       - name: Escrever a versao no jogo (so nas tags)
         shell: bash
