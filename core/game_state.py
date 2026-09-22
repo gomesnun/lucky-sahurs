@@ -26,6 +26,7 @@ class GameState(EconomyMixin, UpgradeMixin, PetMixin, TraitMixin, MilestoneMixin
         self.coins = 0.0
         self.owned = {}          # "{indice_raridade}_{mutacao}" -> quantidade
         self.equipped = []       # lista de [indice_raridade, mutacao] (pode repetir)
+        self.avatar = None       # foto de perfil: [indice_raridade, mutacao] de um verity que tens (None = sem foto)
         self.upgrades = {k: 0 for k in UPGRADE_DEFS}
         self.last_roll = None
         self.total_rolls = 0
@@ -86,6 +87,7 @@ class GameState(EconomyMixin, UpgradeMixin, PetMixin, TraitMixin, MilestoneMixin
             "coins": self.coins,
             "owned": self.owned,
             "equipped": [list(p) for p in self.equipped],
+            "avatar": list(self.avatar) if self.avatar else None,
             "upgrades": self.upgrades,
             "total_rolls": self.total_rolls,
             "settings": {"auto_on": self.auto_on, "auto_equip_best_on": self.auto_equip_best_on},
@@ -132,6 +134,15 @@ class GameState(EconomyMixin, UpgradeMixin, PetMixin, TraitMixin, MilestoneMixin
                 continue
             if 0 <= idx < len(RARITIES) and mut in MUTATIONS:
                 self.equipped.append([idx, mut])
+        self.avatar = None
+        av = d.get("avatar")
+        try:
+            idx, mut = int(av[0]), str(av[1])
+        except (TypeError, ValueError, IndexError):
+            pass
+        else:
+            if 0 <= idx < len(RARITIES) and mut in MUTATIONS:
+                self.avatar = [idx, mut]
         # os rebirths têm de ser lidos ANTES do limite de slots abaixo (as recompensas de Rebirth dão slots extra)
         self.rebirths = max(0, int(d.get("rebirths", 0)))
         loaded_up = d.get("upgrades", {})

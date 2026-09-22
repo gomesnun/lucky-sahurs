@@ -13,6 +13,13 @@ from ui.fonts import wrap_text
 
 # (versão, data, linhas de descrição) - a mais recente primeiro.
 UPDATE_LOG = (
+    ("v2.2.0", "2026-09-22", [
+        "Friends: the new button next to Stats opens a page where you search a player by username, "
+        "send a friend request and, once they accept, see their stats.",
+        "Profile photos: any Verity you already own can be your photo - Golden and Diamond keep their "
+        "coloured ring.",
+        "A red dot on the Friends button means someone is waiting for an answer.",
+    ]),
     ("v2.1.0", "2026-09-22", [
         "The game is now Lucky Verities: new name, new art, and 22 Verities to collect.",
         "Your saves come with you - the first time you open it, everything is copied over from the "

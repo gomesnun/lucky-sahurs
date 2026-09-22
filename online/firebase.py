@@ -249,6 +249,20 @@ def fs_fields(doc):
     return {k: fs_decode(v) for k, v in (doc.get("fields") or {}).items()}
 
 
+def profile_from_doc(doc):
+    """/profiles/{uid} -> {"uid", "username", "avatar_pet" (None = sem foto), "avatar_mut"}."""
+    f = fs_fields(doc)
+    pet = f.get("avatar_pet")
+    try:
+        pet = int(pet)
+    except (TypeError, ValueError):
+        pet = -1
+    return {"uid": str(doc.get("name", "")).rsplit("/", 1)[-1],
+            "username": str(f.get("username") or "?"),
+            "avatar_pet": None if pet < 0 else pet,
+            "avatar_mut": str(f.get("avatar_mut") or "normal")}
+
+
 def save_summary(d):
     """Resumo de um save (dict do GameState.to_dict) para mostrar no ecrã de Saves e na leaderboard."""
     def num(key):
@@ -605,6 +619,153 @@ class FirebaseClient:
             }},
             "updateTransforms": [{"fieldPath": "updated_at", "setToServerValue": "REQUEST_TIME"}],
         }]}
+        self._fs("POST", ":commit", body)
+
+    # ---- perfil público (avatar) e amigos ----
+    # /profiles/{uid} = a parte pública da conta: username + a foto (um verity que o jogador tem).
+    # Fica à parte de /usernames/{username} de propósito: esse documento guarda o email de login e
+    # ninguém além do dono tem de o poder ler para procurar um amigo.
+    def publish_profile(self, avatar_pet=None, avatar_mut="normal"):
+        uid = self._need_uid()
+        name = "%s/profiles/%s" % (self.docs_root, uid)
+        body = {"writes": [{
+            "update": {"name": name, "fields": {
+                "username": fs_encode(self.username or ""),
+                # -1 = sem foto escolhida (ainda não rolou nenhum verity, ou tirou a foto)
+                "avatar_pet": fs_encode(-1 if avatar_pet is None else int(avatar_pet)),
+                "avatar_mut": fs_encode(str(avatar_mut or "normal")),
+            }},
+            "updateTransforms": [{"fieldPath": "updated_at", "setToServerValue": "REQUEST_TIME"}],
+        }]}
+        self._fs("POST", ":commit", body)
+
+    def find_profile(self, username):
+        """O perfil público de quem tem este username, ou None se não existir."""
+        query = {
+            "from": [{"collectionId": "profiles"}],
+            "where": {"fieldFilter": {"field": {"fieldPath": "username"}, "op": "EQUAL",
+                                      "value": fs_encode(str(username))}},
+            "limit": 1,
+        }
+        res = self._fs("POST", ":runQuery", {"structuredQuery": query})
+        for item in res if isinstance(res, list) else []:
+            doc = item.get("document") if isinstance(item, dict) else None
+            if doc:
+                return profile_from_doc(doc)
+        return None
+
+    def get_public_profile(self, uid):
+        try:
+            doc = self._fs("GET", "/profiles/%s" % uid)
+        except OnlineError as e:
+            if e.code == "not_found":
+                return None
+            raise
+        return profile_from_doc(doc)
+
+    def get_public_stats(self, uid):
+        """A linha da leaderboard de outra conta (é o que se mostra nas stats de um amigo).
+        None se essa conta ainda nunca publicou."""
+        try:
+            doc = self._fs("GET", "/leaderboard/%s" % uid)
+        except OnlineError as e:
+            if e.code == "not_found":
+                return None
+            raise
+        f = fs_fields(doc)
+        return {"username": str(f.get("username") or ""),
+                "coins": float(f.get("coins") or 0.0),
+                "playtime": float(f.get("playtime") or 0.0),
+                "rolls": int(f.get("rolls") or 0),
+                "rebirths": int(f.get("rebirths") or 0),
+                "updated_at": parse_timestamp(f.get("updated_at"))}
+
+    def _request_path(self, to_uid, from_uid):
+        # o id do pedido é "destino__origem": assim o mesmo pedido nunca aparece duas vezes
+        return "/friend_requests/%s__%s" % (to_uid, from_uid)
+
+    def send_friend_request(self, to_uid, to_username):
+        uid = self._need_uid()
+        if to_uid == uid:
+            raise OnlineError("bad_request", "that is your own account")
+        name = self.docs_root + self._request_path(to_uid, uid)
+        body = {"writes": [{
+            "update": {"name": name, "fields": {
+                "from_uid": fs_encode(uid), "from_username": fs_encode(self.username or ""),
+                "to_uid": fs_encode(to_uid), "to_username": fs_encode(str(to_username or "")),
+            }},
+            "updateTransforms": [{"fieldPath": "created_at", "setToServerValue": "REQUEST_TIME"}],
+        }]}
+        self._fs("POST", ":commit", body)
+
+    def list_friend_requests(self, incoming=True, limit=60):
+        """Pedidos recebidos (incoming=True) ou enviados. Sem orderBy de propósito: com o filtro por
+        uid, ordenar por created_at obrigaria a criar um índice composto no Firestore."""
+        uid = self._need_uid()
+        field = "to_uid" if incoming else "from_uid"
+        query = {
+            "from": [{"collectionId": "friend_requests"}],
+            "where": {"fieldFilter": {"field": {"fieldPath": field}, "op": "EQUAL", "value": fs_encode(uid)}},
+            "limit": limit,
+        }
+        res = self._fs("POST", ":runQuery", {"structuredQuery": query})
+        out = []
+        for item in res if isinstance(res, list) else []:
+            doc = item.get("document") if isinstance(item, dict) else None
+            if not doc:
+                continue
+            f = fs_fields(doc)
+            other_uid = f.get("from_uid") if incoming else f.get("to_uid")
+            other_name = f.get("from_username") if incoming else f.get("to_username")
+            if not other_uid:
+                continue
+            out.append({"uid": str(other_uid), "username": str(other_name or "?"),
+                        "created_at": parse_timestamp(f.get("created_at"))})
+        return out
+
+    def delete_friend_request(self, to_uid, from_uid):
+        try:
+            self._fs("DELETE", self._request_path(to_uid, from_uid))
+        except OnlineError as e:
+            if e.code != "not_found":
+                raise
+
+    def accept_friend_request(self, from_uid, from_username):
+        """Aceitar: as duas listas de amigos e o apagar do pedido vão num único :commit (ou acontece
+        tudo, ou não acontece nada - nunca fica um amigo só de um lado)."""
+        uid = self._need_uid()
+        mine = "%s/users/%s/friends/%s" % (self.docs_root, uid, from_uid)
+        theirs = "%s/users/%s/friends/%s" % (self.docs_root, from_uid, uid)
+        body = {"writes": [
+            {"update": {"name": mine, "fields": {"username": fs_encode(str(from_username or "?"))}},
+             "updateTransforms": [{"fieldPath": "since", "setToServerValue": "REQUEST_TIME"}]},
+            {"update": {"name": theirs, "fields": {"username": fs_encode(self.username or "")}},
+             "updateTransforms": [{"fieldPath": "since", "setToServerValue": "REQUEST_TIME"}]},
+            {"delete": self.docs_root + self._request_path(uid, from_uid)},
+        ]}
+        self._fs("POST", ":commit", body)
+
+    def list_friends(self, limit=200):
+        uid = self._need_uid()
+        res = self._fs("GET", "/users/%s/friends" % uid, None, [("pageSize", str(limit))])
+        out = []
+        for doc in (res.get("documents", []) if isinstance(res, dict) else []):
+            fuid = str(doc.get("name", "")).rsplit("/", 1)[-1]
+            if not fuid:
+                continue
+            f = fs_fields(doc)
+            out.append({"uid": fuid, "username": str(f.get("username") or "?"),
+                        "since": parse_timestamp(f.get("since"))})
+        out.sort(key=lambda e: e["username"])
+        return out
+
+    def remove_friend(self, friend_uid):
+        """Apaga dos dois lados: um amigo que só desaparece de uma das listas ficava lá para sempre."""
+        uid = self._need_uid()
+        body = {"writes": [
+            {"delete": "%s/users/%s/friends/%s" % (self.docs_root, uid, friend_uid)},
+            {"delete": "%s/users/%s/friends/%s" % (self.docs_root, friend_uid, uid)},
+        ]}
         self._fs("POST", ":commit", body)
 
     def top_entries(self, field, limit, min_value=None):

@@ -90,6 +90,8 @@ class CloudMixin:
         self.lb_retry_at = 0.0
         self.lb_refetch_done = 0.0           # pub_last_time para o qual já se voltou a pedir a leaderboard (ver ensure_leaderboard)
 
+        self.init_friends()                  # amigos (ver online/friends.py)
+
         self.restore_session()
 
     def restore_session(self):
@@ -466,6 +468,7 @@ class CloudMixin:
             self.slots_retry_at = now + 60.0
             self.load_cloud_slots()
         self.tick_publish(now)
+        self.tick_friends(now)
 
     def leaderboard_values(self):
         """Pontuação da CONTA (uma linha na leaderboard):

@@ -118,7 +118,14 @@ class GameScreenMixin:
                                              len(self.state.equipped), self.state.max_slots()), True, GREY)
         self.canvas.blit(bake(pets_txt, PANEL), (25 + off + dps_txt.get_width() + 14, 44))
 
-        self.nav_mode = True      # Stats / Options: clicáveis com qualquer página aberta
+        self.nav_mode = True      # Friends / Stats / Options: clicáveis com qualquer página aberta
+        friends_rect = pygame.Rect(self.vw - 472, 15, 146, 40)
+        self.button(friends_rect, tr("Friends"), self.font_med, mouse_pos, PANEL_LIGHT, PANEL_LIGHTER, WHITE,
+                    callback=self.toggle_friends, icon="friends")
+        pedidos = self.friends_pending_count()
+        if pedidos:
+            self.draw_friends_badge(friends_rect.topright, pedidos)
+
         stats_rect = pygame.Rect(self.vw - 320, 15, 146, 40)
         self.button(stats_rect, tr("Stats"), self.font_med, mouse_pos, PANEL_LIGHT, PANEL_LIGHTER, WHITE,
                     callback=self.toggle_stats, icon="stats")
