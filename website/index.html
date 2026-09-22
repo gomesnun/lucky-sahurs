@@ -313,7 +313,7 @@
     <section id="hero">
       <div class="badge">
         <img src="../icons/tung.png" width="256" height="256" alt="">
-        <span data-i18n="hero.badge">Free &amp; open source</span>&nbsp;·&nbsp;<b data-version-badge>v1.0.3</b>
+        <span data-i18n="hero.badge">Free &amp; open source</span>&nbsp;·&nbsp;<b data-version-badge>v1.0.5</b>
       </div>
       <img class="mascot float" id="mascotImg" src="../icons/tung.png" width="256" height="256"
            alt="Tung Tung Tung Sahur, the Lucky Sahurs mascot">
@@ -505,8 +505,8 @@
       <h2 class="section-title"><img src="../icons/tung.png" width="256" height="256" alt="">
         <span data-i18n="download.title">Play anywhere</span></h2>
       <p class="section-sub" data-i18n="download.sub">
-        One codebase, three platforms. GitHub Actions builds every release automatically — current release
-        <b data-version-badge>v1.0.3</b>.
+        One codebase, four platforms. GitHub Actions builds every release automatically — current release
+        <b data-version-badge>v1.0.5</b>.
       </p>
       <div class="platform-row">
         <a class="platform" href="https://github.com/gomesnun/lucky-sahurs/releases/latest">
@@ -524,6 +524,10 @@
         <a class="platform" href="https://github.com/gomesnun/lucky-sahurs/releases/latest">
           <img src="../icons/tung.png" width="256" height="256" alt="">
           <h4>Linux</h4><span>Lucky-Sahurs-Linux.tar.gz</span>
+        </a>
+        <a class="platform" href="https://github.com/gomesnun/lucky-sahurs/releases/latest">
+          <img src="../icons/tung.png" width="256" height="256" alt="">
+          <h4>Android</h4><span>Lucky-Sahurs-Android.apk</span>
         </a>
       </div>
       <div class="source-box">
@@ -790,7 +794,7 @@ var I18N = {
     'howto.title':'How to play','howto.sub':'Mouse-only rolling, keyboard shortcuts for everything else.',
     'howto.k.u':'Upgrades','howto.k.i':'Index','howto.k.m':'Milestones','howto.k.b':'Bag','howto.k.f11':'Fullscreen','howto.k.esc':'Back / close',
     'howto.foot':'Side buttons open Index / Upgrades / Milestones / Daily on the right and Bag / Rebirth / Traits on the left. The top bar covers Stats and Options — including the Windows default / Dark / Light theme switch and the English ⇄ Português toggle this page borrows the labels from.',
-    'download.title':'Play anywhere','download.sub':'One codebase, three platforms. GitHub Actions builds every release automatically — current release {v}.',
+    'download.title':'Play anywhere','download.sub':'One codebase, four platforms. GitHub Actions builds every release automatically — current release {v}.',
     'download.source.title':'Run from source instead:','download.source.or':'— or on Linux/macOS:',
     'download.note':"Updates are mandatory once installed: the game checks GitHub on launch and offers <b>Update now</b> or <b>close</b> — it only ever skips the check when it can't confirm a newer version, never blocking blind.",
     'footer.made':'Made with pygame ·',
@@ -843,7 +847,7 @@ var I18N = {
     'howto.title':'Como jogar','howto.sub':'O roll é só com o rato; o resto tem atalhos de teclado.',
     'howto.k.u':'Melhorias','howto.k.i':'Índice','howto.k.m':'Metas','howto.k.b':'Mochila','howto.k.f11':'Ecrã inteiro','howto.k.esc':'Voltar / fechar',
     'howto.foot':'Os botões laterais abrem Índice / Melhorias / Metas / Diárias à direita e Mochila / Renascimento / Atributos à esquerda. A barra superior tem Estatísticas e Opções — incluindo o tema Padrão do Windows / Escuro / Claro e o alternador Português ⇄ English de onde esta página tirou os termos.',
-    'download.title':'Joga em qualquer sítio','download.sub':'Um só código, três sistemas. O GitHub Actions cria cada versão automaticamente — versão atual {v}.',
+    'download.title':'Joga em qualquer sítio','download.sub':'Um só código, quatro sistemas. O GitHub Actions cria cada versão automaticamente — versão atual {v}.',
     'download.source.title':'Ou corre a partir do código-fonte:','download.source.or':'— ou no Linux/macOS:',
     'download.note':'A atualização é obrigatória depois de instalado: o jogo verifica o GitHub ao abrir e propõe <b>Atualizar agora</b> ou <b>fechar</b> — só salta a verificação quando não consegue confirmar uma versão mais recente, nunca bloqueia às cegas.',
     'footer.made':'Feito com pygame ·',
@@ -1082,18 +1086,20 @@ if(mascot){
   function detectOS(){
     var platform = navigator.platform || '';
     var ua = navigator.userAgent || '';
+    if(/Android/i.test(ua)) return 'android';
     if(/Mac/i.test(platform)) return /iPhone|iPad|iPod/i.test(ua) ? null : 'mac-arm';
     if(/Win/i.test(platform)) return 'windows';
-    if(/Linux/i.test(platform) && !/Android/i.test(ua)) return 'linux';
+    if(/Linux/i.test(platform)) return 'linux';
     return null;
   }
   var ASSET_MATCH = {
     windows: /Windows.*\.exe$/i,
     'mac-arm': /macOS-AppleSilicon.*\.zip$/i,
-    linux: /Linux.*\.tar\.gz$/i
+    linux: /Linux.*\.tar\.gz$/i,
+    android: /Android.*\.apk$/i
   };
-  var LABEL_EN = {windows:'Windows', 'mac-arm':'macOS', linux:'Linux'};
-  var LABEL_PT = {windows:'Windows', 'mac-arm':'macOS', linux:'Linux'};
+  var LABEL_EN = {windows:'Windows', 'mac-arm':'macOS', linux:'Linux', android:'Android'};
+  var LABEL_PT = {windows:'Windows', 'mac-arm':'macOS', linux:'Linux', android:'Android'};
   fetch('https://api.github.com/repos/' + REPO + '/releases/latest')
     .then(function(r){ if(!r.ok) throw new Error('bad status'); return r.json(); })
     .then(function(data){

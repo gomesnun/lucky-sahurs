@@ -1,7 +1,7 @@
 """Página de Update Log: histórico de novidades do jogo (abre-se no menu principal).
 
-Por agora a lista está vazia - basta acrescentar entradas a UPDATE_LOG (mais recente primeiro)
-quando houver novidades para mostrar. Cada entrada é (versão, data, [linhas de texto])."""
+Acrescenta entradas a UPDATE_LOG (mais recente primeiro) quando houver novidades para mostrar.
+Cada entrada é (versão, data, [linhas de texto])."""
 
 import pygame
 
@@ -11,9 +11,16 @@ from theme import BAD, GREY, GREY_DIM, PANEL, PANEL_LIGHT, WHITE
 from ui.drawing import bake, dim_overlay, draw_panel
 from ui.fonts import wrap_text
 
-# (versão, data, linhas de descrição) - a mais recente primeiro. Vazio por agora.
+# (versão, data, linhas de descrição) - a mais recente primeiro.
 UPDATE_LOG = (
-    # ("v8", "2026-01-01", ["Added the Update Log page.", "Fixed a couple of small bugs."]),
+    ("v1.0.5", "2026-09-22", [
+        "Android: the game now runs at 60 FPS on the phone.",
+        "The main screen was drawing the pet card and its glow pixel by pixel every frame "
+        "(34 ms of the 40 ms each frame took); they are now blended into the background once.",
+        "Blended images that nothing asks for any more are thrown away, so a long session no "
+        "longer gets slower and slower.",
+        "The phone build is on the Releases page: Lucky-Sahurs-Android.apk.",
+    ]),
 )
 
 EMPTY_NOTE = "Nothing here yet - future updates will be listed on this page."
