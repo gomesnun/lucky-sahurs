@@ -27,7 +27,7 @@ pub const LEADERBOARD_SIZE: usize = 50;
 pub const LEADERBOARD_SNAPSHOT_PERIOD: f64 = 30.0 * 60.0;
 /// The Leaderboard.gs Web App URL (NOT secret). Empty = the game runs the queries itself, like before.
 pub const LEADERBOARD_ENDPOINT: &str =
-    "https://script.google.com/macros/s/AKfycbzqd02_fwqe9juk3MLqbkNN4lTBI_F1EuI-Fuwx4LBtCpvL-i85RAfGY_Wwk6bjSm1UTQ/exec";
+    "https://script.google.com/macros/s/AKfycbxZDkqzPQvPwj6mtm_ePAObaPUMaIu8wcb0kGPKyEwS85gAz64Tsef9zKeN5W0po32f/exec";
 /// taking the snapshot (4 queries in the script) can take a few seconds
 pub const LEADERBOARD_ENDPOINT_TIMEOUT: f64 = 30.0;
 /// Friends online: while you play, your /profiles/{uid} gets the server time ("last_seen") every X seconds.
