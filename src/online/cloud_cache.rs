@@ -218,22 +218,51 @@ pub fn peek_cache(uid: &str, slot: i64) -> Option<CachePeek> {
     Some(CachePeek { coins: s.coins, total_rolls: s.rolls, playtime: s.playtime, rebirths: s.rebirths })
 }
 
-// ---- leaderboard: 10-minute periods on the clock ----
-use crate::online::firebase::{Client, LEADERBOARD_FETCH_DELAY, LEADERBOARD_PERIOD, LEADERBOARD_SIZE, Res};
+// ---- leaderboard: each account PUBLISHES every 10 min; the snapshot that's READ changes every 30 min ----
+use crate::online::firebase::{Client, FirebaseClient, LEADERBOARD_FETCH_DELAY, LEADERBOARD_PERIOD, LEADERBOARD_SIZE, LEADERBOARD_SNAPSHOT_PERIOD, Res};
 
 pub fn lb_publish_period(now: f64) -> i64 {
     (now / LEADERBOARD_PERIOD).floor() as i64
 }
 pub fn lb_fetch_period(now: f64) -> i64 {
-    ((now - LEADERBOARD_FETCH_DELAY) / LEADERBOARD_PERIOD).floor() as i64
+    ((now - LEADERBOARD_FETCH_DELAY) / LEADERBOARD_SNAPSHOT_PERIOD).floor() as i64
 }
 pub fn lb_next_update(now: f64) -> f64 {
-    (lb_fetch_period(now) + 1) as f64 * LEADERBOARD_PERIOD + LEADERBOARD_FETCH_DELAY
+    (lb_fetch_period(now) + 1) as f64 * LEADERBOARD_SNAPSHOT_PERIOD + LEADERBOARD_FETCH_DELAY
 }
 
 pub const LB_FIELDS: [(&str, &str); 4] = [("money", "coins"), ("playtime", "playtime"), ("rolls", "rolls"), ("rebirths", "rebirths")];
 
+/// The 4 tables of this period. 1st the shared snapshot (1 read); if it's stale, the script is asked to take it
+/// (once for everyone, see backend/apps_script/Leaderboard.gs). Only if the script isn't set up (or fails) are the
+/// 4 queries run here, like before.
 pub fn fetch_leaderboards(client: &Client, period: i64) -> Res<Value> {
+    let snap_period = |s: &Value| s.get("period").and_then(crate::storage::value_i64).unwrap_or(-1);
+    let snap = (|| -> Res<Option<Value>> {
+        let mut snap = client.get_leaderboard_snapshot()?;
+        if !(snap.as_ref().is_some_and(lb_tables_complete) && snap.as_ref().map(snap_period).unwrap_or(-1) >= period) {
+            snap = FirebaseClient::request_leaderboard_snapshot()?;
+        }
+        Ok(snap)
+    })()
+    .unwrap_or(None);
+    if let Some(snap) = snap.filter(lb_tables_complete) {
+        let mut data = Map::new();
+        for (k, _) in LB_FIELDS {
+            data.insert(k.into(), snap[k].clone());
+        }
+        data.insert("period_len".into(), pyjson::float(LEADERBOARD_SNAPSHOT_PERIOD));
+        // the period we asked for (the PC clock may not match the script's)
+        data.insert("period".into(), json!(period));
+        let fetched = snap.get("fetched_at").and_then(crate::storage::value_f64).filter(|v| *v != 0.0).unwrap_or_else(crate::core::state::now_ts);
+        data.insert("fetched_at".into(), pyjson::float(fetched));
+        return Ok(Value::Object(data));
+    }
+    fetch_leaderboards_direct(client, period)
+}
+
+/// The old way: this player runs the 4 queries (up to 200 reads).
+pub fn fetch_leaderboards_direct(client: &Client, period: i64) -> Res<Value> {
     let mut data = Map::new();
     for (key, field) in LB_FIELDS {
         let entries = client.top_entries(field, LEADERBOARD_SIZE, if key == "rebirths" { Some(1) } else { None })?;
@@ -249,12 +278,19 @@ pub fn fetch_leaderboards(client: &Client, period: i64) -> Res<Value> {
         data.insert(key.into(), Value::Array(arr));
     }
     data.insert("period".into(), json!(period));
+    data.insert("period_len".into(), pyjson::float(LEADERBOARD_SNAPSHOT_PERIOD));
     data.insert("fetched_at".into(), pyjson::float(crate::core::state::now_ts()));
     Ok(Value::Object(data))
 }
 
-pub fn lb_data_complete(d: &Value) -> bool {
+pub fn lb_tables_complete(d: &Value) -> bool {
     d.is_object() && LB_FIELDS.iter().all(|(k, _)| d.get(k).is_some_and(|v| v.is_array()))
+}
+
+/// False for a cache from an old version (without the Rolls / Rebirths tables, or with the old 10-min periods,
+/// which gave bigger period numbers and looked "fresh" forever) -> fetched again.
+pub fn lb_data_complete(d: &Value) -> bool {
+    lb_tables_complete(d) && d.get("period_len").and_then(crate::storage::value_f64) == Some(LEADERBOARD_SNAPSHOT_PERIOD)
 }
 
 pub fn load_lb_cache() -> Option<Value> {

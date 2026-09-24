@@ -16,7 +16,7 @@ use sdl2::keyboard::Keycode;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub const CHAT_POLL: f64 = 5.0;
+pub const CHAT_POLL: f64 = 10.0;
 pub const CHAT_LIMIT: usize = 50;
 const CHAT_MIN_LEN: usize = 1;
 
@@ -56,7 +56,8 @@ impl ChatUi {
             field: TextField::new("text"),
             focus: false,
             sending: false,
-            seen: HashMap::new(),
+            // saved on disk, otherwise the red "unread" dot came back every time the game reopened
+            seen: crate::storage::load_chat_seen(),
             last: HashMap::new(),
         }
     }
@@ -110,6 +111,11 @@ impl Game {
         }
     }
 
+    /// How many conversations have unread messages (for the dot on the top bar's Friends button).
+    pub fn chat_unread_count(&self) -> usize {
+        self.chat.last.keys().filter(|uid| self.chat_unread(uid)).count()
+    }
+
     pub fn chat_unread(&self, uid: &str) -> bool {
         match self.chat.last.get(uid) {
             Some(&last) if last != 0.0 => last > self.chat.seen.get(uid).copied().unwrap_or(0.0) + 0.5,
@@ -154,6 +160,7 @@ impl Game {
                     let seen = messages.iter().map(|m| m.sent_at.unwrap_or(0.0)).fold(f64::NEG_INFINITY, f64::max);
                     g.chat.seen.insert(uid_ok.clone(), seen);
                     g.chat.last.insert(uid_ok.clone(), seen);
+                    crate::storage::save_chat_seen(&g.chat.seen);
                 }
                 g.chat.messages = messages;
                 if at_end {

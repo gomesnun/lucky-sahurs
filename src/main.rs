@@ -148,6 +148,8 @@ fn main() {
         sim(&args[2]);
         return;
     }
+    // desktop shortcut (1st time, release builds only): on its own thread so it never delays the start
+    std::thread::spawn(online::shortcut::create_desktop_shortcut_once);
     let sdl = sdl2::init().expect("SDL init failed");
     let mut g = game::Game::new(Some(&sdl));
     g.run(&sdl);

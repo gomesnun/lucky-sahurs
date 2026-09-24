@@ -111,7 +111,7 @@ pub const SFX_CATEGORIES: [(&str, &str); 6] = [
     ("rebirth", "Rebirth"),
 ];
 
-pub const CUTSCENE_RARITIES: [&str; 4] = ["secreto", "divino", "cosmico", "transcendente"];
+pub const CUTSCENE_RARITIES: [&str; 9] = ["secreto", "divino", "cosmico", "transcendente", "etereo", "celestial", "absoluto", "primordial", "paradoxo"];
 
 /// The settings dict (kept as an ordered JSON object, like the Python dict it mirrors).
 #[derive(Clone, Debug)]
@@ -239,6 +239,41 @@ pub fn save_settings(settings: &Settings) {
     let tmp = path.with_extension("json.tmp");
     let text = crate::pyjson::dumps(&Value::Object(settings.map.clone()));
     if std::fs::write(&tmp, text).is_ok() {
+        let _ = std::fs::rename(&tmp, &path);
+    }
+}
+
+
+// ----------------------------------------------------------------------------------
+// CHAT: the last message already seen from each friend (it belongs to the online account, not a slot)
+// ----------------------------------------------------------------------------------
+fn chat_seen_path() -> std::path::PathBuf {
+    crate::config::save_dir().join("lucky_verities_chat_seen.json")
+}
+
+/// uid -> time (epoch) of the last message already seen. Kept apart so the red "unread message" dot doesn't
+/// light up again by itself when the game reopens.
+pub fn load_chat_seen() -> std::collections::HashMap<String, f64> {
+    let mut out = std::collections::HashMap::new();
+    let Ok(t) = std::fs::read_to_string(chat_seen_path()) else { return out };
+    if let Ok(serde_json::Value::Object(o)) = serde_json::from_str::<serde_json::Value>(&t) {
+        for (k, v) in o {
+            match value_f64(&v) {
+                Some(f) => {
+                    out.insert(k, f);
+                }
+                None => return std::collections::HashMap::new(),
+            }
+        }
+    }
+    out
+}
+
+pub fn save_chat_seen(seen: &std::collections::HashMap<String, f64>) {
+    let path = chat_seen_path();
+    let tmp = path.with_extension("json.tmp");
+    let m: serde_json::Map<String, serde_json::Value> = seen.iter().map(|(k, v)| (k.clone(), crate::pyjson::float(*v))).collect();
+    if std::fs::write(&tmp, crate::pyjson::dumps(&serde_json::Value::Object(m))).is_ok() {
         let _ = std::fs::rename(&tmp, &path);
     }
 }
