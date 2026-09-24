@@ -11,6 +11,10 @@ use crate::ui::fonts::wrap_text;
 use std::rc::Rc;
 
 pub const UPDATE_LOG: &[(&str, &str, &[&str])] = &[
+    ("v3.0.0", "2026-09-24", &[
+        "The game now runs on a new, much faster engine. Your saves, account and friends come with you - nothing to do.",
+        "Titles: pick one from the new Title button on the Friends page and every player sees it next to your name. Owner for the admins, Top 1/2/3 for the leaderboard's best, and many more from Milestones.",
+    ]),
     ("v2.9.1", "2026-09-24", &[
         "\"Use All Charges\" with huge amounts of trait charges (like 600M) no longer freezes and crashes the game: they are all used instantly.",
     ]),

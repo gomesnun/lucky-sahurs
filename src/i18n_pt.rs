@@ -706,6 +706,8 @@ pub const PT: &[(&str, &str)] = &[
     ("TO SHOW!", "DEMAIS!"),
     ("Best so far:", "O melhor até agora:"),
     // ---- Rust only: titles ----
+    ("The game now runs on a new, much faster engine. Your saves, account and friends come with you - nothing to do.", "O jogo agora corre num motor novo, muito mais rápido. Os teus saves, a conta e os amigos vêm contigo - não tens de fazer nada."),
+    ("Titles: pick one from the new Title button on the Friends page and every player sees it next to your name. Owner for the admins, Top 1/2/3 for the leaderboard's best, and many more from Milestones.", "Títulos: escolhe um no novo botão Título da página de Amigos e todos os jogadores o veem ao lado do teu nome. Dono para os admins, Top 1/2/3 para os melhores do ranking, e muitos mais das Metas."),
     ("Title", "Título"),
     ("Choose a title", "Escolhe um título"),
     ("Every player sees your title next to your name. Unlock more with Milestones and the leaderboards.", "Todos os jogadores veem o teu título ao lado do teu nome. Desbloqueia mais com as Metas e o ranking."),
