@@ -105,6 +105,10 @@ fn main() {
         statetest(args[2].parse().unwrap(), args[3].parse().unwrap());
         return;
     }
+    if args.len() > 2 && args[1] == "--battlevideo" {
+        battle_video(&args[2]);
+        return;
+    }
     if args.len() > 2 && args[1] == "--shots" {
         shots(&args[2]);
         return;
@@ -289,6 +293,65 @@ fn sim(dir: &str) {
 }
 
 /// Headless screenshots of the main screens (no window): `--shots <dir>`.
+/// Plays a whole battle by itself and saves every frame (30 fps, Glow on) as dir/frame_NNNNN.png - for a video.
+/// Team: a Monster, a Rainbow and a Golden verity. Moves: Special and Strike in turn, Rest when low, switches.
+fn battle_video(dir: &str) {
+    use core::data::tier_first_pet;
+    use core::state::set_fake_time;
+    set_fake_time(Some(1_790_000_000.0));
+    let mut g = game::Game::headless(1422, 800);
+    g.settings.set_str("last_update_seen", game::tutorial::latest_update());
+    g.settings.set_bool("tutorial_done", true);
+    g.start_slot(1);
+    let team = [(tier_first_pet(6), "normal", 3usize), (tier_first_pet(9) + 1, "rainbow", 1), (tier_first_pet(5) + 1, "golden", 2)];
+    for (p, m, ph) in team {
+        g.state.owned.insert(format!("{}_{}", p, m), 5);
+        g.state.phases.insert(format!("{}_{}", p, m), ph);
+    }
+    g.open_battle();
+    g.battle.picks = team.iter().map(|t| (t.0, t.1)).collect();
+    g.start_battle();
+    let fps = 30.0;
+    let m = (-100.0, -100.0);
+    let mut turn = 0;
+    let mut end_frames = None;
+    for i in 0..(fps as usize * 120) {
+        g.tick_battle(1.0 / fps);
+        let busy = g.battle.busy();
+        let state = g.battle.battle.as_ref().map(|b| (b.winner, b.needs_switch(), b.fighter(0).clone(), (0..b.teams[0].len()).find(|&k| b.can_switch_to(0, k))));
+        if let Some((winner, needs_switch, me, next)) = state {
+            if winner.is_some() {
+                if !busy && end_frames.is_none() {
+                    end_frames = Some(i + fps as usize * 3);
+                }
+            } else if !busy {
+                if needs_switch {
+                    if let Some(k) = next {
+                        g.battle_switch(k);
+                    }
+                } else {
+                    use core::battle::Move;
+                    let mv = if me.hp * 10 < me.max_hp * 4 && me.rest_pp > 0 {
+                        Move::Rest
+                    } else if turn % 2 == 0 && me.special_pp > 0 {
+                        Move::Special
+                    } else {
+                        Move::Strike
+                    };
+                    turn += 1;
+                    g.battle_use(mv);
+                }
+            }
+        }
+        g.draw(m);
+        g.apply_glow();
+        save_png(&g.canvas, &std::path::Path::new(dir).join(format!("frame_{:05}.png", i)));
+        if end_frames.is_some_and(|e| i >= e) {
+            break;
+        }
+    }
+}
+
 fn shots(dir: &str) {
     use core::state::set_fake_time;
     set_fake_time(Some(1_790_000_000.0));
