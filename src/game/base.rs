@@ -357,8 +357,17 @@ impl Game {
         } else if hovering {
             color = hover;
         }
+        let anim = self.animations();
+        if hovering && anim && rect.w >= 24 {
+            // v3.0: a soft glow in the button's own hover colour
+            let g = crate::ui::fx::hover_glow(rect.w, rect.h, o.radius, hover);
+            self.canvas.blit(&g, rect.x - 7, rect.y - 7);
+        }
         let bx = rounded_box(rect.w, rect.h, color, o.radius, BORDER_W_SMALL);
         self.canvas.blit(&bx, rect.x, rect.y);
+        if anim && o.enabled {
+            self.draw_button_fx(rect, o.radius, hovering);
+        }
         if let Some(bc) = o.border {
             draw_state_border(&mut self.canvas, rect, bc, o.radius, 2);
         }
@@ -585,6 +594,28 @@ impl Game {
         }
     }
 
+    /// v3.0 effects on top of a button: the subtle glare that sweeps across it now and then (faster while hovered)
+    /// and the ripple where it was clicked.
+    pub fn draw_button_fx(&mut self, rect: Rect, radius: i32, hovering: bool) {
+        let t = crate::core::state::now_ts();
+        if rect.w >= 40 && rect.h >= 20 {
+            let (period, sweep, alpha) = if hovering { (2.4, 0.7, 60) } else { (7.0, 0.9, 34) };
+            if let Some(phase) = crate::ui::fx::glare_phase(t, rect, period, sweep) {
+                if let Some(g) = crate::ui::fx::glare_band(rect.w, rect.h, radius, phase, alpha) {
+                    self.canvas.blit(&g, rect.x, rect.y);
+                }
+            }
+        }
+        if let Some((p, t0)) = self.press_fx {
+            let k = (t - t0) / 0.35;
+            if (0.0..1.0).contains(&k) && rect.collidepoint(p) {
+                let at = ((p.0 - rect.x as f64) as i32, (p.1 - rect.y as f64) as i32);
+                let r = crate::ui::fx::ripple(rect.w, rect.h, radius, at, k);
+                self.canvas.blit(&r, rect.x, rect.y);
+            }
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn side_button(&mut self, rect: Rect, label: &str, icon: &str, mouse_pos: (f64, f64), active: bool, callback: Cb, label_font: Option<Font>, badge: i64, alert: bool) {
         let hovering = rect.collidepoint(mouse_pos);
@@ -592,8 +623,16 @@ impl Game {
         if hovering && !active {
             base = panel_lighter();
         }
+        let anim = self.animations();
+        if hovering && anim {
+            let g = crate::ui::fx::hover_glow(rect.w, rect.h, 12, if active { accent() } else { accent_hover() });
+            self.canvas.blit(&g, rect.x - 7, rect.y - 7);
+        }
         draw_panel(&mut self.canvas, rect, Some(base), 12, true, None);
         self.draw_icon(icon, rect, if active { BLACK } else { WHITE }, Some(base));
+        if anim {
+            self.draw_button_fx(rect, 12, hovering);
+        }
         if !label.is_empty() {
             let font = label_font.unwrap_or_else(|| self.f.small_b.clone());
             let t = font.render(label, if hovering || active { accent() } else { WHITE });

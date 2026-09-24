@@ -147,6 +147,7 @@ impl Game {
         self.close_trade_propose();
         self.fr.open = false;
         self.fr.avatar_picker = false;
+        self.titles.picker = false;
         self.fr.view = None;
         self.set_friends_focus(false);
     }
@@ -279,6 +280,13 @@ impl Game {
                         entry.avatar_mut = prof.avatar_mut;
                     }
                 }
+                // titles (a separate small document per friend; missing = no title)
+                for entry in friends.iter_mut().take(FRIEND_PROFILE_FETCH) {
+                    entry.title = client.get_title(&entry.uid).ok().flatten();
+                }
+                for entry in incoming.iter_mut().take(FRIEND_PROFILE_FETCH) {
+                    entry.title = client.get_title(&entry.uid).ok().flatten();
+                }
                 let mut chats = Vec::new();
                 for entry in friends.iter().take(FRIEND_PROFILE_FETCH) {
                     if let Ok(Some(Some(last))) = client.get_chat_summary(&entry.uid) {
@@ -374,7 +382,13 @@ impl Game {
         self.fr.msg = None;
         let client = self.client.clone().unwrap();
         self.run_job(
-            move || client.find_profile(&name),
+            move || {
+                let mut p = client.find_profile(&name)?;
+                if let Some(p) = p.as_mut() {
+                    p.title = client.get_title(&p.uid).ok().flatten();
+                }
+                Ok(p)
+            },
             |g, profile: Option<Person>| {
                 g.fr.search_busy = false;
                 if profile.is_none() {
@@ -422,7 +436,7 @@ impl Game {
             move || client.send_friend_request(&uid, &username),
             move |g, _: ()| {
                 g.fr.action = None;
-                g.fr.outgoing.push(Person { uid: u2, username: n2.clone(), avatar_pet: None, avatar_mut: "normal".into(), time: None, last_seen: None });
+                g.fr.outgoing.push(Person { uid: u2, username: n2.clone(), avatar_pet: None, avatar_mut: "normal".into(), time: None, last_seen: None, title: None });
                 g.fr.msg = Some((tr!("Friend request sent to %s.", n2), GOOD));
             },
             Game::friend_err,
@@ -442,7 +456,7 @@ impl Game {
                 g.fr.action = None;
                 g.fr.incoming.retain(|r| r.uid != u2);
                 if !g.fr.list.iter().any(|f| f.uid == u2) {
-                    g.fr.list.push(Person { uid: u2, username: n2.clone(), avatar_pet: None, avatar_mut: "normal".into(), time: None, last_seen: None });
+                    g.fr.list.push(Person { uid: u2, username: n2.clone(), avatar_pet: None, avatar_mut: "normal".into(), time: None, last_seen: None, title: None });
                     g.fr.list.sort_by(|a, b| a.username.cmp(&b.username));
                 }
                 g.fr.msg = Some((tr!("%s is now your friend.", n2), GOOD));
@@ -558,6 +572,10 @@ impl Game {
             self.draw_avatar_picker(body, mouse_pos);
             return;
         }
+        if self.titles.picker {
+            self.draw_title_picker(body, mouse_pos);
+            return;
+        }
         if self.trades.target.is_some() {
             self.draw_trade_propose(body, mouse_pos);
             return;
@@ -629,14 +647,19 @@ impl Game {
         self.canvas.blit(&img, r.x, r.y);
         let med = self.f.med.clone();
         let name = self.account.as_ref().map(|a| a.username.clone()).unwrap_or_else(|| tr("Not logged in"));
-        let nt = med.render(&fit_text(&med, &name, rect.w - 220), WHITE);
+        let nt = med.render(&fit_text(&med, &name, rect.w - 370), WHITE);
         self.canvas.blit(&nt, rect.x + 72, rect.centery() - nt.h - 1);
         let sub = if self.friends_ready() { tr!("%d friends", self.fr.list.len() as i64) } else { tr("Offline") };
         let t = self.f.tiny.render(&sub, grey_dim());
         self.canvas.blit(&t, rect.x + 72, rect.centery() + 3);
+        if let Some(title) = self.state.title {
+            let tb = self.f.tiny_b.clone();
+            self.draw_title_pill(rect.x + 78 + t.w, rect.centery() + 1, title, &tb, 150);
+        }
         if self.friends_ready() {
             let sb = self.f.small_b.clone();
             self.button(Rect::new(rect.right() - 152, rect.y + 12, 140, rect.h - 24), &tr("Change photo"), &sb, mouse_pos, panel_lighter(), accent_hover(), WHITE, cb(|g| g.open_avatar_picker()), Bo::r(10));
+            self.button(Rect::new(rect.right() - 262, rect.y + 12, 100, rect.h - 24), &tr("Title"), &sb, mouse_pos, panel_lighter(), accent_hover(), WHITE, cb(|g| g.open_title_picker()), Bo::r(10));
         }
     }
 
@@ -726,8 +749,20 @@ impl Game {
             self.button(brect, &label, &sb, mouse_pos, color, hover, text_color, callback, o);
             bx = brect.x - 8;
         }
-        let name_w = 40.max(bx - (rect.x + 60));
-        let nt = med.render(&fit_text(&med, &entry.username, name_w), WHITE);
+        let mut name_w = 40.max(bx - (rect.x + 60));
+        let mut nt = med.render(&fit_text(&med, &entry.username, name_w), WHITE);
+        if let Some(title) = entry.title.clone() {
+            // the title pill right after the name
+            let tb = self.f.tiny_b.clone();
+            let room = name_w - nt.w - 8;
+            if room >= 60 {
+                self.draw_title_pill(rect.x + 60 + nt.w + 8, rect.centery() - 11, &title, &tb, room);
+            } else {
+                name_w = (name_w - 90).max(40);
+                nt = med.render(&fit_text(&med, &entry.username, name_w), WHITE);
+                self.draw_title_pill(rect.x + 60 + nt.w + 8, rect.centery() - 11, &title, &tb, 82);
+            }
+        }
         let Some(online) = Game::friend_online(entry) else {
             self.canvas.blit(&nt, rect.x + 60, rect.centery() - nt.h / 2);
             return hovering;
@@ -866,6 +901,10 @@ impl Game {
         let name = big.render(&fit_text(&big, &entry.username, rect.w - 40), WHITE);
         let r = Rect::with_midtop(name.w, name.h, (rect.centerx(), rect.y + AVATAR_BIG + 14));
         self.canvas.blit(&name, r.x, r.y);
+        if let Some(title) = entry.title.clone() {
+            let tb = self.f.tiny_b.clone();
+            self.draw_title_pill(r.right() + 10, r.centery() - 11, &title, &tb, 160);
+        }
 
         if let Some(pet) = entry.avatar_pet.filter(|p| *p >= 0 && (*p as usize) < rarities().len()) {
             let mlabel = mutation(&entry.avatar_mut).map(|m| m.label).unwrap_or("");

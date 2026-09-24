@@ -51,6 +51,7 @@ impl Game {
     }
 
     pub fn draw_game_screen(&mut self, mouse_pos: (f64, f64)) {
+        self.draw_verity_rain(); // v3.0: your verities drifting down behind everything
         self.draw_topbar(mouse_pos);
         self.draw_main(mouse_pos);
         if self.animations() {
@@ -59,6 +60,7 @@ impl Game {
                 p.draw(&mut self.canvas);
             }
             self.particles = ps;
+            self.draw_roll_pops();
         }
         self.right_rect = Rect::ZERO;
         self.left_rect = Rect::ZERO;
@@ -110,7 +112,8 @@ impl Game {
             self.canvas.blit(&cash, 12, (TOPBAR_H - 54) / 2);
             off = 58;
         }
-        let coins = self.f.big.render(&format!("$ {}", format_number(self.state.coins)), GOOD);
+        let shown = self.coins_display.unwrap_or(self.state.coins);
+        let coins = self.f.big.render(&format!("$ {}", format_number(shown)), GOOD);
         self.canvas.blit(&coins, 22 + off, 11);
         let dps = self.f.small.render(&tr!("%s / sec", format_number(self.state.income_per_second())), grey());
         self.canvas.blit(&dps, 25 + off, 44);
@@ -193,7 +196,7 @@ impl Game {
     pub fn draw_side_buttons(&mut self, mouse_pos: (f64, f64)) {
         let size = 62;
         let step = size + 38;
-        let labels = [tr("INDEX"), tr("UPGRADES"), tr("MILESTONES"), tr("DAILY"), tr("BAG"), tr("REBIRTH"), tr("TRAITS"), tr("SHOP")];
+        let labels = [tr("INDEX"), tr("UPGRADES"), tr("MILESTONES"), tr("QUESTS"), tr("BAG"), tr("REBIRTH"), tr("TRAITS"), tr("SHOP")];
         let mut lf = self.f.small_b.clone();
         if labels.iter().map(|t| lf.render(t, WHITE).w).max().unwrap_or(0) > size + 24 {
             lf = self.f.tiny_b.clone();
@@ -211,7 +214,8 @@ impl Game {
         let afford = self.state.affordable_upgrades_count() as i64;
         self.side_button(Rect::new(x, y + step, size, size), &labels[1], "tree", mouse_pos, rp_open && rc == Some("tree"), Rc::new(|g: &mut Game| g.open_right_panel("tree")), Some(lf.clone()), afford, false);
         self.side_button(Rect::new(x, y + 2 * step, size, size), &labels[2], "milestones", mouse_pos, rp_open && rc == Some("milestones"), Rc::new(|g: &mut Game| g.open_right_panel("milestones")), Some(lf.clone()), 0, false);
-        self.side_button(Rect::new(x, y + 3 * step, size, size), &labels[3], "daily", mouse_pos, rp_open && rc == Some("daily"), Rc::new(|g: &mut Game| g.open_right_panel("daily")), Some(lf.clone()), 0, false);
+        let quests_ready = self.quests_claimable();
+        self.side_button(Rect::new(x, y + 3 * step, size, size), &labels[3], "daily", mouse_pos, rp_open && rc == Some("daily"), Rc::new(|g: &mut Game| g.open_right_panel("daily")), Some(lf.clone()), 0, quests_ready);
 
         let shown_l = if self.left_panel.visible() { self.left_panel.shown_width(self.left_w) } else { 0 };
         let lx = shown_l + 18;
@@ -219,7 +223,7 @@ impl Game {
         let lp_open = self.left_panel.is_open();
         self.side_button(Rect::new(lx, y, size, size), &labels[4], "bag", mouse_pos, lp_open, Rc::new(|g: &mut Game| g.open_left_panel("bag")), Some(lf.clone()), 0, false);
         let rb_open = self.rebirth_open;
-        let rb_avail = self.state.rebirth_available();
+        let rb_avail = self.state.rebirth_available() || self.state.prestige_available();
         self.side_button(Rect::new(lx, y + step, size, size), &labels[5], "rebirth", mouse_pos, rb_open, Rc::new(|g: &mut Game| g.toggle_rebirth()), Some(lf.clone()), 0, rb_avail);
         let tr_open = self.traits_open;
         self.side_button(Rect::new(lx, y + 2 * step, size, size), &labels[6], "trait", mouse_pos, tr_open, Rc::new(|g: &mut Game| g.toggle_traits()), Some(lf.clone()), 0, false);
@@ -338,6 +342,14 @@ impl Game {
                 None => card,
             };
             blit_center(&mut self.canvas, &card, card_rect.center());
+            if self.animations() && zoom.is_none() {
+                // v3.0: a subtle glare sweeps across the card now and then
+                if let Some(phase) = crate::ui::fx::glare_phase(now_ts(), card_rect, 4.5, 0.9) {
+                    if let Some(g) = crate::ui::fx::glare_band(card_rect.w, card_rect.h, 14, phase, 48) {
+                        self.canvas.blit(&g, card_rect.x, card_rect.y);
+                    }
+                }
+            }
             if let Some(ae) = anim_elapsed.filter(|_| rarity.tier >= 3) {
                 // a shockwave in the rarity's colour (2 rings from Mythic on) + a quick white flash
                 let t = ae / 0.6;

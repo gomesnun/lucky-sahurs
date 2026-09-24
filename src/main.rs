@@ -394,9 +394,18 @@ fn shots(dir: &str) {
             _ => {}
         }
         g.right_panel.update(5.0);
+        g.right_panel.update(5.0); // switching content: the old panel closes first, then the new one opens
         g.draw(m);
         save(&g, name);
     }
+    // v3.0 weekly quests (the first one finished, ready to claim)
+    g.quests_tab = "weekly";
+    g.state.ensure_weekly_missions();
+    let wm = g.state.weekly_missions[0].clone();
+    g.state.weekly_counts.insert(wm.mtype.to_string(), wm.target);
+    g.draw(m);
+    save(&g, "v3_weekly_quests");
+    g.quests_tab = "daily";
     g.right_panel.close();
     g.right_panel.update(5.0);
     g.left_panel.open("bag");
@@ -449,6 +458,51 @@ fn shots(dir: &str) {
     g.state.use_potion("money", 1);
     g.draw(m);
     save(&g, "n_main_dice");
+    // v3.0 effects
+    let tnow = core::state::now_ts();
+    // verities raining behind the roll screen (run the rain for a while so the screen fills up) + a roll pop
+    for _ in 0..240 {
+        g.update_verity_fx(0.05);
+    }
+    g.last_click_pos = Some({
+        let c = g.main_card_rect();
+        (c.centerx() as f64, (c.bottom() + 50) as f64)
+    });
+    g.spawn_roll_pop(tier_first_pet(core::data::tier_index("absoluto")), "rainbow");
+    g.update_verity_fx(0.3);
+    g.draw(m);
+    save(&g, "v3_rain");
+    // v3.0 Prestige: the tabs, the page, the picker, and after one
+    let rb_before = g.state.rebirths;
+    g.state.rebirths = 12;
+    g.toggle_rebirth();
+    g.draw(m);
+    save(&g, "v3_rebirth_tabs");
+    g.set_rebirth_tab("prestige");
+    g.draw(m);
+    save(&g, "v3_prestige");
+    g.prestige_picking = true;
+    g.draw(m);
+    save(&g, "v3_prestige_pick");
+    g.prestige_picking = false;
+    g.do_prestige_clicked();
+    g.draw(m);
+    save(&g, "v3_prestige_confirm");
+    g.do_prestige_clicked();
+    g.draw(m);
+    save(&g, "v3_prestige_done");
+    g.close_rebirth();
+    g.draw(m);
+    save(&g, "v3_after_prestige");
+    g.state.rebirths = rb_before;
+    let roll_c = {
+        let c = g.main_card_rect();
+        (c.centerx() as f64 - 40.0, (c.bottom() + 50) as f64)
+    };
+    g.press_fx = Some((roll_c, tnow - 0.12));
+    g.draw(roll_c);
+    save(&g, "v3_hover_ripple");
+    g.press_fx = None;
     g.too_fast_until = f64::INFINITY;
     g.too_fast_best = Some((tier_first_pet(core::data::tier_index("absoluto")), "diamond"));
     g.draw(m);
@@ -506,11 +560,13 @@ fn shots(dir: &str) {
     save(&g, "o_saves_local");
     g.screen_mode = "title";
     g.account = Some(game::Account { uid: "u_me".into(), username: "tommy".into(), email: Some("t@x.io".into()), email_verified: true });
-    let person = |uid: &str, name: &str, pet: Option<i64>, m: &str| Person { uid: uid.into(), username: name.into(), avatar_pet: pet, avatar_mut: m.into(), time: None, last_seen: None };
+    let person = |uid: &str, name: &str, pet: Option<i64>, m: &str| Person { uid: uid.into(), username: name.into(), avatar_pet: pet, avatar_mut: m.into(), time: None, last_seen: None, title: None };
     g.fr.list = vec![person("u_a", "alice", Some(3), "golden"), person("u_b", "bob", None, "normal"), person("u_c", "carol_long_name", Some(12), "diamond")];
     let snow = online::firebase::server_now();
     g.fr.list[0].last_seen = Some(snow - 30.0);
     g.fr.list[1].last_seen = Some(snow - 7300.0);
+    g.fr.list[0].title = Some("top1".into());
+    g.fr.list[2].title = Some("rarity_hunter".into());
     g.fr.incoming = vec![person("u_d", "dave", Some(0), "normal")];
     g.fr.outgoing = vec![person("u_e", "eve", None, "normal")];
     g.fr.loaded = true;
@@ -523,6 +579,16 @@ fn shots(dir: &str) {
     g.open_friends();
     g.draw(m);
     save(&g, "o_friends");
+    g.ev.is_admin = true;
+    g.state.title = Some("owner");
+    g.draw(m);
+    save(&g, "t_friends_titled");
+    g.open_title_picker();
+    g.draw(m);
+    save(&g, "t_title_picker");
+    g.titles.picker = false;
+    g.state.title = None;
+    g.ev.is_admin = false;
     g.set_friends_tab("requests");
     g.draw(m);
     save(&g, "o_friends_requests");
@@ -636,6 +702,12 @@ fn shots(dir: &str) {
     g.set_lb_tab("rebirths");
     g.draw(m);
     save(&g, "o_leaderboard_empty");
+    g.lb_data.as_mut().unwrap()["rebirths"] = serde_json::json!([
+        {"username": "alice", "value": 4.0, "prestige": 3}, {"username": "tommy", "value": 17.0, "prestige": 1},
+        {"username": "bob", "value": 38.0}, {"username": "zed", "value": 2.0}
+    ]);
+    g.draw(m);
+    save(&g, "v3_lb_prestige");
     g.close_leaderboard();
     g.screen_mode = "game";
     g.draw(m);
@@ -693,7 +765,7 @@ fn statetest(seed: u64, n: usize) {
         }
     }
     for k in 0..3 {
-        log.push(format!("claim {}", s.claim_daily_mission(k)));
+        log.push(format!("claim {}", s.claim_daily_mission(k).map_or(0, |r| r.charges)));
     }
     // v2.7-v2.9: end-game upgrades, the Shop, potions, selling and bulk rolls
     let pyb = |b: bool| if b { "True" } else { "False" };

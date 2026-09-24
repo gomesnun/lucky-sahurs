@@ -11,6 +11,16 @@ use crate::ui::fonts::wrap_text;
 use std::rc::Rc;
 
 pub const UPDATE_LOG: &[(&str, &str, &[&str])] = &[
+    ("v3.0.0", "2026-09-24", &[
+        "New effects: buttons glow when you point at them and ripple when you click, a subtle glare sweeps across buttons and your pet card, your verities rain down behind the roll screen (more the more you earn) and every ROLL pops the verity you got up from your click, the coins count up smoothly and the title screen shows the verities.",
+        "Titles: pick one from the new Title button on the Friends page and every player sees it next to your name. Owner for the admins, Top 1/2/3 for the leaderboard's best, and many more from Milestones.",
+        "Prestige (the new tab beside Rebirth, from 10 Rebirths): 5 Prestiges at 10, 15, 20, 30 and 40 Rebirths, each with a bigger PERMANENT boost - up to x200 Money and x60 Luck. Prestige II makes Rebirths keep your upgrades for good, Prestige III makes Rebirths reset nothing at all. A Prestige resets coins, Rebirths, upgrades and pets, but you keep 1 verity of your choice, and dice, potions and traits stay.",
+        "The Rebirths leaderboard shows each player's Prestige next to their Rebirths (Prestige counts first), and there are new Prestiged and Ascended titles.",
+        "Auto Trait Roller (Upgrades > Traits): rolls your trait charges by itself, with a switch on the Traits page. It never resets on Rebirth or Prestige.",
+        "Luck from upgrades, traits, milestones and Rebirths is a little lower (about 8% of the bonus), since Prestige now multiplies your Luck.",
+        "Daily quests now reset at 00:00 Lisbon time, and their rewards grow with you: coins worth 15 minutes of your money/sec plus trait charges that grow with your Auto Roller.",
+        "New Weekly quests (reset every Monday at 00:00 Lisbon time): harder, with 3 hours of money, lots of trait charges and a potion each.",
+    ]),
     ("v2.9.3", "2026-09-24", &[
         "The game now runs on a new, much faster engine. Your saves, account and friends come with you - nothing to do.",
     ]),

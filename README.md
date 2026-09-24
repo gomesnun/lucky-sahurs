@@ -2,7 +2,7 @@
 
 <p align="center">
   <b>An idle collecting game about Verities: little round creatures with big personalities.</b><br>
-  Roll for pets from <i>Common</i> to <i>Transcendent</i>, stack income, rebirth for permanent power,
+  Roll for pets from <i>Common</i> to <i>Paradox</i>, stack income, rebirth and prestige for permanent power,
   add friends and climb the global leaderboard — on Windows, macOS and Linux.
 </p>
 
@@ -23,21 +23,25 @@
 
 ## What it is
 
-Press **ROLL**. Get a pet. The rare ones pay better. The rarest one is a **1-in-500,000,000,000**.
+Press **ROLL**. Get a pet. The rare ones pay better. The rarest one is a **1-in-5,000,000,000,000,000,000,000** (5 sextillion).
 
 | | |
 |---|---|
-| **11** rarity tiers | Common → Uncommon → Rare → Epic → Legendary → Mythic → Exotic → Secret → Divine → Cosmic → Transcendent |
-| **22** collectible Verities | each with its own income curve |
-| **3** mutations | Golden / Diamond / and the one you find yourself |
-| **12** traits | permanent modifiers rolled on top of pets |
-| **Milestones** | long-run reward tracks across every category |
-| **Rebirths** | wipe progress, keep permanent multipliers |
-| **Daily missions** | rotating objectives, offline earnings while you sleep |
-| **Cloud saves** | 3 slots, Firebase-backed, optional account |
-| **Leaderboard** | global ranking |
-| **Friends** | search a player, send a request, follow their stats |
-| **Profile photo** | any Verity you own, Golden and Diamond ring included |
+| **16** rarity tiers | Common → Uncommon → Rare → Epic → Legendary → Mythic → Exotic → Secret → Divine → Cosmic → Transcendent → Ethereal → Celestial → Absolute → Primordial → **Paradox** |
+| **64** collectible Verities | each with its own income; the **Index** remembers every one you ever rolled (256 entries with the mutations) |
+| **4** mutations | Normal, **Golden** (x3), **Diamond** (x9) and **Rainbow** (x27), plus Golden / Diamond / Rainbow Rolls every so many rolls |
+| **17** traits | rolled with trait charges, one equipped at a time; the **Auto Trait Roller** spends your charges for you |
+| **Upgrades** | a tree of 48 upgrades: luck for every tier, money, mutation chance, bonus rolls, Auto Roller, offline earnings, slots, the **Auto Upgrader** |
+| **Rebirths** | reset your coins for permanent Money and Luck, with 17 rewards along the way |
+| **Prestige** | 5 Prestiges (10 / 15 / 20 / 30 / 40 Rebirths) for up to **x200 Money and x60 Luck**; keep 1 verity of your choice |
+| **Shop** | 10 dice (permanent luck, and your ROLL button takes their style) and Coin / Speed / Luck potions; new stock every 10 minutes, the same for everyone |
+| **Quests** | 3 daily quests (new at 00:00 Lisbon time) and 3 harder weekly quests (every Monday); rewards grow with you |
+| **Milestones** | 15 categories of long-run goals, grouped, each with permanent bonuses |
+| **Titles** | equip one and everyone sees it: Owner, Top 1 / 2 / 3, Prestiged, Completionist and more |
+| **Online** | optional account with 3 cloud save slots, friends (with online status), chat, **trades** between friends, and live events |
+| **Leaderboards** | Money, Playtime, Rolls and Rebirths (with each player's Prestige), top 50 |
+| **Offline earnings** | you keep earning while the game is closed |
+| **Effects** | cutscenes for the rarest pulls, verities raining behind the roll screen, click pops, glowing buttons |
 | **Languages** | English + Português |
 
 Everything runs offline too — the account is optional.
@@ -46,7 +50,7 @@ Everything runs offline too — the account is optional.
 
 ## Install
 
-Pick your platform. Fastest path is the prebuilt download; no Python needed.
+Pick your platform. The fastest way is the ready-made download.
 
 ### 🪟 Windows
 

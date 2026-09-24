@@ -2,9 +2,11 @@
 
 use super::Game;
 use super::audio::AUTO_QUIET_RPS;
-use crate::core::data::{AUTO_UPGRADE_EVERY, MAX_MANUAL_CPS, TIER_COSMIC, TIER_ETHEREAL, pet_order, rarities};
+use crate::core::data::{AUTO_TRAIT_EVERY, AUTO_UPGRADE_EVERY, MAX_MANUAL_CPS, TRAITS, TIER_COSMIC, TIER_ETHEREAL, pet_order, rarities};
 use crate::core::state::now_ts;
 use crate::gfx::Color;
+use crate::i18n::tr;
+use crate::tr;
 use crate::ui::cards::rarity_glow_color;
 use crate::ui::widgets::Particle;
 
@@ -121,7 +123,39 @@ impl Game {
         }
     }
 
+    /// Auto Trait Roller (a Traits upgrade): every AUTO_TRAIT_EVERY seconds it spends all your trait charges.
+    pub fn update_auto_trait(&mut self, dt: f64) {
+        self.auto_trait_timer += dt;
+        if self.auto_trait_timer < AUTO_TRAIT_EVERY {
+            return;
+        }
+        self.auto_trait_timer = 0.0;
+        if !(self.state.auto_trait_unlocked() && self.state.auto_trait_on) || self.state.trait_charges <= 0 {
+            return;
+        }
+        let before = self.state.owned_traits.clone();
+        let n = self.state.trait_charges;
+        let results = self.state.roll_traits_bulk(n);
+        self.state.last_trait_batch = Some(results);
+        self.state.dirty = true;
+        // only a trait you didn't have yet is worth a message
+        if let Some(&best) = self.state.owned_traits.difference(&before).max() {
+            self.play("trait_roll", 0.0);
+            self.show_toast(&tr!("Auto Trait Roller: new trait \"%s\"!", tr(TRAITS[best].name)), 2.2);
+        }
+    }
+
     pub fn update_animations(&mut self, dt: f64) {
+        self.update_verity_fx(dt);
+        // the top bar's coins count up smoothly (spending shows at once)
+        let target = self.state.coins;
+        self.coins_display = Some(match self.coins_display {
+            Some(d) if self.animations() && target > d && target.is_finite() => {
+                let next = d + (target - d) * (dt * 8.0).min(1.0);
+                if target - next <= target.abs() * 1e-4 { target } else { next }
+            }
+            _ => target,
+        });
         if !self.particles.is_empty() {
             for p in self.particles.iter_mut() {
                 p.update(dt);
@@ -148,6 +182,8 @@ impl Game {
         self.roll_anim_start = now_ts();
         self.spawn_roll_particles(r_idx);
         self.play_roll_sfx(r_idx, m, true, false);
+        // v3.0 (like Cookie Clicker's clicks): the verity you got pops up from where you clicked
+        self.spawn_roll_pop(r_idx, m);
         if gained {
             self.notify_trait_charges(1);
             self.play("trait_charge", 0.0);

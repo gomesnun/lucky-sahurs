@@ -20,12 +20,15 @@ pub mod milestones_panel;
 pub mod options;
 pub mod pets_panel;
 pub mod rebirth_panel;
+pub mod prestige_panel;
 pub mod sell_panel;
 pub mod shop_panel;
 pub mod title_saves;
 pub mod trades;
+pub mod titles_panel;
 pub mod traits_panel;
 pub mod update_panel;
+pub mod verity_fx;
 pub mod updatelog;
 pub mod upgrades_panel;
 
@@ -160,6 +163,13 @@ pub struct Game {
     pub rebirth_confirm: bool,
     pub rebirth_confirm_timer: f64,
     pub rebirth_scroll: f64,
+    /// v3.0: "rebirth" or "prestige" (the tabs beside the Rebirth page)
+    pub rebirth_tab: &'static str,
+    /// v3.0: "daily" or "weekly" (the Quests panel's tabs)
+    pub quests_tab: &'static str,
+    /// the verity a Prestige keeps (None = your best one)
+    pub prestige_keep: Option<crate::core::state::Pet>,
+    pub prestige_picking: bool,
     pub rebirth_max_scroll: f64,
     pub rebirth_list_rect: Rect,
     pub milestones_selected_category: Option<&'static str>,
@@ -169,6 +179,7 @@ pub struct Game {
     pub particles: Vec<Particle>,
     pub auto_accum: f64,
     pub auto_upgrade_timer: f64,
+    pub auto_trait_timer: f64,
     /// the Auto Roller rolls faster than the card can show until this time (see draw_too_fast_card)
     pub too_fast_until: f64,
     /// the best pet since it got that fast
@@ -190,6 +201,13 @@ pub struct Game {
     pub autosave_timer: f64,
     pub buttons: Vec<Button>,
     pub last_click_pos: Option<(f64, f64)>,
+    /// v3.0: where and when a button was last clicked (for its ripple)
+    pub press_fx: Option<((f64, f64), f64)>,
+    /// v3.0 (Cookie Clicker style): verities drifting down behind the roll screen, and the ones popping up
+    /// from clicks
+    pub vfx: verity_fx::VerityFx,
+    /// v3.0: the coins shown in the top bar count up smoothly to the real value
+    pub coins_display: Option<f64>,
     pub nav_mode: bool,
     pub clip_stack: Vec<Rect>,
     pub dragging_scrollbar: Option<&'static str>,
@@ -236,6 +254,8 @@ pub struct Game {
     pub pub_inflight: bool,
     pub pub_last_time: f64,
     pub pub_retry_at: f64,
+    /// the /leaderboard rules refused the "prestige" field (not published yet): send without it
+    pub lb_no_prestige: bool,
     pub pub_jitter: f64,
     pub leaderboard_open: bool,
     pub lb_tab: &'static str,
@@ -255,6 +275,7 @@ pub struct Game {
     pub trades: trades::TradesUi,
     pub shop: shop_panel::ShopUi,
     pub sell: sell_panel::SellUi,
+    pub titles: titles_panel::TitlesUi,
     pub text_input_on: bool,
 }
 
@@ -342,6 +363,10 @@ impl Game {
             rebirth_confirm: false,
             rebirth_confirm_timer: 0.0,
             rebirth_scroll: 0.0,
+            rebirth_tab: "rebirth",
+            quests_tab: "daily",
+            prestige_keep: None,
+            prestige_picking: false,
             rebirth_max_scroll: 0.0,
             rebirth_list_rect: Rect::ZERO,
             milestones_selected_category: None,
@@ -351,6 +376,7 @@ impl Game {
             particles: Vec::new(),
             auto_accum: 0.0,
             auto_upgrade_timer: 0.0,
+            auto_trait_timer: 0.0,
             too_fast_until: 0.0,
             too_fast_best: None,
             right_rect: Rect::ZERO,
@@ -367,6 +393,9 @@ impl Game {
             autosave_timer: 0.0,
             buttons: Vec::new(),
             last_click_pos: None,
+            press_fx: None,
+            vfx: verity_fx::VerityFx::default(),
+            coins_display: None,
             nav_mode: false,
             clip_stack: Vec::new(),
             dragging_scrollbar: None,
@@ -408,6 +437,7 @@ impl Game {
             pub_inflight: false,
             pub_last_time: 0.0,
             pub_retry_at: 0.0,
+            lb_no_prestige: false,
             pub_jitter: crate::core::state::rand_uniform(0.0, crate::online::firebase::LEADERBOARD_PUBLISH_JITTER),
             leaderboard_open: false,
             lb_tab: "money",
@@ -427,6 +457,7 @@ impl Game {
             trades: trades::TradesUi::new(),
             shop: shop_panel::ShopUi::new(),
             sell: sell_panel::SellUi::new(),
+            titles: titles_panel::TitlesUi::new(),
             text_input_on: true,
         };
         if let Some(sdl) = sdl {
@@ -485,6 +516,9 @@ impl Game {
         self.rebirth_scroll = 0.0;
         self.rebirth_max_scroll = 0.0;
         self.rebirth_list_rect = Rect::ZERO;
+        self.rebirth_tab = "rebirth";
+        self.prestige_keep = None;
+        self.prestige_picking = false;
         self.milestones_selected_category = None;
         self.milestones_selected_group = None;
         self.tree_selected_category = None;
@@ -783,6 +817,7 @@ impl Game {
             self.state.last_seen = Some(now_ts());
             self.update_auto(dt);
             self.update_auto_upgrade(dt);
+            self.update_auto_trait(dt);
             self.state.tick_potions(dt); // active potions only use up time with the game open
             self.update_cutscenes(dt);
             self.update_roll_rate(dt);
@@ -796,6 +831,7 @@ impl Game {
                 self.state.save();
             }
             self.tick_online(dt);
+            self.tick_titles(dt);
         } else {
             self.rate_prev = None;
             self.roll_rate = 0.0;
@@ -1060,6 +1096,7 @@ impl Game {
         self.last_click_pos = Some(pos);
         let hit = self.buttons.iter().rev().find(|b| b.rect.collidepoint(pos)).map(|b| (b.cb.clone(), b.sfx));
         if let Some((cbk, sfx)) = hit {
+            self.press_fx = Some((pos, now_ts()));
             if let Some(s) = sfx {
                 self.play(s, 0.0);
             }
@@ -1099,7 +1136,7 @@ impl Game {
                 }
                 return false;
             }
-            if self.fr.list_rect.collidepoint(pos) || self.fr.avatar_picker || self.trades.target.is_some() {
+            if self.fr.list_rect.collidepoint(pos) || self.fr.avatar_picker || self.titles.picker || self.trades.target.is_some() {
                 self.fr.scroll = clamp(self.fr.scroll + step, self.fr.max_scroll);
                 return true;
             }

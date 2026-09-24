@@ -528,6 +528,8 @@ pub struct Person {
     pub time: Option<f64>,
     /// the server time of their last "I'm playing" (None = never published / an old version)
     pub last_seen: Option<f64>,
+    /// their equipped title (core/titles.rs), None = none / not loaded
+    pub title: Option<String>,
 }
 
 fn profile_from_doc(doc: &Value) -> Person {
@@ -546,6 +548,7 @@ fn profile_from_doc(doc: &Value) -> Person {
         avatar_mut: f.str_or("avatar_mut", "normal"),
         time: None,
         last_seen: parse_timestamp(f.get("last_seen")),
+        title: None,
     }
 }
 
@@ -712,6 +715,9 @@ pub struct CloudDoc {
 pub struct LbEntry {
     pub username: String,
     pub value: f64,
+    /// v3.0 (0 = none / an older version of the game)
+    pub prestige: i64,
+    pub rebirths: i64,
 }
 
 #[derive(Default)]
@@ -1096,19 +1102,24 @@ impl FirebaseClient {
         self.fs("POST", ":commit", Some(body), &[]).map(|_| ())
     }
 
-    pub fn publish_score(&self, coins: f64, playtime: f64, rolls: i64, rebirths: i64) -> Res<()> {
+    /// `prestige`: sent only when > 0 (v3.0; needs the "prestige" line in the /leaderboard rules).
+    pub fn publish_score(&self, coins: f64, playtime: f64, rolls: i64, rebirths: i64, prestige: Option<i64>) -> Res<()> {
         let uid = self.need_uid()?;
         let name = format!("{}/leaderboard/{}", self.docs_root, uid);
         let rolls = (rolls as f64).min(9e18).max(0.0) as i64;
         let rebirths = (rebirths as f64).min(1e9).max(0.0) as i64;
+        let mut fields = json!({
+            "username": fs_str(&self.username().unwrap_or_else(|| "None".into())),
+            "coins": fs_f64(coins),
+            "playtime": fs_f64(playtime),
+            "rolls": fs_int(rolls),
+            "rebirths": fs_int(rebirths),
+        });
+        if let Some(p) = prestige.filter(|p| *p > 0) {
+            fields["prestige"] = fs_int(p.min(5));
+        }
         let body = json!({"writes": [{
-            "update": {"name": name, "fields": {
-                "username": fs_str(&self.username().unwrap_or_else(|| "None".into())),
-                "coins": fs_f64(coins),
-                "playtime": fs_f64(playtime),
-                "rolls": fs_int(rolls),
-                "rebirths": fs_int(rebirths),
-            }},
+            "update": {"name": name, "fields": fields},
             "updateTransforms": [{"fieldPath": "updated_at", "setToServerValue": "REQUEST_TIME"}],
         }]});
         self.fs("POST", ":commit", Some(body), &[]).map(|_| ())
@@ -1177,7 +1188,7 @@ impl FirebaseClient {
         if uid.is_empty() {
             return None;
         }
-        Some(Person { uid, username: username.into(), avatar_pet: None, avatar_mut: "normal".into(), time: None, last_seen: None })
+        Some(Person { uid, username: username.into(), avatar_pet: None, avatar_mut: "normal".into(), time: None, last_seen: None, title: None })
     }
 
     pub fn get_public_profile(&self, uid: &str) -> Res<Option<Person>> {
@@ -1245,6 +1256,7 @@ impl FirebaseClient {
                 avatar_mut: "normal".into(),
                 time: parse_timestamp(f.get("created_at")),
                 last_seen: None,
+                title: None,
             });
         }
         Ok(out)
@@ -1303,6 +1315,7 @@ impl FirebaseClient {
                     avatar_mut: "normal".into(),
                     time: parse_timestamp(f.get("since")),
                     last_seen: None,
+                    title: None,
                 });
             }
         }
@@ -1639,6 +1652,29 @@ impl FirebaseClient {
         self.fs("POST", ":commit", Some(body), &[]).map(|_| ())
     }
 
+    // ---- titles (/titles/{uid}: a separate document, so nothing else breaks if its rule isn't published) ----
+    /// Someone's equipped title, or None.
+    pub fn get_title(&self, uid: &str) -> Res<Option<String>> {
+        match self.fs("GET", &format!("/titles/{}", uid), None, &[]) {
+            Ok(d) => Ok(fs_fields(&d).opt_str("title")),
+            Err(e) if e.code == "not_found" => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Publishes (or, with None, removes) this account's title.
+    pub fn set_title(&self, title: Option<&str>) -> Res<()> {
+        let uid = self.need_uid()?;
+        let path = format!("/titles/{}", uid);
+        match title {
+            Some(t) => self.fs("PATCH", &path, Some(json!({"fields": {"title": fs_str(t)}})), &[]).map(|_| ()),
+            None => match self.fs("DELETE", &path, None, &[]) {
+                Err(e) if e.code != "not_found" => Err(e),
+                _ => Ok(()),
+            },
+        }
+    }
+
     // ---- shared leaderboard snapshot ----
     /// The shared leaderboard snapshot (/public/leaderboard), or None if it doesn't exist yet. 1 read only.
     pub fn get_leaderboard_snapshot(&self) -> Res<Option<Value>> {
@@ -1717,7 +1753,7 @@ impl FirebaseClient {
             .map(|doc| {
                 let f = fs_fields(doc);
                 let username = f.get("username").map(|v| v.py_str()).unwrap_or_else(|| "?".into());
-                LbEntry { username, value: f.f64_or0(field) }
+                LbEntry { username, value: f.f64_or0(field), prestige: f.i64_or0("prestige"), rebirths: f.i64_or0("rebirths") }
             })
             .collect())
     }

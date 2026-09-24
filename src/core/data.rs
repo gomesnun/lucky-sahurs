@@ -19,7 +19,8 @@ pub const LUCK_TIER_PER_LEVEL: [(&str, f64); 5] =
     [("cosmico", 0.30), ("transcendente", 0.40), ("etereo", 0.50), ("celestial", 0.60), ("absoluto", 0.75)];
 pub const LUCK_ULTRA_PER_LEVEL: f64 = 0.05;
 /// v2.9: only this fraction of the "normal" luck bonus counts (the Shop's dice and potions make room)
-pub const LUCK_BONUS_SCALE: f64 = 0.85;
+/// v3.0: 0.85 -> 0.78, a small nerf now that Prestige multiplies Luck
+pub const LUCK_BONUS_SCALE: f64 = 0.78;
 pub const MONEY_PER_LEVEL: f64 = 0.07;
 pub const MONEY_PRISM_PER_LEVEL: f64 = 0.16;
 pub const INCOME_SCALE: f64 = 0.15;
@@ -380,6 +381,7 @@ pub fn upgrade_defs() -> &'static [UpgradeDef] {
             u("offline_time", "Offline Time", l("+%d hour of max offline time per level (you start at %d hours).", a![1i64, 8i64]), 12, 15000.0, 1.683, None, 1, 0),
             u("offline_time_2", "Offline Time II", l("+%d hour of max offline time per level, once Offline Time is maxed out.", a![1i64]), 4, 8000000000.0, 2.04, Some("offline_time"), 12, 0),
             u("auto_upgrade_unlock", "Auto Upgrader", p("Buys the cheapest upgrade you can afford by itself while turned on (toggle at the top of Upgrades). Never resets on Rebirth."), 1, 250000.0, 1.0, None, 1, 0),
+            u("auto_trait_unlock", "Auto Trait Roller", p("Rolls your trait charges by itself while turned on (toggle on the Traits page). Never resets on Rebirth or Prestige."), 1, 2000000.0, 1.0, None, 1, 0),
             u("auto_equip_unlock", "Auto Equip Best", p("Unlocks the Auto Equip Best toggle in the Bag: automatically keeps your highest-earning pets equipped as you roll."), 1, 750000.0, 1.0, None, 1, 0),
         ]
     })
@@ -403,7 +405,7 @@ pub const UPGRADE_CATEGORIES: [UpgradeCategory; 8] = [
     UpgradeCategory { key: "luck", label: "Luck", desc: "Rarer pets show up more often", upgrades: &["luck", "luck_prism", "luck_cosmic", "luck_divine", "luck_2", "luck_prism_2", "luck_ultra", "luck_tier_cosmico", "luck_tier_transcendente", "luck_tier_etereo", "luck_tier_celestial", "luck_tier_absoluto"] },
     UpgradeCategory { key: "mutations", label: "Mutation Chance", desc: "Golden, Diamond and Rainbow pets", upgrades: &["golden_unlock", "golden_chance", "golden_chance_2", "diamond_unlock", "diamond_chance", "diamond_chance_2", "rainbow_unlock", "rainbow_chance", "rainbow_chance_2"] },
     UpgradeCategory { key: "money", label: "Money", desc: "Earn more money per second", upgrades: &["money", "money_prism", "money_ultra"] },
-    UpgradeCategory { key: "traits", label: "Traits", desc: "Trait charges and trait rarity", upgrades: &["trait_charge_luck", "trait_charge_luck_2", "trait_rarity_luck", "trait_rarity_luck_2"] },
+    UpgradeCategory { key: "traits", label: "Traits", desc: "Trait charges and trait rarity", upgrades: &["auto_trait_unlock", "trait_charge_luck", "trait_charge_luck_2", "trait_rarity_luck", "trait_rarity_luck_2"] },
     UpgradeCategory { key: "bonus_rolls", label: "Bonus Rolls", desc: "Golden, Diamond and Rainbow Roll", upgrades: &["cyclic_every", "cyclic_power", "diamond_roll_unlock", "diamond_roll_every", "diamond_roll_power", "rainbow_roll_unlock", "rainbow_roll_every", "rainbow_roll_power"] },
     UpgradeCategory { key: "auto", label: "Auto Roller", desc: "Rolls by itself, faster", upgrades: &["auto_unlock", "auto_speed", "auto_turbo"] },
     UpgradeCategory { key: "offline", label: "Offline", desc: "Earn more while the game is closed", upgrades: &["offline_rate", "offline_rate_2", "offline_time", "offline_time_2"] },
@@ -417,7 +419,42 @@ pub fn upgrade_category(key: &str) -> Option<&'static UpgradeCategory> {
 pub const BASE_SLOTS: i64 = 3;
 
 /// upgrades a Rebirth NEVER resets (not even the first ones, before "Rebirth Master")
-pub const KEEP_ON_REBIRTH: [&str; 1] = ["auto_upgrade_unlock"];
+pub const KEEP_ON_REBIRTH: [&str; 2] = ["auto_upgrade_unlock", "auto_trait_unlock"];
+/// upgrades a Prestige doesn't reset either (the automation)
+pub const KEEP_ON_PRESTIGE: [&str; 2] = ["auto_upgrade_unlock", "auto_trait_unlock"];
+/// how often the Auto Trait Roller spends your charges
+pub const AUTO_TRAIT_EVERY: f64 = 1.0;
+
+// ---------------------------------------------------------------- prestige (v3.0)
+/// One Prestige. The multipliers are the TOTAL you have once you reach it (not stacked on the previous ones), and
+/// each Prestige jumps more than the one before. A Prestige resets coins, Rebirths, upgrades (not the automation)
+/// and pets (except the one verity you keep); dice, potions, traits, milestones, the Index and stats stay.
+pub struct PrestigeDef {
+    /// Rebirths needed to do this Prestige
+    pub need: i64,
+    pub name: &'static str,
+    pub money: f64,
+    pub luck: f64,
+    /// extra equip slots (total)
+    pub slots: i64,
+    /// Auto Roller speed (total multiplier)
+    pub auto_speed: f64,
+    /// trait charge chance (total multiplier)
+    pub charge_chance: f64,
+    /// what this Prestige unlocks besides the multipliers (English; the screen translates it)
+    pub perk: &'static str,
+}
+
+pub const PRESTIGES: [PrestigeDef; 5] = [
+    PrestigeDef { need: 10, name: "Prestige I", money: 3.0, luck: 3.0, slots: 1, auto_speed: 1.0, charge_chance: 1.0, perk: "+1 Equip Slot" },
+    PrestigeDef { need: 15, name: "Prestige II", money: 8.0, luck: 6.0, slots: 1, auto_speed: 1.0, charge_chance: 1.0, perk: "Rebirths never reset your upgrades again" },
+    PrestigeDef { need: 20, name: "Prestige III", money: 20.0, luck: 12.0, slots: 1, auto_speed: 1.5, charge_chance: 1.0, perk: "Rebirths don't reset anything, not even your coins. x1.5 Auto Roller speed" },
+    PrestigeDef { need: 30, name: "Prestige IV", money: 60.0, luck: 25.0, slots: 2, auto_speed: 2.0, charge_chance: 2.0, perk: "+1 Equip Slot, x2 Auto Roller speed, x2 trait charge chance" },
+    PrestigeDef { need: 40, name: "Prestige V", money: 200.0, luck: 60.0, slots: 3, auto_speed: 3.0, charge_chance: 3.0, perk: "+1 Equip Slot, x3 Auto Roller speed, x3 trait charge chance" },
+];
+/// the Prestige that makes Rebirths keep your upgrades / keep everything
+pub const PRESTIGE_KEEP_UPGRADES: i64 = 2;
+pub const PRESTIGE_REBIRTH_FREE: i64 = 3;
 /// how often the Auto Upgrader tries to buy (seconds)
 pub const AUTO_UPGRADE_EVERY: f64 = 0.5;
 /// most levels bought at a time (so a lot of money doesn't freeze the game)
@@ -600,26 +637,49 @@ pub fn rebirth_reward_label(kind: &str) -> &str {
     }
 }
 
-// ---------------------------------------------------------------- daily missions
+// ---------------------------------------------------------------- daily / weekly quests
+/// v3.0: 7 stages (by total rolls, see GameState::mission_stage); `min_stage` = the quest only shows from there.
+/// `reward` = base trait charges: the real reward grows with what you have (GameState::quest_reward).
 pub struct MissionDef {
     pub mtype: &'static str,
     pub label: &'static str,
-    pub targets: [i64; 5],
-    pub reward: [i64; 5],
+    pub targets: [i64; 7],
+    pub reward: [i64; 7],
+    pub min_stage: usize,
 }
 
+/// total rolls where each quest stage starts (stage 0 below the first)
+pub const MISSION_STAGE_ROLLS: [i64; 6] = [250, 2500, 25000, 250000, 2500000, 25000000];
+
 pub const MISSION_POOL: [MissionDef; 8] = [
-    MissionDef { mtype: "rolls", label: "Roll %d pets", targets: [150, 300, 600, 1200, 2500], reward: [3, 4, 5, 6, 8] },
-    MissionDef { mtype: "golden", label: "Get %d Golden pets", targets: [2, 4, 8, 15, 30], reward: [3, 4, 5, 6, 8] },
-    MissionDef { mtype: "diamond", label: "Get %d Diamond pets", targets: [1, 2, 4, 8, 15], reward: [4, 5, 6, 8, 10] },
-    MissionDef { mtype: "traits", label: "Roll %d traits", targets: [2, 4, 7, 12, 20], reward: [3, 4, 5, 6, 8] },
-    MissionDef { mtype: "rarity_epico", label: "Get %d Epic pet(s)", targets: [1, 2, 3, 5, 8], reward: [3, 4, 5, 6, 7] },
-    MissionDef { mtype: "rarity_lendario", label: "Get %d Legendary pet(s)", targets: [1, 1, 2, 3, 5], reward: [4, 5, 6, 7, 8] },
-    MissionDef { mtype: "rarity_mitico", label: "Get %d Mythic pet(s)", targets: [1, 1, 1, 2, 3], reward: [6, 6, 7, 8, 10] },
-    MissionDef { mtype: "rarity_secreto", label: "Get a Secret pet", targets: [1, 1, 1, 1, 1], reward: [10, 10, 10, 10, 10] },
+    MissionDef { mtype: "rolls", label: "Roll %d pets", targets: [150, 300, 600, 1200, 2500, 8000, 25000], reward: [3, 4, 5, 6, 8, 10, 12], min_stage: 0 },
+    MissionDef { mtype: "golden", label: "Get %d Golden pets", targets: [2, 4, 8, 15, 30, 80, 250], reward: [3, 4, 5, 6, 8, 10, 12], min_stage: 0 },
+    MissionDef { mtype: "diamond", label: "Get %d Diamond pets", targets: [1, 2, 4, 8, 15, 40, 120], reward: [4, 5, 6, 8, 10, 12, 15], min_stage: 0 },
+    MissionDef { mtype: "traits", label: "Roll %d traits", targets: [2, 4, 7, 12, 20, 40, 100], reward: [3, 4, 5, 6, 8, 10, 12], min_stage: 0 },
+    MissionDef { mtype: "rarity_epico", label: "Get %d Epic pet(s)", targets: [1, 2, 3, 5, 8, 20, 60], reward: [3, 4, 5, 6, 7, 9, 11], min_stage: 0 },
+    MissionDef { mtype: "rarity_lendario", label: "Get %d Legendary pet(s)", targets: [1, 1, 2, 3, 5, 12, 35], reward: [4, 5, 6, 7, 8, 10, 12], min_stage: 0 },
+    MissionDef { mtype: "rarity_mitico", label: "Get %d Mythic pet(s)", targets: [1, 1, 1, 2, 3, 8, 20], reward: [6, 6, 7, 8, 10, 12, 14], min_stage: 0 },
+    MissionDef { mtype: "rarity_secreto", label: "Get a Secret pet", targets: [1, 1, 1, 1, 1, 1, 1], reward: [10, 10, 10, 10, 10, 12, 14], min_stage: 0 },
 ];
 pub const DAILY_MISSION_COUNT: usize = 3;
 
+/// v3.0 weekly quests: harder, bigger rewards (and a potion). Reset Monday 00:00, Lisbon time.
+pub const WEEKLY_POOL: [MissionDef; 8] = [
+    MissionDef { mtype: "rolls", label: "Roll %d pets", targets: [2500, 6000, 15000, 50000, 200000, 800000, 3000000], reward: [15, 20, 25, 30, 40, 50, 60], min_stage: 0 },
+    MissionDef { mtype: "golden", label: "Get %d Golden pets", targets: [25, 50, 120, 400, 1500, 6000, 25000], reward: [15, 20, 25, 30, 40, 50, 60], min_stage: 0 },
+    MissionDef { mtype: "diamond", label: "Get %d Diamond pets", targets: [10, 20, 50, 150, 600, 2500, 10000], reward: [20, 25, 30, 40, 50, 60, 75], min_stage: 0 },
+    MissionDef { mtype: "traits", label: "Roll %d traits", targets: [15, 30, 60, 150, 500, 2000, 8000], reward: [15, 20, 25, 30, 40, 50, 60], min_stage: 0 },
+    MissionDef { mtype: "rarity_mitico", label: "Get %d Mythic pet(s)", targets: [3, 5, 10, 25, 80, 300, 1200], reward: [20, 25, 30, 40, 50, 60, 75], min_stage: 0 },
+    MissionDef { mtype: "rarity_secreto", label: "Get %d Secret pets", targets: [1, 2, 3, 6, 20, 80, 300], reward: [25, 30, 40, 50, 60, 75, 90], min_stage: 1 },
+    MissionDef { mtype: "rebirths", label: "Do %d Rebirths", targets: [1, 1, 2, 3, 4, 5, 6], reward: [25, 30, 40, 50, 60, 75, 90], min_stage: 2 },
+    MissionDef { mtype: "rainbow", label: "Get %d Rainbow pets", targets: [1, 1, 3, 10, 40, 150, 600], reward: [30, 40, 50, 60, 75, 90, 110], min_stage: 4 },
+];
+pub const WEEKLY_MISSION_COUNT: usize = 3;
+/// what a quest's reward is worth, in minutes of your money/sec and of your Auto Roller's trait charges
+pub const DAILY_REWARD_MINUTES: f64 = 15.0;
+pub const WEEKLY_REWARD_MINUTES: f64 = 180.0;
+
+/// The label of a quest type (daily or weekly).
 pub fn mission_def(mtype: &str) -> Option<&'static MissionDef> {
-    MISSION_POOL.iter().find(|m| m.mtype == mtype)
+    MISSION_POOL.iter().chain(WEEKLY_POOL.iter()).find(|m| m.mtype == mtype)
 }

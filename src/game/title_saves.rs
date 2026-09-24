@@ -110,13 +110,20 @@ impl Game {
             let r = &rarities()[tier_first_pet(i as usize)];
             let bob = if self.animations() { (t * 1.6 + i as f64 * 0.7).sin() * 8.0 } else { 0.0 };
             let x = x0 + i * (size + gap);
-            let key = format!("title_card|{}|{}", r.key, size);
+            // v3.0: each tile shows one of its rarity's verities, taking turns every few seconds
+            let pets: Vec<usize> = (0..rarities().len()).filter(|&p| rarities()[p].tier == i as usize).collect();
+            let turn = if self.animations() { (t / 2.6 + i as f64 * 0.37) as usize } else { 0 };
+            let pet = pets[turn % pets.len().max(1)];
+            let key = format!("title_card|{}|{}|{}", r.key, size, pet);
             blit_smooth_y(
                 &mut self.canvas,
                 &key,
                 || {
                     let mut card = Surface::new_alpha(size, size);
                     draw_rarity_bg(&mut card, Rect::new(0, 0, size, size), r, 10);
+                    if let Some(img) = crate::ui::icons::load_pet_image(rarities()[pet].pet, size - 12, false) {
+                        card.blit(&img, 6, 6);
+                    }
                     let cr = card.get_rect();
                     draw::rect(&mut card, outline(), cr, BORDER_W_SMALL, 10);
                     card

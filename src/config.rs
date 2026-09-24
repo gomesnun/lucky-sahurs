@@ -18,7 +18,7 @@ pub const BUILD_VERSION: &str = match option_env!("LV_BUILD_VERSION") {
     _ => "dev",
 };
 /// What the menu shows.
-pub const VERSION: &str = if const_eq(BUILD_VERSION, "dev") { "v2.9.3" } else { BUILD_VERSION };
+pub const VERSION: &str = if const_eq(BUILD_VERSION, "dev") { "v3.0.0" } else { BUILD_VERSION };
 
 const fn const_eq(a: &str, b: &str) -> bool {
     let (a, b) = (a.as_bytes(), b.as_bytes());
