@@ -152,10 +152,8 @@ fn main() {
         sim(&args[2]);
         return;
     }
-    // Windows: the downloaded file installs itself as "Lucky Verities.exe" (+ shortcuts) and opens that copy
-    if online::shortcut::install_windows() {
-        return;
-    }
+    // Windows: the downloaded file copies itself to "Lucky Verities.exe" (+ shortcuts) and goes on running
+    online::shortcut::install_windows();
     // desktop shortcut (1st time, release builds only): on its own thread so it never delays the start
     std::thread::spawn(online::shortcut::create_desktop_shortcut_once);
     let sdl = sdl2::init().expect("SDL init failed");

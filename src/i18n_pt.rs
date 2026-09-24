@@ -781,6 +781,8 @@ pub const PT: &[(&str, &str)] = &[
     ("Ready!", "Pronto!"),
     ("Auto Trait Roller: %d new traits! The best: \"%s\"", "Auto Rolador de Traits: %d traits novas! A melhor: \"%s\""),
     ("The Golden Roll is now an upgrade (Upgrades > Bonus Rolls > Unlock Golden Roll), like the Diamond and Rainbow ones, and it gives x10 luck instead of x4. If you had already upgraded it, it stays unlocked.", "O Roll Dourado agora é uma melhoria (Melhorias > Rolls Bónus > Desbloquear Roll Dourado), como o de Diamante e o de Arco-íris, e dá x10 de sorte em vez de x4. Se já o tinhas melhorado, fica desbloqueado."),
+    ("Windows: the game no longer uses PowerShell to make its shortcuts and no longer opens a second copy of itself, which made antivirus (Avast, Windows Defender) block it and the game close. It still installs itself as \"Lucky Verities\" with Desktop and Start menu shortcuts.", "Windows: o jogo já não usa o PowerShell para fazer os atalhos nem abre uma segunda cópia de si próprio, o que fazia o antivírus (Avast, Windows Defender) bloqueá-lo e o jogo fechar. Continua a instalar-se como \"Lucky Verities\" com atalhos no Ambiente de Trabalho e no menu Iniciar."),
+    ("Email codes and the shared leaderboard use new, working links.", "Os códigos por email e a leaderboard partilhada usam links novos que funcionam."),
     ("Dice show up in the Shop about half as often.", "Os dados aparecem na Loja cerca de metade das vezes."),
     ("Every upgrade and upgrade category has an icon.", "Cada melhoria e categoria de melhorias tem um ícone."),
     ("Unlock Golden Roll", "Desbloquear Roll Dourado"),
