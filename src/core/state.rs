@@ -145,19 +145,72 @@ pub struct GameState {
     pub daily_missions: Vec<DailyMission>,
     pub daily_counts: IndexMap<String, i64>,
     pub daily_claimed: BTreeSet<usize>,
+    /// v3.0 weekly quests (reset Monday 00:00, Lisbon)
+    pub weekly_week: Option<String>,
+    pub weekly_missions: Vec<DailyMission>,
+    pub weekly_counts: IndexMap<String, i64>,
+    pub weekly_claimed: BTreeSet<usize>,
     /// cached "today" string (refreshed a few times per second at most)
     today_cache: Cell<(f64, [u8; 10])>,
 }
 
+/// v3.0: the day (and the quests) change at 00:00 Lisbon time for everyone, not at the PC's midnight.
 pub fn today_str() -> String {
-    // datetime.date.today() is fromtimestamp(time.time()) in CPython
-    use chrono::TimeZone;
-    let t = now_ts();
-    let secs = t.floor() as i64;
-    match chrono::Local.timestamp_opt(secs, 0).single() {
-        Some(d) => d.format("%Y-%m-%d").to_string(),
-        None => chrono::Local::now().format("%Y-%m-%d").to_string(),
+    lisbon_date(now_ts()).format("%Y-%m-%d").to_string()
+}
+
+/// Lisbon's offset from UTC at this moment, in seconds: +1 h in summer time (EU rule: last Sunday of March
+/// 01:00 UTC to last Sunday of October 01:00 UTC), else 0.
+pub fn lisbon_offset(utc: f64) -> i64 {
+    use chrono::{Datelike, NaiveDate};
+    let Some(dt) = chrono::DateTime::from_timestamp(utc.floor() as i64, 0) else { return 0 };
+    let year = dt.year();
+    let last_sunday = |month: u32| -> i64 {
+        let first_next = if month == 12 { NaiveDate::from_ymd_opt(year + 1, 1, 1) } else { NaiveDate::from_ymd_opt(year, month + 1, 1) }.unwrap();
+        let last = first_next.pred_opt().unwrap();
+        let back = last.weekday().num_days_from_sunday() as i64;
+        let d = last - chrono::Duration::days(back);
+        d.and_hms_opt(1, 0, 0).unwrap().and_utc().timestamp()
+    };
+    let t = dt.timestamp();
+    if t >= last_sunday(3) && t < last_sunday(10) { 3600 } else { 0 }
+}
+
+pub fn lisbon_date(utc: f64) -> chrono::NaiveDate {
+    let local = utc.floor() as i64 + lisbon_offset(utc);
+    chrono::DateTime::from_timestamp(local, 0).map(|d| d.date_naive()).unwrap_or_default()
+}
+
+/// "2026-W39": the ISO week (Monday to Sunday) of a "YYYY-MM-DD" day.
+pub fn week_key(date: &str) -> String {
+    use chrono::Datelike;
+    match chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d") {
+        Ok(d) => {
+            let w = d.iso_week();
+            format!("{}-W{:02}", w.year(), w.week())
+        }
+        Err(_) => date.to_string(),
     }
+}
+
+/// Seconds until the next 00:00 in Lisbon (`weekly`: the next Monday 00:00).
+pub fn secs_until_lisbon_reset(utc: f64, weekly: bool) -> f64 {
+    use chrono::Datelike;
+    let date = lisbon_date(utc);
+    let days = if weekly { 7 - date.weekday().num_days_from_monday() as i64 } else { 1 };
+    let next = (date + chrono::Duration::days(days)).and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp();
+    // that moment is local time: back to UTC with the offset in force then
+    let at = next - lisbon_offset((next - 3600) as f64);
+    (at as f64 - utc).max(0.0)
+}
+
+/// What claiming a quest gives right now: coins (minutes of your money/sec), trait charges (grow with your
+/// Auto Roller) and, for weekly quests, a potion.
+#[derive(Clone, Debug, PartialEq)]
+pub struct QuestReward {
+    pub coins: f64,
+    pub charges: i64,
+    pub potion: Option<(&'static str, i64)>,
 }
 
 static FAKE_TIME: std::sync::Mutex<Option<f64>> = std::sync::Mutex::new(None);
@@ -266,6 +319,10 @@ impl GameState {
             daily_missions: Vec::new(),
             daily_counts: IndexMap::new(),
             daily_claimed: BTreeSet::new(),
+            weekly_week: None,
+            weekly_missions: Vec::new(),
+            weekly_counts: IndexMap::new(),
+            weekly_claimed: BTreeSet::new(),
             today_cache: Cell::new((-1.0, [0; 10])),
         }
     }
@@ -894,6 +951,7 @@ impl GameState {
             "rainbow" => {
                 self.total_rainbow_rolled += count;
                 self.daily_add_progress("diamond", count); // a Rainbow also counts for the "Diamond" mission
+                self.daily_add_progress("rainbow", count);
             }
             _ => {}
         }
@@ -1286,6 +1344,7 @@ impl GameState {
         }
         let keep = self.rebirth_keeps_upgrades();
         self.rebirths += 1;
+        self.daily_add_progress("rebirths", 1);
         if !self.rebirth_keeps_everything() {
             self.coins = 0.0;
         }
@@ -1373,18 +1432,22 @@ impl GameState {
 
     // ================================================================ daily missions
     pub fn mission_stage(&self) -> usize {
-        let r = self.total_rolls;
-        if r < 250 {
-            0
-        } else if r < 2500 {
-            1
-        } else if r < 25000 {
-            2
-        } else if r < 250000 {
-            3
-        } else {
-            4
-        }
+        MISSION_STAGE_ROLLS.iter().filter(|&&r| self.total_rolls >= r).count()
+    }
+
+    fn generate_quests(&self, seed: &str, pool: &'static [MissionDef], count: usize) -> Vec<DailyMission> {
+        let mut rng = PyRandom::from_str(seed);
+        let stage = self.mission_stage();
+        let open: Vec<&MissionDef> = pool.iter().filter(|m| stage >= m.min_stage).collect();
+        let chosen = rng.sample_indices(open.len(), count.min(open.len()));
+        chosen
+            .into_iter()
+            .map(|i| {
+                let m = open[i];
+                let idx = stage.min(m.targets.len() - 1);
+                DailyMission { mtype: m.mtype, target: m.targets[idx], reward: m.reward[idx] }
+            })
+            .collect()
     }
 
     pub fn generate_daily_missions(&self, date_str: &str) -> Vec<DailyMission> {
@@ -1392,17 +1455,66 @@ impl GameState {
             Some(s) => s.to_string(),
             None => "None".to_string(),
         };
-        let mut rng = PyRandom::from_str(&format!("{}:slot{}", date_str, slot));
-        let stage = self.mission_stage();
-        let chosen = rng.sample_indices(MISSION_POOL.len(), DAILY_MISSION_COUNT.min(MISSION_POOL.len()));
-        chosen
-            .into_iter()
-            .map(|i| {
-                let m = &MISSION_POOL[i];
-                let idx = stage.min(m.targets.len() - 1);
-                DailyMission { mtype: m.mtype, target: m.targets[idx], reward: m.reward[idx] }
-            })
-            .collect()
+        self.generate_quests(&format!("{}:slot{}", date_str, slot), &MISSION_POOL, DAILY_MISSION_COUNT)
+    }
+
+    pub fn ensure_weekly_missions(&mut self) {
+        let week = week_key(&self.today());
+        if self.weekly_week.as_deref() == Some(week.as_str()) && !self.weekly_missions.is_empty() {
+            return;
+        }
+        let slot = self.slot.map_or("None".to_string(), |s| s.to_string());
+        self.weekly_missions = self.generate_quests(&format!("{}:slot{}:weekly", week, slot), &WEEKLY_POOL, WEEKLY_MISSION_COUNT);
+        self.weekly_week = Some(week);
+        self.weekly_counts = IndexMap::new();
+        self.weekly_claimed = BTreeSet::new();
+    }
+
+    pub fn weekly_mission_progress(&self, index: usize) -> i64 {
+        match self.weekly_missions.get(index) {
+            None => 0,
+            Some(m) => self.weekly_counts.get(m.mtype).copied().unwrap_or(0),
+        }
+    }
+
+    /// The reward of a quest if claimed now: it grows with what you have. `base` = the quest's trait charges.
+    pub fn quest_reward(&self, weekly: bool, index: usize, base: i64) -> QuestReward {
+        let minutes = if weekly { WEEKLY_REWARD_MINUTES } else { DAILY_REWARD_MINUTES };
+        // your own money/sec and rolls/sec, without the temporary boosts (potions, events)
+        let income = self.income_per_second() / (self.potion_mult("money") * event_mult("money")).max(1e-9);
+        let rps = self.auto_rolls_per_second() / (self.potion_mult("speed") * event_mult("speed")).max(1e-9);
+        let charges = base + (rps * self.trait_charge_chance() * 60.0 * minutes).round().min(1e15) as i64;
+        let potion = weekly.then(|| {
+            let kind = ["luck", "money", "speed"][index % 3];
+            let level = (1 + self.rebirths / 10 + self.prestige).clamp(1, crate::core::shop::POTION_LEVELS);
+            (kind, level)
+        });
+        QuestReward { coins: (income * 60.0 * minutes).max(0.0), charges, potion }
+    }
+
+    fn give_quest_reward(&mut self, r: &QuestReward) {
+        self.coins += r.coins;
+        self.total_coins_earned += r.coins;
+        self.trait_charges += r.charges;
+        if let Some((kind, lvl)) = r.potion {
+            *self.shop.potions.entry(crate::core::shop::potion_id(kind, lvl)).or_insert(0) += 1;
+        }
+        self.dirty = true;
+    }
+
+    pub fn claim_weekly_mission(&mut self, index: usize) -> Option<QuestReward> {
+        self.ensure_weekly_missions();
+        if index >= self.weekly_missions.len() || self.weekly_claimed.contains(&index) {
+            return None;
+        }
+        let m = self.weekly_missions[index].clone();
+        if self.weekly_mission_progress(index) < m.target {
+            return None;
+        }
+        self.weekly_claimed.insert(index);
+        let r = self.quest_reward(true, index, m.reward);
+        self.give_quest_reward(&r);
+        Some(r)
     }
 
     pub fn ensure_daily_missions(&mut self) {
@@ -1425,21 +1537,24 @@ impl GameState {
 
     pub fn daily_add_progress(&mut self, mtype: &str, n: i64) {
         self.ensure_daily_missions();
+        self.ensure_weekly_missions();
         *self.daily_counts.entry(mtype.to_string()).or_insert(0) += n;
+        *self.weekly_counts.entry(mtype.to_string()).or_insert(0) += n;
     }
 
-    pub fn claim_daily_mission(&mut self, index: usize) -> i64 {
+    pub fn claim_daily_mission(&mut self, index: usize) -> Option<QuestReward> {
         self.ensure_daily_missions();
         if index >= self.daily_missions.len() || self.daily_claimed.contains(&index) {
-            return 0;
+            return None;
         }
         let m = self.daily_missions[index].clone();
         if self.daily_mission_progress(index) < m.target {
-            return 0;
+            return None;
         }
         self.daily_claimed.insert(index);
-        self.trait_charges += m.reward;
-        m.reward
+        let r = self.quest_reward(false, index, m.reward);
+        self.give_quest_reward(&r);
+        Some(r)
     }
 
     // ================================================================ offline earnings
@@ -1569,6 +1684,12 @@ impl GameState {
         daily.insert("counts".into(), Value::Object(counts));
         daily.insert("claimed".into(), Value::Array(self.daily_claimed.iter().map(|i| json!(i)).collect()));
         d.insert("daily".into(), Value::Object(daily));
+        let mut weekly = Map::new();
+        weekly.insert("week".into(), self.weekly_week.as_ref().map_or(Value::Null, |s| json!(s)));
+        weekly.insert("missions".into(), missions_json(&self.weekly_missions));
+        weekly.insert("counts".into(), Value::Object(self.weekly_counts.iter().map(|(k, v)| (k.clone(), json!(v))).collect()));
+        weekly.insert("claimed".into(), Value::Array(self.weekly_claimed.iter().map(|i| json!(i)).collect()));
+        d.insert("weekly".into(), Value::Object(weekly));
         Value::Object(d)
     }
 
@@ -1815,6 +1936,26 @@ impl GameState {
             }
         }
         self.ensure_daily_missions();
+        let weekly = match d.get("weekly") {
+            Some(Value::Object(o)) => o.clone(),
+            _ => Map::new(),
+        };
+        self.weekly_week = weekly.get("week").and_then(|v| v.as_str()).map(|s| s.to_string());
+        self.weekly_missions = missions_from_json(weekly.get("missions"));
+        self.weekly_counts = IndexMap::new();
+        if let Some(Value::Object(c)) = weekly.get("counts") {
+            for (k, v) in c {
+                if let Some(i) = value_i64(v) {
+                    self.weekly_counts.insert(k.clone(), i.max(0));
+                }
+            }
+        }
+        self.weekly_claimed = weekly
+            .get("claimed")
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(value_i64).filter(|i| *i >= 0 && (*i as usize) < self.weekly_missions.len()).map(|i| i as usize).collect())
+            .unwrap_or_default();
+        self.ensure_weekly_missions();
         Ok(())
     }
 
@@ -1852,6 +1993,23 @@ impl GameState {
 }
 
 /// Python `float >= int`, exact (no rounding of the int).
+fn missions_json(ms: &[DailyMission]) -> Value {
+    Value::Array(ms.iter().map(|m| json!({"type": m.mtype, "target": m.target, "reward": m.reward})).collect())
+}
+
+fn missions_from_json(v: Option<&Value>) -> Vec<DailyMission> {
+    let mut out = Vec::new();
+    for m in v.and_then(|v| v.as_array()).map(|a| a.as_slice()).unwrap_or(&[]) {
+        let (Some(t), Some(ta), Some(re)) = (m.get("type").and_then(|v| v.as_str()), m.get("target").and_then(value_i64), m.get("reward").and_then(value_i64)) else { continue };
+        if let Some(def) = mission_def(t) {
+            if ta > 0 && re > 0 {
+                out.push(DailyMission { mtype: def.mtype, target: ta, reward: re });
+            }
+        }
+    }
+    out
+}
+
 pub fn py_ge(a: f64, b: i128) -> bool {
     !a.is_nan() && !py_gt_int_float(b, a)
 }
@@ -1933,5 +2091,66 @@ mod prestige_tests {
         assert!(s.do_rebirth());
         assert_eq!(s.coins, coins);
         assert_eq!(s.upgrade_level("money"), 5);
+    }
+}
+
+#[cfg(test)]
+mod quest_tests {
+    use super::*;
+
+    fn utc(s: &str) -> f64 {
+        chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M").unwrap().and_utc().timestamp() as f64
+    }
+
+    #[test]
+    fn lisbon_clock() {
+        assert_eq!(lisbon_offset(utc("2026-01-15 12:00")), 0);
+        assert_eq!(lisbon_offset(utc("2026-07-01 12:00")), 3600);
+        // 2026: summer time from Sunday 29 March 01:00 UTC to Sunday 25 October 01:00 UTC
+        assert_eq!(lisbon_offset(utc("2026-03-29 00:59")), 0);
+        assert_eq!(lisbon_offset(utc("2026-03-29 01:00")), 3600);
+        assert_eq!(lisbon_offset(utc("2026-10-25 00:59")), 3600);
+        assert_eq!(lisbon_offset(utc("2026-10-25 01:00")), 0);
+        // 23:30 UTC in summer is already the next day in Lisbon
+        assert_eq!(lisbon_date(utc("2026-06-30 23:30")).to_string(), "2026-07-01");
+        assert_eq!(lisbon_date(utc("2026-01-30 23:30")).to_string(), "2026-01-30");
+        assert_eq!(week_key("2026-09-24"), "2026-W39");
+        assert_eq!(week_key("2026-09-28"), "2026-W40"); // Monday: new week
+        // Thursday 23:30 in Lisbon (22:30 UTC, summer): 30 minutes to the daily reset
+        assert_eq!(secs_until_lisbon_reset(utc("2026-09-24 22:30"), false), 1800.0);
+        // Sunday 23:30 in Lisbon: 30 minutes to the weekly reset; a Monday morning: almost a week
+        assert_eq!(secs_until_lisbon_reset(utc("2026-09-27 22:30"), true), 1800.0);
+        assert_eq!(secs_until_lisbon_reset(utc("2026-09-27 23:00"), true), 7.0 * 86400.0);
+        // winter: midnight in Lisbon is midnight UTC
+        assert_eq!(secs_until_lisbon_reset(utc("2026-12-01 23:00"), false), 3600.0);
+    }
+
+    #[test]
+    fn weekly_quests_and_rewards_grow() {
+        let mut s = GameState::new();
+        s.slot = Some(1);
+        s.ensure_weekly_missions();
+        assert_eq!(s.weekly_missions.len(), WEEKLY_MISSION_COUNT);
+        let early = s.quest_reward(true, 0, 10);
+        assert!(early.potion.is_some());
+        // someone further along gets more for the same quest
+        s.equipped = vec![(20, "golden"); 5];
+        s.rebirths = 25;
+        let later = s.quest_reward(true, 0, 10);
+        assert!(later.coins > early.coins);
+        assert!(later.potion.unwrap().1 > early.potion.unwrap().1);
+        // completing and claiming one
+        let m = s.weekly_missions[0].clone();
+        s.weekly_counts.insert(m.mtype.to_string(), m.target);
+        let coins = s.coins;
+        let r = s.claim_weekly_mission(0).expect("claimable");
+        assert!(s.coins > coins && r.charges >= m.reward);
+        assert!(s.claim_weekly_mission(0).is_none()); // only once
+        // saved and loaded
+        let mut t = GameState::new();
+        t.slot = Some(1);
+        t.load_dict(&s.to_dict()).unwrap();
+        assert_eq!(t.weekly_week, s.weekly_week);
+        assert!(t.weekly_claimed.contains(&0));
     }
 }

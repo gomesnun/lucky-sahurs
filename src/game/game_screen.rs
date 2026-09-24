@@ -196,7 +196,7 @@ impl Game {
     pub fn draw_side_buttons(&mut self, mouse_pos: (f64, f64)) {
         let size = 62;
         let step = size + 38;
-        let labels = [tr("INDEX"), tr("UPGRADES"), tr("MILESTONES"), tr("DAILY"), tr("BAG"), tr("REBIRTH"), tr("TRAITS"), tr("SHOP")];
+        let labels = [tr("INDEX"), tr("UPGRADES"), tr("MILESTONES"), tr("QUESTS"), tr("BAG"), tr("REBIRTH"), tr("TRAITS"), tr("SHOP")];
         let mut lf = self.f.small_b.clone();
         if labels.iter().map(|t| lf.render(t, WHITE).w).max().unwrap_or(0) > size + 24 {
             lf = self.f.tiny_b.clone();
@@ -214,7 +214,8 @@ impl Game {
         let afford = self.state.affordable_upgrades_count() as i64;
         self.side_button(Rect::new(x, y + step, size, size), &labels[1], "tree", mouse_pos, rp_open && rc == Some("tree"), Rc::new(|g: &mut Game| g.open_right_panel("tree")), Some(lf.clone()), afford, false);
         self.side_button(Rect::new(x, y + 2 * step, size, size), &labels[2], "milestones", mouse_pos, rp_open && rc == Some("milestones"), Rc::new(|g: &mut Game| g.open_right_panel("milestones")), Some(lf.clone()), 0, false);
-        self.side_button(Rect::new(x, y + 3 * step, size, size), &labels[3], "daily", mouse_pos, rp_open && rc == Some("daily"), Rc::new(|g: &mut Game| g.open_right_panel("daily")), Some(lf.clone()), 0, false);
+        let quests_ready = self.quests_claimable();
+        self.side_button(Rect::new(x, y + 3 * step, size, size), &labels[3], "daily", mouse_pos, rp_open && rc == Some("daily"), Rc::new(|g: &mut Game| g.open_right_panel("daily")), Some(lf.clone()), 0, quests_ready);
 
         let shown_l = if self.left_panel.visible() { self.left_panel.shown_width(self.left_w) } else { 0 };
         let lx = shown_l + 18;

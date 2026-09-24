@@ -637,26 +637,49 @@ pub fn rebirth_reward_label(kind: &str) -> &str {
     }
 }
 
-// ---------------------------------------------------------------- daily missions
+// ---------------------------------------------------------------- daily / weekly quests
+/// v3.0: 7 stages (by total rolls, see GameState::mission_stage); `min_stage` = the quest only shows from there.
+/// `reward` = base trait charges: the real reward grows with what you have (GameState::quest_reward).
 pub struct MissionDef {
     pub mtype: &'static str,
     pub label: &'static str,
-    pub targets: [i64; 5],
-    pub reward: [i64; 5],
+    pub targets: [i64; 7],
+    pub reward: [i64; 7],
+    pub min_stage: usize,
 }
 
+/// total rolls where each quest stage starts (stage 0 below the first)
+pub const MISSION_STAGE_ROLLS: [i64; 6] = [250, 2500, 25000, 250000, 2500000, 25000000];
+
 pub const MISSION_POOL: [MissionDef; 8] = [
-    MissionDef { mtype: "rolls", label: "Roll %d pets", targets: [150, 300, 600, 1200, 2500], reward: [3, 4, 5, 6, 8] },
-    MissionDef { mtype: "golden", label: "Get %d Golden pets", targets: [2, 4, 8, 15, 30], reward: [3, 4, 5, 6, 8] },
-    MissionDef { mtype: "diamond", label: "Get %d Diamond pets", targets: [1, 2, 4, 8, 15], reward: [4, 5, 6, 8, 10] },
-    MissionDef { mtype: "traits", label: "Roll %d traits", targets: [2, 4, 7, 12, 20], reward: [3, 4, 5, 6, 8] },
-    MissionDef { mtype: "rarity_epico", label: "Get %d Epic pet(s)", targets: [1, 2, 3, 5, 8], reward: [3, 4, 5, 6, 7] },
-    MissionDef { mtype: "rarity_lendario", label: "Get %d Legendary pet(s)", targets: [1, 1, 2, 3, 5], reward: [4, 5, 6, 7, 8] },
-    MissionDef { mtype: "rarity_mitico", label: "Get %d Mythic pet(s)", targets: [1, 1, 1, 2, 3], reward: [6, 6, 7, 8, 10] },
-    MissionDef { mtype: "rarity_secreto", label: "Get a Secret pet", targets: [1, 1, 1, 1, 1], reward: [10, 10, 10, 10, 10] },
+    MissionDef { mtype: "rolls", label: "Roll %d pets", targets: [150, 300, 600, 1200, 2500, 8000, 25000], reward: [3, 4, 5, 6, 8, 10, 12], min_stage: 0 },
+    MissionDef { mtype: "golden", label: "Get %d Golden pets", targets: [2, 4, 8, 15, 30, 80, 250], reward: [3, 4, 5, 6, 8, 10, 12], min_stage: 0 },
+    MissionDef { mtype: "diamond", label: "Get %d Diamond pets", targets: [1, 2, 4, 8, 15, 40, 120], reward: [4, 5, 6, 8, 10, 12, 15], min_stage: 0 },
+    MissionDef { mtype: "traits", label: "Roll %d traits", targets: [2, 4, 7, 12, 20, 40, 100], reward: [3, 4, 5, 6, 8, 10, 12], min_stage: 0 },
+    MissionDef { mtype: "rarity_epico", label: "Get %d Epic pet(s)", targets: [1, 2, 3, 5, 8, 20, 60], reward: [3, 4, 5, 6, 7, 9, 11], min_stage: 0 },
+    MissionDef { mtype: "rarity_lendario", label: "Get %d Legendary pet(s)", targets: [1, 1, 2, 3, 5, 12, 35], reward: [4, 5, 6, 7, 8, 10, 12], min_stage: 0 },
+    MissionDef { mtype: "rarity_mitico", label: "Get %d Mythic pet(s)", targets: [1, 1, 1, 2, 3, 8, 20], reward: [6, 6, 7, 8, 10, 12, 14], min_stage: 0 },
+    MissionDef { mtype: "rarity_secreto", label: "Get a Secret pet", targets: [1, 1, 1, 1, 1, 1, 1], reward: [10, 10, 10, 10, 10, 12, 14], min_stage: 0 },
 ];
 pub const DAILY_MISSION_COUNT: usize = 3;
 
+/// v3.0 weekly quests: harder, bigger rewards (and a potion). Reset Monday 00:00, Lisbon time.
+pub const WEEKLY_POOL: [MissionDef; 8] = [
+    MissionDef { mtype: "rolls", label: "Roll %d pets", targets: [2500, 6000, 15000, 50000, 200000, 800000, 3000000], reward: [15, 20, 25, 30, 40, 50, 60], min_stage: 0 },
+    MissionDef { mtype: "golden", label: "Get %d Golden pets", targets: [25, 50, 120, 400, 1500, 6000, 25000], reward: [15, 20, 25, 30, 40, 50, 60], min_stage: 0 },
+    MissionDef { mtype: "diamond", label: "Get %d Diamond pets", targets: [10, 20, 50, 150, 600, 2500, 10000], reward: [20, 25, 30, 40, 50, 60, 75], min_stage: 0 },
+    MissionDef { mtype: "traits", label: "Roll %d traits", targets: [15, 30, 60, 150, 500, 2000, 8000], reward: [15, 20, 25, 30, 40, 50, 60], min_stage: 0 },
+    MissionDef { mtype: "rarity_mitico", label: "Get %d Mythic pet(s)", targets: [3, 5, 10, 25, 80, 300, 1200], reward: [20, 25, 30, 40, 50, 60, 75], min_stage: 0 },
+    MissionDef { mtype: "rarity_secreto", label: "Get %d Secret pets", targets: [1, 2, 3, 6, 20, 80, 300], reward: [25, 30, 40, 50, 60, 75, 90], min_stage: 1 },
+    MissionDef { mtype: "rebirths", label: "Do %d Rebirths", targets: [1, 1, 2, 3, 4, 5, 6], reward: [25, 30, 40, 50, 60, 75, 90], min_stage: 2 },
+    MissionDef { mtype: "rainbow", label: "Get %d Rainbow pets", targets: [1, 1, 3, 10, 40, 150, 600], reward: [30, 40, 50, 60, 75, 90, 110], min_stage: 4 },
+];
+pub const WEEKLY_MISSION_COUNT: usize = 3;
+/// what a quest's reward is worth, in minutes of your money/sec and of your Auto Roller's trait charges
+pub const DAILY_REWARD_MINUTES: f64 = 15.0;
+pub const WEEKLY_REWARD_MINUTES: f64 = 180.0;
+
+/// The label of a quest type (daily or weekly).
 pub fn mission_def(mtype: &str) -> Option<&'static MissionDef> {
-    MISSION_POOL.iter().find(|m| m.mtype == mtype)
+    MISSION_POOL.iter().chain(WEEKLY_POOL.iter()).find(|m| m.mtype == mtype)
 }

@@ -165,6 +165,8 @@ pub struct Game {
     pub rebirth_scroll: f64,
     /// v3.0: "rebirth" or "prestige" (the tabs beside the Rebirth page)
     pub rebirth_tab: &'static str,
+    /// v3.0: "daily" or "weekly" (the Quests panel's tabs)
+    pub quests_tab: &'static str,
     /// the verity a Prestige keeps (None = your best one)
     pub prestige_keep: Option<crate::core::state::Pet>,
     pub prestige_picking: bool,
@@ -362,6 +364,7 @@ impl Game {
             rebirth_confirm_timer: 0.0,
             rebirth_scroll: 0.0,
             rebirth_tab: "rebirth",
+            quests_tab: "daily",
             prestige_keep: None,
             prestige_picking: false,
             rebirth_max_scroll: 0.0,

@@ -19,6 +19,8 @@ pub const UPDATE_LOG: &[(&str, &str, &[&str])] = &[
         "The Rebirths leaderboard shows each player's Prestige next to their Rebirths (Prestige counts first), and there are new Prestiged and Ascended titles.",
         "Auto Trait Roller (Upgrades > Traits): rolls your trait charges by itself, with a switch on the Traits page. It never resets on Rebirth or Prestige.",
         "Luck from upgrades, traits, milestones and Rebirths is a little lower (about 8% of the bonus), since Prestige now multiplies your Luck.",
+        "Daily quests now reset at 00:00 Lisbon time, and their rewards grow with you: coins worth 15 minutes of your money/sec plus trait charges that grow with your Auto Roller.",
+        "New Weekly quests (reset every Monday at 00:00 Lisbon time): harder, with 3 hours of money, lots of trait charges and a potion each.",
     ]),
     ("v2.9.1", "2026-09-24", &[
         "\"Use All Charges\" with huge amounts of trait charges (like 600M) no longer freezes and crashes the game: they are all used instantly.",

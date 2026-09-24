@@ -394,9 +394,18 @@ fn shots(dir: &str) {
             _ => {}
         }
         g.right_panel.update(5.0);
+        g.right_panel.update(5.0); // switching content: the old panel closes first, then the new one opens
         g.draw(m);
         save(&g, name);
     }
+    // v3.0 weekly quests (the first one finished, ready to claim)
+    g.quests_tab = "weekly";
+    g.state.ensure_weekly_missions();
+    let wm = g.state.weekly_missions[0].clone();
+    g.state.weekly_counts.insert(wm.mtype.to_string(), wm.target);
+    g.draw(m);
+    save(&g, "v3_weekly_quests");
+    g.quests_tab = "daily";
     g.right_panel.close();
     g.right_panel.update(5.0);
     g.left_panel.open("bag");
@@ -756,7 +765,7 @@ fn statetest(seed: u64, n: usize) {
         }
     }
     for k in 0..3 {
-        log.push(format!("claim {}", s.claim_daily_mission(k)));
+        log.push(format!("claim {}", s.claim_daily_mission(k).map_or(0, |r| r.charges)));
     }
     // v2.7-v2.9: end-game upgrades, the Shop, potions, selling and bulk rolls
     let pyb = |b: bool| if b { "True" } else { "False" };
