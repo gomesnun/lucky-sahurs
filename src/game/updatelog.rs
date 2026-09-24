@@ -12,6 +12,7 @@ use std::rc::Rc;
 
 pub const UPDATE_LOG: &[(&str, &str, &[&str])] = &[
     ("v3.0.1", "2026-09-24", &[
+        "Windows: the downloaded file installs the game as \"Lucky Verities\" (in your user's Programs folder) with shortcuts on the Desktop and in the Start menu, then opens it. The shortcut is also made on PCs that had the Python version.",
         "Admin menu > Resets: reset one player (search their name) or everyone (a new season). Their saves start again from 0 on every PC and in the cloud, and they leave the leaderboard. Accounts, friends and settings stay.",
         "Rebirths now stop at each Prestige's goal (10, 15, 20, 30 and 40): do the Prestige to keep rebirthing. After Prestige V there's no limit.",
         "The Bag opens as a big page like the Index, with square cards and many more per row.",

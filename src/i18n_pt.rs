@@ -779,6 +779,7 @@ pub const PT: &[(&str, &str)] = &[
     ("Reach Prestige %d.", "Chega ao Prestígio %d."),
     ("Done", "Feito"),
     ("Ready!", "Pronto!"),
+    ("Windows: the downloaded file installs the game as \"Lucky Verities\" (in your user's Programs folder) with shortcuts on the Desktop and in the Start menu, then opens it. The shortcut is also made on PCs that had the Python version.", "Windows: o ficheiro descarregado instala o jogo como \"Lucky Verities\" (na pasta Programas do teu utilizador) com atalhos no Ambiente de Trabalho e no menu Iniciar, e abre-o. O atalho também é criado nos PCs que tinham a versão em Python."),
     ("Resets", "Resets"),
     ("Reset one player", "Recomeçar um jogador"),
     ("Wipes only their saves (cloud and every PC) and takes them off the leaderboard. Their account and friends stay.", "Apaga só os saves dele (nuvem e todos os PCs) e tira-o do ranking. A conta e os amigos ficam."),

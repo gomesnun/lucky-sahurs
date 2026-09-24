@@ -1,4 +1,4 @@
-# Cria os executaveis do Lucky Verities para Windows, Linux e macOS (Apple Silicon + Intel)
+# Cria os executaveis do Lucky Verities para Windows, Linux e macOS (Apple Silicon: M1 a M4)
 # e publica-os numa "Release" do GitHub, de onde os amigos descarregam.
 #
 # Desde a v2.5.0 os executaveis sao a versao em Rust (a raiz do repositorio): o mesmo jogo, mais rapido.
@@ -9,7 +9,7 @@
 # COMO USAR
 #   1) Publicar uma versao:   git tag v2.5.0 && git push origin v2.5.0
 #      (ou no GitHub: Releases > Draft a new release > criar a tag v2.5.0 > Publish)
-#      -> constroi os 4 ficheiros e anexa-os a Release dessa tag.
+#      -> constroi os 3 ficheiros e anexa-os a Release dessa tag.
 #      O numero TEM de ser maior que o da ultima Release, senao ninguem e atualizado.
 #   2) So testar o build:     separador Actions > "Build Lucky Verities" > Run workflow
 #      -> os ficheiros ficam em "Artifacts" no fim da execucao (sem criar Release).
@@ -21,7 +21,7 @@
 #   Sem estas duas definicoes, tudo funciona como antes (Release nesta repo).
 #
 # QUOTA (repo privada): 2000 min/mes; Windows conta 2x e macOS 10x.
-#   Para gastar menos, apaga a linha do "macOS (Intel)" na lista de baixo (poupa cerca de metade).
+#   (o macOS Intel deixou de ser construido na v3.0.1: ninguem o usava e era metade da quota)
 
 name: Build Lucky Verities
 
@@ -44,8 +44,6 @@ jobs:
           - { name: "Windows",                os: windows-latest, asset: "Lucky-Verities-Windows.exe" }
           - { name: "Linux",                  os: ubuntu-24.04,   asset: "Lucky-Verities-Linux.tar.gz" }
           - { name: "macOS (Apple Silicon)",  os: macos-latest,   asset: "Lucky-Verities-macOS-AppleSilicon.zip" }
-          # macos-15-intel e o ultimo runner Intel do GitHub (disponivel ate agosto de 2027).
-          - { name: "macOS (Intel)",          os: macos-15-intel, asset: "Lucky-Verities-macOS-Intel.zip" }
 
     env:
       # Bibliotecas em C que vao DENTRO do executavel (um so ficheiro, como o --onefile do PyInstaller).
@@ -229,14 +227,7 @@ jobs:
           path: release
           merge-multiple: true    # todos os ficheiros ficam juntos na pasta "release"
 
-      # O jogo procura na Release o ficheiro com o nome que ESSA versao conhece (ver online/updater.py).
-      # Quem ainda esta na v2.0.0 ou anterior procura "Lucky-Sahurs-*": sem estas copias, a atualizacao
-      # automatica para a versao com o nome novo falhava e era preciso descarregar a mao.
-      - name: Copias com o nome antigo (para quem ainda tem o Lucky Sahurs instalado)
-        run: |
-          for f in release/Lucky-Verities-*; do
-            cp "$f" "release/$(basename "$f" | sed 's/^Lucky-Verities-/Lucky-Sahurs-/')"
-          done
+      # (ate a v3.0.0 havia aqui copias "Lucky-Sahurs-*" para quem tinha o nome antigo: ja nao ha ninguem nele)
 
       - name: Criar ou atualizar a Release
         run: |
