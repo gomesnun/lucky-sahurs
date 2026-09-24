@@ -18,6 +18,8 @@ use std::rc::Rc;
 const REWARD_ROW_H: i32 = 68;
 const TAB_W: i32 = 150;
 const TAB_H: i32 = 56;
+/// the Rebirth tab, and the Prestige tab under it level with the page's Rebirth button
+const TAB_TOP: i32 = 209;
 const REWARD_GAP: i32 = 8;
 
 /// core/rebirths.format_rebirth_reward
@@ -54,7 +56,7 @@ impl Game {
         for (i, (key, label, icon, color)) in tabs.into_iter().enumerate() {
             let active = self.rebirth_tab == key;
             // the active tab tucks under the panel's edge so it looks attached
-            let r = Rect::new(rect.right() - if active { 16 } else { 8 }, rect.y + 96 + i as i32 * (TAB_H + 10), tab_w + if active { 16 } else { 8 }, TAB_H);
+            let r = Rect::new(rect.right() - if active { 16 } else { 8 }, rect.y + TAB_TOP + i as i32 * (TAB_H + 10), tab_w + if active { 16 } else { 8 }, TAB_H);
             let alert = key == "prestige" && self.state.prestige_available();
             self.button(
                 r,
