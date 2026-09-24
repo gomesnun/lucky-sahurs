@@ -576,20 +576,34 @@ fn shots(dir: &str) {
         g.draw(m);
         save(&g, "n_battle_pick");
         g.start_battle();
-        g.tick_battle(6.0);
+        g.tick_battle(0.9);
         g.draw(m);
+        save(&g, "n_battle_sendout");
+        g.tick_battle(6.0);
+        g.tick_battle(2.0);
+        let t0 = std::time::Instant::now();
+        for _ in 0..10 {
+            g.draw(m);
+        }
+        eprintln!("battle frame: {:.1} ms (average of 10)", t0.elapsed().as_secs_f64() * 100.0);
         save(&g, "n_battle_start");
         g.battle.menu = "fight";
         g.draw(m);
         save(&g, "n_battle_moves");
+        // a Special: "used ...!" (1s), then it charges (0.85s), fires, and hits
         g.battle_use(core::battle::Move::Special);
-        g.tick_battle(1.3);
-        g.tick_battle(0.15);
+        g.tick_battle(1.5);
         g.draw(m);
-        save(&g, "n_battle_attack");
-        g.tick_battle(0.4);
+        save(&g, "n_battle_charge");
+        g.tick_battle(0.55);
+        g.draw(m);
+        save(&g, "n_battle_fire");
+        g.tick_battle(0.35);
         g.draw(m);
         save(&g, "n_battle_hit");
+        g.tick_battle(3.0);
+        g.draw(m);
+        save(&g, "n_battle_attack");
         for _ in 0..200 {
             g.tick_battle(30.0);
             let Some(b) = g.battle.battle.as_ref() else { break };

@@ -5,17 +5,17 @@
 use super::base::Bo;
 use super::{Game, KeyEv, cb};
 use crate::config::VIRTUAL_H;
+use super::battle3d::{SEND_FALL, SPECIAL_ARRIVE, STRIKE_ARRIVE, Shot, Shown, Stage, draw_arena_3d};
 use crate::core::battle::{Action, Battle, Ev, Fighter, MOVES, Move, TEAM_SIZE, move_info, move_name, rival_team};
 use crate::core::data::{PHASES, is_mutation, mut_key, rarities};
 use crate::core::formatting::format_number;
-use crate::gfx::{Color, Rect, Surface, draw, transform};
+use crate::gfx::{Color, Rect, draw, transform};
 use crate::i18n::tr;
 use crate::theme::*;
 use crate::tr;
 use crate::ui::cards::{cell, rarity_glow_color, render_pet_card_phase};
-use crate::ui::drawing::{dim_overlay, draw_panel, ease_out_back, ease_out_cubic, make_vertical_gradient};
+use crate::ui::drawing::{dim_overlay, draw_panel, ease_out_cubic};
 use crate::ui::fonts::{fit_text, wrap_text};
-use crate::ui::icons::load_pet_phase_image;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
@@ -47,6 +47,14 @@ pub struct BattleUi {
     heal_t0: [f64; 2],
     guard_t0: [f64; 2],
     faint_t0: [Option<f64>; 2],
+    lunge_special: [bool; 2],
+    hit_crit: [bool; 2],
+    last_dmg: [i32; 2],
+    dmg_t0: [f64; 2],
+    /// the 3D camera's shot, since when, and the one before (it glides from one to the next)
+    shot: Shot,
+    shot_t0: f64,
+    prev_shot: Shot,
     /// what the win paid (None until the battle is over and paid)
     reward: Option<f64>,
     hover_move: Option<Move>,
@@ -79,6 +87,13 @@ impl BattleUi {
             heal_t0: [far; 2],
             guard_t0: [far; 2],
             faint_t0: [None; 2],
+            lunge_special: [false; 2],
+            hit_crit: [false; 2],
+            last_dmg: [0; 2],
+            dmg_t0: [far; 2],
+            shot: Shot::Idle,
+            shot_t0: 0.0,
+            prev_shot: Shot::Idle,
             reward: None,
             hover_move: None,
             seed: 1,
@@ -97,14 +112,16 @@ impl BattleUi {
     }
 }
 
+/// How long each event plays (the 3D arena's animations are timed to these).
 fn duration(ev: &Ev) -> f64 {
     match ev {
-        Ev::Say(_) => 1.25,
-        Ev::SendOut { .. } => 0.55,
-        Ev::Lunge { .. } => 0.35,
-        Ev::Hit { .. } | Ev::Heal { .. } => 0.65,
-        Ev::Guard { .. } => 0.5,
-        Ev::Faint { .. } => 0.8,
+        Ev::Say(_) => 1.0,
+        Ev::SendOut { .. } => SEND_FALL + 0.6,
+        Ev::Lunge { special, .. } => if *special { SPECIAL_ARRIVE } else { STRIKE_ARRIVE },
+        Ev::Hit { .. } => 1.0,
+        Ev::Heal { .. } => 1.1,
+        Ev::Guard { .. } => 1.0,
+        Ev::Faint { .. } => 1.4,
     }
 }
 
@@ -274,6 +291,21 @@ impl Game {
             }
             let Some(ev) = ui.queue.pop_front() else { break };
             let t = ui.next_start;
+            let new_shot = match &ev {
+                Ev::Say(_) => None,
+                Ev::SendOut { side, .. } => Some(Shot::SendOut(*side)),
+                // a monster's special is a dash, like a Strike
+                Ev::Lunge { side, special } => Some(Shot::Attack(*side, *special)),
+                Ev::Hit { side, .. } => Some(Shot::Impact(*side)),
+                Ev::Heal { side, .. } => Some(Shot::Heal(*side)),
+                Ev::Guard { side } => Some(Shot::Guard(*side)),
+                Ev::Faint { side } => Some(Shot::Faint(*side)),
+            };
+            if let Some(sh) = new_shot {
+                ui.prev_shot = ui.shot;
+                ui.shot = sh;
+                ui.shot_t0 = t;
+            }
             match &ev {
                 Ev::Say(s) => ui.text = s.clone(),
                 Ev::SendOut { side, idx, hp } => {
@@ -283,9 +315,17 @@ impl Game {
                     ui.send_t0[*side] = t;
                     ui.faint_t0[*side] = None;
                 }
-                Ev::Lunge { side } => ui.lunge_t0[*side] = t,
+                Ev::Lunge { side, special } => {
+                    ui.lunge_t0[*side] = t;
+                    ui.lunge_special[*side] = *special;
+                }
                 Ev::Hit { side, hp, .. } | Ev::Heal { side, hp } => {
                     let now = ui.shown_hp(*side);
+                    if let Ev::Hit { crit, .. } = &ev {
+                        ui.hit_crit[*side] = *crit;
+                        ui.last_dmg[*side] = (now - *hp as f64).round() as i32;
+                        ui.dmg_t0[*side] = t;
+                    }
                     ui.hp_from[*side] = now;
                     ui.hp_to[*side] = *hp as f64;
                     ui.hp_t0[*side] = t;
@@ -299,6 +339,13 @@ impl Game {
                 Ev::Faint { side } => ui.faint_t0[*side] = Some(t),
             }
             ui.cur = Some((ev, t));
+        }
+        // waiting for the player: the camera goes back to its slow orbit
+        if !self.battle.busy() && self.battle.shot != Shot::Idle {
+            let ui = &mut self.battle;
+            ui.prev_shot = ui.shot;
+            ui.shot = Shot::Idle;
+            ui.shot_t0 = ui.t;
         }
         // the battle is over and everything was shown: pay the win once
         if !self.battle.busy() && self.battle.reward.is_none() {
@@ -346,8 +393,8 @@ impl Game {
 
     // ---------------------------------------------------------------- drawing
     pub fn draw_battle(&mut self, mouse_pos: (f64, f64)) {
-        let ov = dim_overlay(self.vw, VIRTUAL_H, 185);
-        self.canvas.blit(&ov, 0, 0);
+        // the game isn't drawn under the battle (see draw_game_screen): a plain dark backdrop is enough, and cheap
+        draw::rect(&mut self.canvas, Color::rgb(12, 13, 22), Rect::new(0, crate::config::TOPBAR_H, self.vw, VIRTUAL_H - crate::config::TOPBAR_H), 0, 0);
         // nothing behind the battle can be clicked
         self.buttons.clear();
         self.register_button(Rect::new(0, 0, self.vw, VIRTUAL_H), Rc::new(|_: &mut Game| {}), None);
@@ -449,7 +496,7 @@ impl Game {
         let w = 1000.min(self.vw - 40);
         let h = 700.min(VIRTUAL_H - 40);
         let rect = Rect::with_center(w, h, (self.vw / 2, VIRTUAL_H / 2 + 10));
-        draw_panel(&mut self.canvas, rect, Some(panel()), 16, true, None);
+        draw_panel(&mut self.canvas, rect, Some(panel()), 16, false, None);
         let arena = Rect::new(rect.x + 14, rect.y + 14, w - 28, 450);
         self.draw_battle_arena(arena);
         let bottom = Rect::new(rect.x + 14, arena.bottom() + 12, w - 28, rect.bottom() - 14 - (arena.bottom() + 12));
@@ -462,96 +509,69 @@ impl Game {
     }
 
     fn draw_battle_arena(&mut self, arena: Rect) {
-        // a blocky, Minecraft-like field (icons/battle_bg.png, pixel art scaled up without smoothing); its two
-        // grass-block platforms are where the verities stand
-        let bg = match &self.battle.bg {
-            Some((w, h, s)) if *w == arena.w && *h == arena.h => Some(s.clone()),
-            _ => crate::assets::read("icons/battle_bg.png").and_then(|b| crate::gfx::load_png_bytes(&b)).map(|img| Rc::new(transform::scale(&img, arena.w, arena.h))),
+        let Some(b) = self.battle.battle.as_ref() else { return };
+        let ui = &self.battle;
+        let shown = [0usize, 1].map(|s| {
+            ui.shown[s].map(|i| {
+                let f = &b.teams[s][i];
+                Shown { pet: f.pet, m: f.m, phase: f.phase }
+            })
+        });
+        let st = Stage {
+            t: ui.t,
+            shown,
+            send_t0: ui.send_t0,
+            lunge_t0: ui.lunge_t0,
+            lunge_special: ui.lunge_special,
+            hit_t0: ui.hit_t0,
+            hit_crit: ui.hit_crit,
+            heal_t0: ui.heal_t0,
+            guard_t0: ui.guard_t0,
+            faint_t0: ui.faint_t0,
+            shot: ui.shot,
+            shot_t0: ui.shot_t0,
+            prev_shot: ui.prev_shot,
         };
-        match &bg {
-            Some(s) => {
-                self.canvas.blit(s, arena.x, arena.y);
-                self.battle.bg = Some((arena.w, arena.h, s.clone()));
-            }
-            None => {
-                let sky = make_vertical_gradient(arena.w, arena.h, Color::rgb(120, 166, 250), Color::rgb(110, 180, 90));
-                self.canvas.blit(&sky, arena.x, arena.y);
+        // the 3D arena is drawn at half size and scaled up without smoothing (crisp, blocky pixels)
+        let (lw, lh) = ((arena.w / 2).max(8) as usize, (arena.h / 2).max(8) as usize);
+        let (img, marks) = draw_arena_3d(&st, lw, lh);
+        let big = transform::scale(&img, arena.w, arena.h);
+        self.canvas.blit(&big, arena.x, arena.y);
+        // a white flash on every hit (brighter on a critical one)
+        for side in 0..2 {
+            let d = ui.t - ui.hit_t0[side];
+            if (0.0..0.16).contains(&d) {
+                let mut flash = crate::gfx::Surface::new_alpha(arena.w, arena.h);
+                flash.fill(Color::rgba(255, 255, 255, 255), None);
+                flash.set_alpha(((1.0 - d / 0.16) * if ui.hit_crit[side] { 190.0 } else { 120.0 }) as i32);
+                self.canvas.blit(&flash, arena.x, arena.y);
             }
         }
         draw::rect(&mut self.canvas, outline(), arena, 3, 12);
-        let plat = |cx: f64, cy: f64, pw: i32, ph: i32| Rect::with_center(pw, ph, ((arena.x as f64 + arena.w as f64 * cx) as i32, (arena.y as f64 + arena.h as f64 * cy) as i32));
-        let plats = [plat(0.28, 0.86, 330, 84), plat(0.72, 0.46, 270, 70)];
-        if self.battle.battle.is_none() {
-            return;
-        }
-        self.push_clip(arena);
-        self.draw_battle_fighters(arena, plats);
-        self.pop_clip();
-    }
-
-    fn draw_battle_fighters(&mut self, arena: Rect, plats: [Rect; 2]) {
-        let Some(b) = self.battle.battle.as_ref() else { return };
-        let ui = &self.battle;
-        let t = ui.t;
-        let mut sprites: Vec<(Surface, i32, i32)> = Vec::new();
-        let mut rings: Vec<((i32, i32), i32, Color, f64)> = Vec::new();
-        for side in [1usize, 0] {
-            let Some(idx) = ui.shown[side] else { continue };
-            let f = &b.teams[side][idx];
-            let size = if side == 0 { 300 } else { 220 };
-            let Some(img) = load_pet_phase_image(rarities()[f.pet].pet, f.phase, size, false) else { continue };
-            let mut img: Surface = (*img).clone();
-            let p = plats[side];
-            let mut x = p.centerx() as f64 - size as f64 / 2.0;
-            let mut y = p.centery() as f64 - size as f64 * 0.80;
-            // coming out: slides in from its side
-            let s = ((t - ui.send_t0[side]) / 0.5).clamp(0.0, 1.0);
-            x += (1.0 - ease_out_back(s)) * if side == 0 { -420.0 } else { 420.0 };
-            // attacking: a quick lunge at the other one
-            let l = (t - ui.lunge_t0[side]) / 0.35;
-            if (0.0..1.0).contains(&l) {
-                let k = (l * std::f64::consts::PI).sin();
-                x += k * if side == 0 { 60.0 } else { -60.0 };
-                y += k * if side == 0 { -30.0 } else { 20.0 };
+        // damage numbers float up from whoever got hit
+        let big_font = self.f.big.clone();
+        for side in 0..2 {
+            let d = ui.t - ui.dmg_t0[side];
+            let (Some((hx, hy)), true) = (marks.head[side], (0.0..1.2).contains(&d) && ui.last_dmg[side] > 0) else { continue };
+            let crit = ui.hit_crit[side];
+            let txt = format!("-{}", ui.last_dmg[side]);
+            let col = if crit { Color::rgb(255, 220, 60) } else { Color::rgb(255, 90, 70) };
+            let mut face = (*big_font.render(&txt, col)).clone();
+            let mut edge = (*big_font.render(&txt, Color::rgb(20, 14, 20))).clone();
+            let a = ((1.2 - d) / 0.4).clamp(0.0, 1.0);
+            face.set_alpha((a * 255.0) as i32);
+            edge.set_alpha((a * 255.0) as i32);
+            let x = arena.x + (hx * 2.0) as i32 - face.w / 2;
+            // kept below the rival's name box and inside the arena
+            let y = (arena.y + (hy * 2.0) as i32 - face.h).clamp(arena.y + 120, arena.bottom() - 150) - (d * 50.0) as i32;
+            for (ox, oy) in [(-2, 0), (2, 0), (0, -2), (0, 2)] {
+                self.canvas.blit(&edge, x + ox, y + oy);
             }
-            // hit: shakes and blinks
-            let hit = (t - ui.hit_t0[side]) / 0.5;
-            if (0.0..1.0).contains(&hit) {
-                x += (hit * 45.0).sin() * 10.0 * (1.0 - hit);
-                if ((hit * 10.0) as i32) % 2 == 1 {
-                    img.set_alpha(90);
-                }
-            }
-            // fainted: sinks and fades
-            if let Some(f0) = ui.faint_t0[side] {
-                let k = ((t - f0) / 0.7).clamp(0.0, 1.0);
-                y += k * 70.0;
-                img.set_alpha((255.0 * (1.0 - k)) as i32);
-                if k >= 1.0 {
-                    continue;
-                }
-            }
-            let center = ((x + size as f64 / 2.0) as i32, (y + size as f64 * 0.54) as i32);
-            let g = (t - ui.guard_t0[side]) / 0.5;
-            if (0.0..1.0).contains(&g) {
-                rings.push((center, (size as f64 * (0.32 + 0.1 * g)) as i32, Color::rgb(120, 220, 255), 1.0 - g));
-            }
-            let hl = (t - ui.heal_t0[side]) / 0.6;
-            if (0.0..1.0).contains(&hl) {
-                rings.push((center, (size as f64 * (0.25 + 0.2 * hl)) as i32, Color::rgb(120, 255, 150), 1.0 - hl));
-            }
-            sprites.push((img, x as i32, y as i32));
-        }
-        for (img, x, y) in &sprites {
-            self.canvas.blit(img, *x, *y);
-        }
-        for (c, r, col, a) in rings {
-            let mut s = Surface::new_alpha(r * 2 + 12, r * 2 + 12);
-            draw::circle(&mut s, col, (r + 6, r + 6), r, 5);
-            s.set_alpha((a * 255.0) as i32);
-            self.canvas.blit(&s, c.0 - r - 6, c.1 - r - 6);
+            self.canvas.blit(&face, x, y);
         }
         // name boxes
+        let ui = &self.battle;
+        let Some(b) = ui.battle.as_ref() else { return };
         let boxes = [Rect::new(arena.right() - 24 - 360, arena.bottom() - 24 - 104, 360, 104), Rect::new(arena.x + 24, arena.y + 24, 340, 88)];
         let infos: Vec<(usize, Fighter, f64, Vec<Fighter>)> =
             [1usize, 0].iter().filter_map(|&side| ui.shown[side].map(|idx| (side, b.teams[side][idx].clone(), ui.shown_hp(side), b.teams[side].clone()))).collect();
@@ -561,7 +581,7 @@ impl Game {
     }
 
     fn draw_battle_namebox(&mut self, r: Rect, f: &Fighter, hp: f64, mine: bool, team: &[Fighter]) {
-        draw_panel(&mut self.canvas, r, Some(Color::rgb(248, 246, 236)), 12, true, None);
+        draw_panel(&mut self.canvas, r, Some(Color::rgb(248, 246, 236)), 12, false, None);
         draw::rect(&mut self.canvas, Color::rgb(60, 64, 80), r, 3, 12);
         let sb = self.f.small_b.clone();
         let tiny_b = self.f.tiny_b.clone();

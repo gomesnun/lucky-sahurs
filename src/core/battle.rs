@@ -146,8 +146,8 @@ pub enum Ev {
     Say(String),
     /// side sends out team member idx, which has hp left
     SendOut { side: usize, idx: usize, hp: i32 },
-    /// side lunges at the other one
-    Lunge { side: usize },
+    /// side attacks the other one (special = its Special move, not a Strike)
+    Lunge { side: usize, special: bool },
     /// side was hit and now has hp left
     Hit { side: usize, hp: i32, crit: bool },
     Heal { side: usize, hp: i32 },
@@ -282,7 +282,7 @@ impl Battle {
                         if mv == Move::Special {
                             self.teams[side][self.active[side]].special_pp -= 1;
                         }
-                        evs.push(Ev::Lunge { side });
+                        evs.push(Ev::Lunge { side, special: mv == Move::Special });
                         if self.roll() > accuracy {
                             evs.push(Ev::Say(tr!("%s missed!", who(self, side))));
                             return;

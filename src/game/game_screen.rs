@@ -77,6 +77,16 @@ impl Game {
     }
 
     pub fn draw_game_screen(&mut self, mouse_pos: (f64, f64)) {
+        if self.battle.open && !self.tutorial_active() {
+            // the battle covers the whole screen: skip drawing the game under it (the 3D arena needs the time)
+            self.draw_topbar(mouse_pos);
+            self.draw_battle(mouse_pos);
+            if self.update_modal_active() {
+                self.draw_update_modal(mouse_pos);
+            }
+            self.draw_toast();
+            return;
+        }
         self.draw_verity_rain(); // v3.0: your verities drifting down behind everything
         self.draw_topbar(mouse_pos);
         self.draw_main(mouse_pos);

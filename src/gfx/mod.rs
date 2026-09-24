@@ -2,6 +2,7 @@
 
 pub mod draw;
 pub mod glow;
+pub mod r3d;
 pub mod rect;
 pub mod surface;
 pub mod text;
