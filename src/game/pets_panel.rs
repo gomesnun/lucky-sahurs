@@ -234,6 +234,10 @@ impl Game {
         self.panel_header(full, &tr("Bag"), mouse_pos, Rc::new(|g: &mut Game| g.left_panel.close()));
         let sub = self.f.small.render(&tr!("%d/%d slots  ·  %s $/sec", self.state.equipped.len() as i64, self.state.max_slots(), format_number(self.state.income_per_second())), grey());
         self.canvas.blit(&sub, full.x + 22, full.y + 50);
+        if full.w >= 760 {
+            self.draw_bag_page_body(full, mouse_pos);
+            return;
+        }
         // wide (the page): the buttons in two columns across the top, the grid (all the width) below
         let wide = full.w >= 760;
         let half_w = full.w / 2;
@@ -334,12 +338,166 @@ impl Game {
         self.draw_scrollbar(content, scroll, content_h, Some("left"), Some(mouse_pos));
     }
 
+    fn set_bag_view(&mut self, view: &'static str) {
+        self.bag_view = view;
+        self.left_panel.scroll.insert(Some("bag"), 0.0);
+    }
+
+    /// v3.0.3, the Bag page: tabs (Equipped / Inventory / Potions) on the left of one row and the equip buttons on
+    /// its right, the Inventory filters in one row under it, then the cards.
+    fn draw_bag_page_body(&mut self, full: Rect, mouse_pos: (f64, f64)) {
+        let pad = 22;
+        let sb = self.f.small_b.clone();
+        let y = full.y + 80;
+        let h = 38;
+        let n_inv = self.state.owned.values().filter(|n| **n > 0).count() as i64;
+        let n_pot: i64 = self.state.shop.potions.values().sum();
+        let tabs: [(&'static str, String, &'static str); 3] = [
+            ("equipped", tr!("Equipped %d/%d", self.state.equipped.len() as i64, self.state.max_slots()), "bag"),
+            ("inventory", tr!("Inventory (%d)", n_inv), "index"),
+            ("potions", if n_pot > 0 { tr!("Potions (%d)", n_pot) } else { tr("Potions") }, "shop/potion_luck"),
+        ];
+        let tab_w = 200.min((full.w - pad * 2 - 16) / 5);
+        let mut x = full.x + pad;
+        for (key, label, icon) in tabs {
+            let on = self.bag_view == key;
+            self.button(
+                Rect::new(x, y, tab_w, h),
+                &label,
+                &sb,
+                mouse_pos,
+                if on { accent() } else { panel_light() },
+                if on { accent() } else { panel_lighter() },
+                if on { BLACK } else { WHITE },
+                cb(move |g| g.set_bag_view(key)),
+                Bo::r(10).icon(icon),
+            );
+            x += tab_w + 8;
+        }
+        // the equip buttons, on the right of the same row
+        let act_w = 190;
+        let mut rx = full.right() - pad - act_w;
+        if self.state.auto_equip_unlocked() {
+            let on = self.state.auto_equip_best_on;
+            self.button(
+                Rect::new(rx, y, act_w, h),
+                &tr!("Auto Equip Best: %s", if on { tr("ON") } else { tr("OFF") }),
+                &sb,
+                mouse_pos,
+                if on { Color::rgb(52, 120, 80) } else { panel_light() },
+                panel_lighter(),
+                WHITE,
+                cb(|g| {
+                    g.state.auto_equip_best_on = !g.state.auto_equip_best_on;
+                    if g.state.auto_equip_best_on {
+                        g.state.equip_best();
+                    }
+                }),
+                Bo::r(10),
+            );
+            rx -= act_w + 8;
+        }
+        if rx >= x {
+            self.button(
+                Rect::new(rx, y, act_w, h),
+                &tr("Equip Best"),
+                &sb,
+                mouse_pos,
+                Color::rgb(52, 120, 80),
+                Color::rgb(66, 150, 100),
+                WHITE,
+                cb(|g| {
+                    g.state.equip_best();
+                    g.show_toast(&tr("Equipped your best money-makers!"), 1.8);
+                }),
+                Bo::r(10).sfx(Some("equip")),
+            );
+        }
+        let mut bottom = y + h;
+        if self.bag_view == "inventory" {
+            bottom = self.draw_inventory_filter_row(Rect::new(full.x + pad, bottom + 10, full.w - pad * 2, 32), mouse_pos);
+        }
+        draw::rect(&mut self.canvas, panel_light(), Rect::new(full.x + pad, bottom + 12, full.w - pad * 2, 2), 0, 0);
+        let content_top = bottom + 20;
+        let content = Rect::new(full.x, content_top, full.w, full.bottom() - 10 - content_top);
+        let scroll = self.left_panel.get_scroll();
+        self.push_clip(content);
+        let content_h = match self.bag_view {
+            "potions" => self.draw_bag_potions(full, content, scroll, mouse_pos) as f64,
+            "inventory" => self.draw_bag_inventory(full, content, scroll, mouse_pos),
+            _ => self.draw_bag_equipped(full, content, scroll, mouse_pos, pad),
+        };
+        self.left_panel.set_max_scroll((content_h - content.h as f64).max(0.0));
+        self.pop_clip();
+        self.draw_scrollbar(content, scroll, content_h, Some("left"), Some(mouse_pos));
+    }
+
+    /// The Inventory's sort and filters in one row: [Sort] [Order] [< Mutation >] [< Rarity >].
+    fn draw_inventory_filter_row(&mut self, row: Rect, mouse_pos: (f64, f64)) -> i32 {
+        let gap = 8;
+        let sb = self.f.small_b.clone();
+        let tb = self.f.tiny_b.clone();
+        let font_for = |label: &str, width: i32| -> Font { if sb.size(label).0 <= width - 10 { sb.clone() } else { tb.clone() } };
+        let unit = (row.w - gap * 3) / 10;
+        let (sort_w, order_w, pick_w) = (unit * 2, unit * 2, (row.w - gap * 3 - unit * 4) / 2);
+        let (y, h) = (row.y, row.h);
+        let mut x = row.x;
+        let sort_name = INV_SORTS.iter().find(|(k, _)| *k == self.inv_sort).map(|(_, l)| *l).unwrap_or("Money");
+        let sort_label = tr!("Sort: %s", tr(sort_name));
+        self.button(Rect::new(x, y, sort_w, h), &sort_label, &font_for(&sort_label, sort_w), mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.cycle_inv_sort()), Bo::r(8));
+        x += sort_w + gap;
+        let order_label = if self.inv_high_first { tr("Highest first") } else { tr("Lowest first") };
+        self.button(Rect::new(x, y, order_w, h), &order_label, &font_for(&order_label, order_w), mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.toggle_inv_order()), Bo::r(8));
+        x += order_w + gap;
+        let arrow_w = 30;
+        // mutation picker
+        let mut_name = INV_MUT_FILTERS.iter().find(|(k, _)| *k == self.inv_mut).map(|(_, l)| *l).unwrap_or("All");
+        let label = tr!("Mutation: %s", tr(mut_name));
+        let active = self.inv_mut != "all";
+        self.button(Rect::new(x, y, arrow_w, h), "<", &sb, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.step_inv_mut(-1)), Bo::r(8));
+        let mid = Rect::new(x + arrow_w + 4, y, pick_w - 2 * (arrow_w + 4), h);
+        self.button(
+            mid,
+            &label,
+            &font_for(&label, mid.w),
+            mouse_pos,
+            if active { accent() } else { panel_light() },
+            if active { accent_hover() } else { panel_lighter() },
+            if active { BLACK } else { WHITE },
+            cb(|g| g.step_inv_mut(1)),
+            Bo::r(8),
+        );
+        if self.inv_mut == "rainbow" {
+            draw_rainbow_border(&mut self.canvas, mid.inflate(-6, -6), 6, 2);
+        }
+        self.button(Rect::new(x + pick_w - arrow_w, y, arrow_w, h), ">", &sb, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.step_inv_mut(1)), Bo::r(8));
+        x += pick_w + gap;
+        // rarity picker
+        let (label, base, text_color) = match self.inv_tier {
+            None => (tr("Rarity: All"), panel_light(), WHITE),
+            Some(t) => {
+                let tier = &RARITY_TIERS[t];
+                (tr!("Rarity: %s", tr(tier.name)), tier.color, tier.text)
+            }
+        };
+        let hover = if self.inv_tier.is_none() { panel_lighter() } else { base };
+        self.button(Rect::new(x, y, arrow_w, h), "<", &sb, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.step_inv_tier(-1)), Bo::r(8));
+        let mid = Rect::new(x + arrow_w + 4, y, pick_w - 2 * (arrow_w + 4), h);
+        self.button(mid, &label, &font_for(&label, mid.w), mouse_pos, base, hover, text_color, cb(|g| g.step_inv_tier(1)), Bo::r(8));
+        self.button(Rect::new(x + pick_w - arrow_w, y, arrow_w, h), ">", &sb, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.step_inv_tier(1)), Bo::r(8));
+        y + h
+    }
+
     fn draw_bag_equipped(&mut self, rect: Rect, content: Rect, scroll: f64, mouse_pos: (f64, f64), pad: i32) -> f64 {
-        let gap = 12;
-        let cols = 2.max((rect.w - pad * 2 - 6 + gap) / (170 + gap));
-        let card = (rect.w - pad * 2 - gap * (cols - 1) - 6) / cols;
+        let gap = 14;
         let n_slots = self.state.max_slots() as i32;
-        let top_y = content.top() as f64 + 6.0 - scroll;
+        let fit = 2.max((rect.w - pad * 2 - 6 + gap) / (170 + gap));
+        let cols = fit.min(n_slots.max(1));
+        let card = ((rect.w - pad * 2 - gap * (fit - 1) - 6) / fit).max(150).min(if rect.w >= 760 { 230 } else { i32::MAX });
+        // the cards in the middle of the page (with few slots they used to sit on the left, the rest empty)
+        let row_w = cols * card + (cols - 1) * gap;
+        let x0 = if rect.w >= 760 { rect.x + (rect.w - row_w) / 2 } else { rect.x + pad };
+        let top_y = content.top() as f64 + 10.0 - scroll;
         let mut order: Vec<usize> = (0..self.state.equipped.len()).collect();
         {
             let st = &self.state;
@@ -351,7 +509,7 @@ impl Game {
         }
         for i in 0..n_slots.max(0) {
             let (col, row) = (i % cols, i / cols);
-            let crect = Rect::new(rect.x + pad + col * (card + gap), ti(top_y + (row * (card + gap)) as f64), card, card);
+            let crect = Rect::new(x0 + col * (card + gap), ti(top_y + (row * (card + gap)) as f64), card, card);
             if crect.bottom() < content.top() - 4 || crect.top() > content.bottom() + 4 {
                 continue;
             }
@@ -367,18 +525,32 @@ impl Game {
                 }
                 self.register_button(crect, Rc::new(move |g: &mut Game| g.state.remove_slot_at(actual)), Some("equip"));
             } else {
-                draw_panel(&mut self.canvas, crect, Some(panel_light()), 12, false, None);
+                // an empty slot: click it to pick a pet in the Inventory
+                let hover = crect.collidepoint(mouse_pos) && content.collidepoint(mouse_pos);
+                draw_panel(&mut self.canvas, crect, Some(if hover { panel_lighter() } else { panel_light() }), 12, false, None);
+                let plus = self.f.big.render("+", if hover { WHITE } else { grey_dim() });
+                let (cx, cy) = crect.center();
+                blit_center(&mut self.canvas, &plus, (cx, cy - 10));
                 let t = self.f.small.render(&tr("empty"), grey_dim());
-                blit_center(&mut self.canvas, &t, crect.center());
+                blit_center(&mut self.canvas, &t, (cx, cy + 22));
+                self.register_button(crect, Rc::new(|g: &mut Game| g.set_bag_view("inventory")), Some("click"));
             }
         }
         let rows = (n_slots + cols - 1) / cols;
-        let mut info_y = top_y + (rows * (card + gap)) as f64 + 4.0;
-        let tiny = self.f.tiny.clone();
-        for line in wrap_text(&tr("Click a pet to remove it. Open the Inventory to equip more."), &tiny, rect.w - pad * 2) {
-            let t = tiny.render(&line, grey());
-            self.canvas.blit(&t, rect.x + pad, ti(info_y));
-            info_y += 16.0;
+        let mut info_y = top_y + (rows * (card + gap)) as f64 + 8.0;
+        let small = self.f.small.clone();
+        let mut hint = tr("Click a pet to remove it. Open the Inventory to equip more.");
+        if !self.state.auto_equip_unlocked() {
+            hint = format!("{}  {}", hint, tr("Auto Equip Best is unlocked in Upgrades (Misc)."));
+        }
+        for line in wrap_text(&hint, &small, rect.w - pad * 2) {
+            let t = small.render(&line, grey_dim());
+            if rect.w >= 760 {
+                blit_center(&mut self.canvas, &t, (rect.centerx(), ti(info_y) + t.h / 2));
+            } else {
+                self.canvas.blit(&t, rect.x + pad, ti(info_y));
+            }
+            info_y += 20.0;
         }
         (info_y + scroll - content.top() as f64) + 10.0
     }

@@ -598,6 +598,10 @@ fn shots(dir: &str) {
     g.bag_view = "inventory";
     g.draw(m);
     save(&g, "n_bag_inventory");
+    g.bag_view = "equipped"; // few slots: the cards sit in the middle
+    g.draw(m);
+    save(&g, "n_bag_equipped");
+    g.bag_view = "inventory";
     g.open_sell(0, "normal");
     g.sell.field.set_text("3");
     g.draw(m);

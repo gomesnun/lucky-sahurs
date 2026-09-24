@@ -11,6 +11,9 @@ use crate::ui::fonts::wrap_text;
 use std::rc::Rc;
 
 pub const UPDATE_LOG: &[(&str, &str, &[&str])] = &[
+    ("v3.0.4", "2026-09-24", &[
+        "The Bag page was redone: Equipped / Inventory / Potions tabs, Equip Best on the right, the Inventory filters in one row, the equipped cards in the middle (click an empty slot to equip one), and clicking outside closes it.",
+    ]),
     ("v3.0.3", "2026-09-24", &[
         "Windows: the game no longer uses PowerShell to make its shortcuts and no longer opens a second copy of itself, which made antivirus (Avast, Windows Defender) block it and the game close. It still installs itself as \"Lucky Verities\" with Desktop and Start menu shortcuts.",
         "Email codes and the shared leaderboard use new, working links.",

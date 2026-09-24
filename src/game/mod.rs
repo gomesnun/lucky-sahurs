@@ -839,6 +839,8 @@ impl Game {
             self.close_shop();
         } else if self.rebirth_open && self.screen_mode == "game" {
             self.close_rebirth();
+        } else if self.left_panel.is_open() && self.screen_mode == "game" {
+            self.left_panel.close(); // the Bag page
         } else {
             return;
         }
