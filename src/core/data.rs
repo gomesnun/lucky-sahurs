@@ -354,7 +354,7 @@ pub fn upgrade_defs() -> &'static [UpgradeDef] {
             u("money_ultra", "Ultimate Money", l("+%g%% money/sec per level (multiplies with the other Money upgrades).", a![25.0]), 40, 100000000000000.0, 1.479, Some("money_prism"), 25, 0),
             u("slots", "Equip Slots", p("+1 slot to equip pets."), 20, 300.0, 2.448, None, 1, 0),
             u("slots_plus", "Extra Slots", p("+1 slot to equip pets, once your Slots are maxed out."), 15, 20000000000.0, 2.652, Some("slots"), 20, 0),
-            u("auto_unlock", "Auto Roller", l("Unlocks the Auto Roller (needs Rebirth %d): rolls by itself while turned on.", a![2i64]), 1, 120000.0, 1.0, None, 1, 2),
+            u("auto_unlock", "Auto Roller", l("Unlocks the Auto Roller (needs Rebirth %d): rolls by itself while turned on. Never resets on Rebirth.", a![2i64]), 1, 120000.0, 1.0, None, 1, 2),
             u("auto_speed", "Auto Speed", l("+%g%% Auto Roller speed per level.", a![22.0]), 40, 25000.0, 1.4484, Some("auto_unlock"), 1, 0),
             u("auto_turbo", "Auto Turbo", l("+%g%% Auto Roller speed per level (multiplies).", a![28.000000000000004]), 25, 50000000000.0, 1.53, Some("auto_speed"), 20, 0),
             u("golden_unlock", "Unlock Golden", p("Allows Golden mutations to appear on rolls (x3 money)."), 1, 2000.0, 1.0, None, 1, 0),
@@ -370,7 +370,7 @@ pub fn upgrade_defs() -> &'static [UpgradeDef] {
             u("trait_charge_luck_2", "Trait Charge Luck II", p("+10% extra (relative) chance of getting 1 trait charge per roll, per level."), 15, 1000000000.0, 1.887, Some("trait_charge_luck"), 18, 0),
             u("trait_rarity_luck", "Trait Luck", p("+9% weight to traits from Instinctive (the 3rd) upward when you roll a trait, per level."), 20, 20000.0, 1.836, None, 1, 0),
             u("trait_rarity_luck_2", "Trait Luck II", p("+15% weight to traits from Instinctive upward when you roll a trait, per level."), 15, 8000000000.0, 1.938, Some("trait_rarity_luck"), 20, 0),
-            u("golden_roll_unlock", "Unlock Golden Roll", p("Unlocks the Golden Roll cycle: every so many rolls, the next roll gets x10 luck."), 1, 25000.0, 1.0, None, 1, 0),
+            u("golden_roll_unlock", "Unlock Golden Roll", p("Unlocks the Golden Roll cycle: every so many rolls, the next roll gets x10 luck. Never resets on Rebirth."), 1, 25000.0, 1.0, None, 1, 0),
             u("cyclic_every", "Short Cycle", l("-1 roll in the Golden Roll cycle per level (minimum %d rolls).", a![10i64]), 4, 50000000.0, 5.1, Some("golden_roll_unlock"), 1, 0),
             u("cyclic_power", "Strong Golden Roll", p("+1 to the Golden Roll multiplier per level."), 10, 1000000000.0, 2.448, Some("cyclic_every"), 3, 0),
             u("diamond_roll_unlock", "Unlock Diamond Roll", p("Unlocks the Diamond Roll cycle: every so many rolls, the next roll gets a massive luck boost."), 1, 20000000000.0, 1.0, Some("cyclic_power"), 5, 0),
@@ -422,7 +422,7 @@ pub fn upgrade_category(key: &str) -> Option<&'static UpgradeCategory> {
 pub const BASE_SLOTS: i64 = 3;
 
 /// upgrades a Rebirth NEVER resets (not even the first ones, before "Rebirth Master")
-pub const KEEP_ON_REBIRTH: [&str; 2] = ["auto_upgrade_unlock", "auto_trait_unlock"];
+pub const KEEP_ON_REBIRTH: [&str; 4] = ["auto_upgrade_unlock", "auto_trait_unlock", "auto_unlock", "golden_roll_unlock"];
 /// upgrades a Prestige doesn't reset either (the automation)
 pub const KEEP_ON_PRESTIGE: [&str; 2] = ["auto_upgrade_unlock", "auto_trait_unlock"];
 /// how often the Auto Trait Roller spends your charges

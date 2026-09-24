@@ -12,6 +12,7 @@ use std::rc::Rc;
 
 pub const UPDATE_LOG: &[(&str, &str, &[&str])] = &[
     ("v3.0.4", "2026-09-24", &[
+        "The Auto Roller and the Golden Roll unlocks no longer reset on Rebirth (like the Auto Upgrader). Their levels (Auto Speed, Short Cycle...) still do.",
         "The Bag page was redone: Equipped / Inventory / Potions tabs, Equip Best on the right, the Inventory filters in one row, the equipped cards in the middle (click an empty slot to equip one), and clicking outside closes it.",
     ]),
     ("v3.0.3", "2026-09-24", &[

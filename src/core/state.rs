@@ -2130,6 +2130,23 @@ mod prestige_tests {
     }
 
     #[test]
+    fn rebirth_keeps_the_unlocks_not_their_levels() {
+        let mut s = GameState::new();
+        s.rebirths = 3;
+        s.coins = 1e300;
+        for k in ["auto_unlock", "golden_roll_unlock", "auto_upgrade_unlock", "auto_speed", "cyclic_every", "luck"] {
+            s.upgrades[upgrade_index(k)] = 1;
+        }
+        assert!(s.do_rebirth());
+        for k in ["auto_unlock", "golden_roll_unlock", "auto_upgrade_unlock"] {
+            assert_eq!(s.upgrade_level(k), 1, "{k} should stay");
+        }
+        for k in ["auto_speed", "cyclic_every", "luck"] {
+            assert_eq!(s.upgrade_level(k), 0, "{k} should reset");
+        }
+    }
+
+    #[test]
     fn golden_roll_needs_its_unlock() {
         let mut s = GameState::new();
         for _ in 0..50 {
