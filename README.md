@@ -80,40 +80,40 @@ Pick your platform. The fastest way is the ready-made download.
 
 Any distro, any glibc: paste the line for yours into a terminal. It installs what the build needs, installs Rust
 (through [rustup](https://rustup.rs), in your home folder), downloads the game, builds it and puts the program at
-`~/.local/bin/lucky-verities`. Then start it with `lucky-verities` (or `~/.local/bin/lucky-verities`). Running the
+`~/.local/bin/lucky-verities`, then starts it. Next time, start it with `~/.local/bin/lucky-verities` (or just `lucky-verities` after logging out and back in). Running the
 same line again updates it. Your saves are kept either way.
 
 **Ubuntu / Debian / Mint / Pop!_OS**
 ```bash
-sudo apt update; sudo apt install -y git curl build-essential pkg-config libsdl2-dev libfreetype-dev libharfbuzz-dev && curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && . "$HOME/.cargo/env" && { git clone --depth 1 https://github.com/gomesnun/lucky-verities ~/lucky-verities || git -C ~/lucky-verities pull; } && cd ~/lucky-verities && cargo build --release && install -Dm755 target/release/lucky-verities ~/.local/bin/lucky-verities
+sudo apt update; sudo apt install -y git curl build-essential pkg-config libsdl2-dev libfreetype-dev libharfbuzz-dev && curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && . "$HOME/.cargo/env" && { git clone --depth 1 https://github.com/gomesnun/lucky-verities ~/lucky-verities || git -C ~/lucky-verities pull; } && cd ~/lucky-verities && cargo build --release && install -Dm755 target/release/lucky-verities ~/.local/bin/lucky-verities && ~/.local/bin/lucky-verities
 ```
 **Fedora**
 ```bash
-sudo dnf install -y git curl gcc gcc-c++ make pkgconf-pkg-config SDL2-devel freetype-devel harfbuzz-devel && curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && . "$HOME/.cargo/env" && { git clone --depth 1 https://github.com/gomesnun/lucky-verities ~/lucky-verities || git -C ~/lucky-verities pull; } && cd ~/lucky-verities && cargo build --release && install -Dm755 target/release/lucky-verities ~/.local/bin/lucky-verities
+sudo dnf install -y git curl gcc gcc-c++ make pkgconf-pkg-config SDL2-devel freetype-devel harfbuzz-devel && curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && . "$HOME/.cargo/env" && { git clone --depth 1 https://github.com/gomesnun/lucky-verities ~/lucky-verities || git -C ~/lucky-verities pull; } && cd ~/lucky-verities && cargo build --release && install -Dm755 target/release/lucky-verities ~/.local/bin/lucky-verities && ~/.local/bin/lucky-verities
 ```
 **Arch / Manjaro / EndeavourOS**
 ```bash
-sudo pacman -S --needed --noconfirm git curl base-devel pkgconf sdl2 freetype2 harfbuzz && curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && . "$HOME/.cargo/env" && { git clone --depth 1 https://github.com/gomesnun/lucky-verities ~/lucky-verities || git -C ~/lucky-verities pull; } && cd ~/lucky-verities && cargo build --release && install -Dm755 target/release/lucky-verities ~/.local/bin/lucky-verities
+sudo pacman -S --needed --noconfirm git curl base-devel pkgconf sdl2 freetype2 harfbuzz && curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && . "$HOME/.cargo/env" && { git clone --depth 1 https://github.com/gomesnun/lucky-verities ~/lucky-verities || git -C ~/lucky-verities pull; } && cd ~/lucky-verities && cargo build --release && install -Dm755 target/release/lucky-verities ~/.local/bin/lucky-verities && ~/.local/bin/lucky-verities
 ```
 **openSUSE**
 ```bash
-sudo zypper install -y git curl gcc gcc-c++ make pkg-config SDL2-devel freetype2-devel harfbuzz-devel && curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && . "$HOME/.cargo/env" && { git clone --depth 1 https://github.com/gomesnun/lucky-verities ~/lucky-verities || git -C ~/lucky-verities pull; } && cd ~/lucky-verities && cargo build --release && install -Dm755 target/release/lucky-verities ~/.local/bin/lucky-verities
+sudo zypper install -y git curl gcc gcc-c++ make pkg-config SDL2-devel freetype2-devel harfbuzz-devel && curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && . "$HOME/.cargo/env" && { git clone --depth 1 https://github.com/gomesnun/lucky-verities ~/lucky-verities || git -C ~/lucky-verities pull; } && cd ~/lucky-verities && cargo build --release && install -Dm755 target/release/lucky-verities ~/.local/bin/lucky-verities && ~/.local/bin/lucky-verities
 ```
 **Void**
 ```bash
-sudo xbps-install -Sy git curl base-devel pkg-config SDL2-devel freetype-devel harfbuzz-devel && curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && . "$HOME/.cargo/env" && { git clone --depth 1 https://github.com/gomesnun/lucky-verities ~/lucky-verities || git -C ~/lucky-verities pull; } && cd ~/lucky-verities && cargo build --release && install -Dm755 target/release/lucky-verities ~/.local/bin/lucky-verities
+sudo xbps-install -Sy git curl base-devel pkg-config SDL2-devel freetype-devel harfbuzz-devel && curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && . "$HOME/.cargo/env" && { git clone --depth 1 https://github.com/gomesnun/lucky-verities ~/lucky-verities || git -C ~/lucky-verities pull; } && cd ~/lucky-verities && cargo build --release && install -Dm755 target/release/lucky-verities ~/.local/bin/lucky-verities && ~/.local/bin/lucky-verities
 ```
 **Alpine**
 ```bash
-sudo apk add git curl build-base pkgconf sdl2-dev freetype-dev harfbuzz-dev && curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && . "$HOME/.cargo/env" && { git clone --depth 1 https://github.com/gomesnun/lucky-verities ~/lucky-verities || git -C ~/lucky-verities pull; } && cd ~/lucky-verities && cargo build --release && install -Dm755 target/release/lucky-verities ~/.local/bin/lucky-verities
+sudo apk add git curl build-base pkgconf sdl2-dev freetype-dev harfbuzz-dev && curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && . "$HOME/.cargo/env" && { git clone --depth 1 https://github.com/gomesnun/lucky-verities ~/lucky-verities || git -C ~/lucky-verities pull; } && cd ~/lucky-verities && cargo build --release && install -Dm755 target/release/lucky-verities ~/.local/bin/lucky-verities && ~/.local/bin/lucky-verities
 ```
 **Gentoo**
 ```bash
-sudo emerge --noreplace dev-vcs/git net-misc/curl dev-util/pkgconf media-libs/libsdl2 media-libs/freetype media-libs/harfbuzz && curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && . "$HOME/.cargo/env" && { git clone --depth 1 https://github.com/gomesnun/lucky-verities ~/lucky-verities || git -C ~/lucky-verities pull; } && cd ~/lucky-verities && cargo build --release && install -Dm755 target/release/lucky-verities ~/.local/bin/lucky-verities
+sudo emerge --noreplace dev-vcs/git net-misc/curl dev-util/pkgconf media-libs/libsdl2 media-libs/freetype media-libs/harfbuzz && curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && . "$HOME/.cargo/env" && { git clone --depth 1 https://github.com/gomesnun/lucky-verities ~/lucky-verities || git -C ~/lucky-verities pull; } && cd ~/lucky-verities && cargo build --release && install -Dm755 target/release/lucky-verities ~/.local/bin/lucky-verities && ~/.local/bin/lucky-verities
 ```
 **NixOS** (nothing is installed system-wide)
 ```bash
-{ git clone --depth 1 https://github.com/gomesnun/lucky-verities ~/lucky-verities || git -C ~/lucky-verities pull; } && cd ~/lucky-verities && nix-shell -p cargo rustc gcc pkg-config SDL2 freetype harfbuzz --run 'cargo build --release' && install -Dm755 target/release/lucky-verities ~/.local/bin/lucky-verities
+{ git clone --depth 1 https://github.com/gomesnun/lucky-verities ~/lucky-verities || git -C ~/lucky-verities pull; } && cd ~/lucky-verities && nix-shell -p cargo rustc gcc pkg-config SDL2 freetype harfbuzz --run 'cargo build --release' && install -Dm755 target/release/lucky-verities ~/.local/bin/lucky-verities && ~/.local/bin/lucky-verities
 ```
 
 Installed copies update themselves: when a newer release is out, the game offers the update on launch.
