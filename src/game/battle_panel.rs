@@ -51,6 +51,8 @@ pub struct BattleUi {
     reward: Option<f64>,
     hover_move: Option<Move>,
     seed: u64,
+    /// the arena background, scaled to the arena (w, h, image)
+    bg: Option<(i32, i32, crate::gfx::Surf)>,
 }
 
 impl BattleUi {
@@ -80,6 +82,7 @@ impl BattleUi {
             reward: None,
             hover_move: None,
             seed: 1,
+            bg: None,
         }
     }
 
@@ -459,20 +462,25 @@ impl Game {
     }
 
     fn draw_battle_arena(&mut self, arena: Rect) {
-        // sky and grass
-        let sky_h = (arena.h as f64 * 0.58) as i32;
-        let sky = make_vertical_gradient(arena.w, sky_h, Color::rgb(92, 150, 228), Color::rgb(188, 222, 250));
-        let grass = make_vertical_gradient(arena.w, arena.h - sky_h, Color::rgb(126, 200, 110), Color::rgb(70, 140, 80));
-        self.canvas.blit(&sky, arena.x, arena.y);
-        self.canvas.blit(&grass, arena.x, arena.y + sky_h);
+        // a blocky, Minecraft-like field (icons/battle_bg.png, pixel art scaled up without smoothing); its two
+        // grass-block platforms are where the verities stand
+        let bg = match &self.battle.bg {
+            Some((w, h, s)) if *w == arena.w && *h == arena.h => Some(s.clone()),
+            _ => crate::assets::read("icons/battle_bg.png").and_then(|b| crate::gfx::load_png_bytes(&b)).map(|img| Rc::new(transform::scale(&img, arena.w, arena.h))),
+        };
+        match &bg {
+            Some(s) => {
+                self.canvas.blit(s, arena.x, arena.y);
+                self.battle.bg = Some((arena.w, arena.h, s.clone()));
+            }
+            None => {
+                let sky = make_vertical_gradient(arena.w, arena.h, Color::rgb(120, 166, 250), Color::rgb(110, 180, 90));
+                self.canvas.blit(&sky, arena.x, arena.y);
+            }
+        }
         draw::rect(&mut self.canvas, outline(), arena, 3, 12);
         let plat = |cx: f64, cy: f64, pw: i32, ph: i32| Rect::with_center(pw, ph, ((arena.x as f64 + arena.w as f64 * cx) as i32, (arena.y as f64 + arena.h as f64 * cy) as i32));
         let plats = [plat(0.28, 0.86, 330, 84), plat(0.72, 0.46, 270, 70)];
-        for p in plats {
-            draw::ellipse(&mut self.canvas, Color::rgb(64, 120, 70), p, 0);
-            draw::ellipse(&mut self.canvas, Color::rgb(150, 210, 130), p.inflate(-16, -14), 0);
-            draw::ellipse(&mut self.canvas, Color::rgb(64, 120, 70), p, 3);
-        }
         if self.battle.battle.is_none() {
             return;
         }
