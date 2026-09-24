@@ -1,6 +1,8 @@
 //! Full-screen cutscene when catching a Secret+ pet (ui/cutscene_panel.py).
 
-use super::Game;
+use super::base::Bo;
+use super::{Game, cb};
+use crate::theme::WHITE;
 use crate::config::VIRTUAL_H;
 use crate::core::data::{TIER_SECRET, mutation, rarities};
 use crate::core::formatting::format_number;
@@ -118,7 +120,17 @@ impl Game {
         }
     }
 
-    pub fn draw_cutscene(&mut self, _mouse_pos: (f64, f64)) {
+    /// The button inside a cutscene: no more cutscenes for this rarity (Options > Game turns them back on).
+    pub fn turn_off_cutscenes(&mut self, key: &'static str) {
+        self.settings.set_bool(&format!("cutscenes_{}", key), false);
+        crate::storage::save_settings(&self.settings);
+        self.cutscene_queue.retain(|q| rarities()[q.0].key != key);
+        self.skip_cutscene();
+        let name = rarities().iter().find(|r| r.key == key).map(|r| tr(r.name)).unwrap_or_default();
+        self.show_toast(&tr!("%s cutscenes turned off. Turn them back on in Options > Game.", name), 3.0);
+    }
+
+    pub fn draw_cutscene(&mut self, mouse_pos: (f64, f64)) {
         self.buttons.clear();
         self.scrollbar_hits.clear();
 
@@ -254,5 +266,13 @@ impl Game {
         self.canvas.blit_with_alpha(&hint, hr.x, hr.y, hint_alpha.max(0));
 
         self.register_button(Rect::new(0, 0, self.vw, VIRTUAL_H), Rc::new(|g: &mut Game| g.skip_cutscene()), None);
+
+        // v3.0.1: turn this rarity's cutscenes off right here (registered after the skip area, so it wins the click)
+        let key = rarity.key;
+        let sb = self.f.small_b.clone();
+        let label = tr!("Turn off %s cutscenes", tr(rarity.name));
+        let w = sb.render(&label, WHITE).w + 36;
+        let r = Rect::new(self.vw / 2 - w / 2, VIRTUAL_H - 104, w, 40);
+        self.button(r, &label, &sb, mouse_pos, Color::rgba(20, 20, 30, 200), Color::rgb(170, 60, 60), WHITE, cb(move |g| g.turn_off_cutscenes(key)), Bo::r(10).border(Some(Color::rgb(255, 255, 255))));
     }
 }
