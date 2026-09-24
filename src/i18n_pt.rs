@@ -1,4 +1,4 @@
-//! Generated from i18n_pt.py (Portuguese catalogue). Do not edit by hand.
+//! Generated from i18n_pt.py (Portuguese catalogue), plus the Rust-only strings at the end of PT.
 
 pub const PT: &[(&str, &str)] = &[
     ("Roll pets, equip them and fill your pockets", "Rola pets, equipa-os e enche os bolsos"),
@@ -705,6 +705,8 @@ pub const PT: &[(&str, &str)] = &[
     ("TOO FAST", "RÁPIDO"),
     ("TO SHOW!", "DEMAIS!"),
     ("Best so far:", "O melhor até agora:"),
+    // ---- Rust only ----
+    ("The game now runs on a new, much faster engine. Your saves, account and friends come with you - nothing to do.", "O jogo agora corre num motor novo, muito mais rápido. Os teus saves, a conta e os amigos vêm contigo - não tens de fazer nada."),
 ];
 
 pub const PT_SHORT: &[(&str, &str)] = &[
