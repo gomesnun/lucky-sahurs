@@ -231,6 +231,17 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ---- Títulos (v3.0): o título que cada jogador equipou; só o dono escreve, "owner" só para admins ----
+    match /titles/{uid} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+                            && request.resource.data.keys().hasOnly(['title'])
+                            && request.resource.data.title is string
+                            && request.resource.data.title.size() <= 32
+                            && (request.resource.data.title != 'owner' || isAdmin());
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+
     // NOTA: as stats de um amigo vêm da /leaderboard/{uid}, que já é pública para leitura.
     match /{document=**} {
       allow read, write: if false;
