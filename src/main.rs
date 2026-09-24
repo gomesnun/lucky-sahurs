@@ -451,10 +451,18 @@ fn shots(dir: &str) {
     save(&g, "n_main_dice");
     // v3.0 effects
     let tnow = core::state::now_ts();
-    g.spin_until = tnow + 0.2;
+    // verities raining behind the roll screen (run the rain for a while so the screen fills up) + a roll pop
+    for _ in 0..240 {
+        g.update_verity_fx(0.05);
+    }
+    g.last_click_pos = Some({
+        let c = g.main_card_rect();
+        (c.centerx() as f64, (c.bottom() + 50) as f64)
+    });
+    g.spawn_roll_pop(tier_first_pet(core::data::tier_index("absoluto")), "rainbow");
+    g.update_verity_fx(0.3);
     g.draw(m);
-    save(&g, "v3_spin");
-    g.spin_until = 0.0;
+    save(&g, "v3_rain");
     let roll_c = {
         let c = g.main_card_rect();
         (c.centerx() as f64 - 40.0, (c.bottom() + 50) as f64)

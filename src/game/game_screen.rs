@@ -51,6 +51,7 @@ impl Game {
     }
 
     pub fn draw_game_screen(&mut self, mouse_pos: (f64, f64)) {
+        self.draw_verity_rain(); // v3.0: your verities drifting down behind everything
         self.draw_topbar(mouse_pos);
         self.draw_main(mouse_pos);
         if self.animations() {
@@ -59,6 +60,7 @@ impl Game {
                 p.draw(&mut self.canvas);
             }
             self.particles = ps;
+            self.draw_roll_pops();
         }
         self.right_rect = Rect::ZERO;
         self.left_rect = Rect::ZERO;
@@ -302,53 +304,12 @@ impl Game {
         }
     }
 
-    /// v3.0: the roll "spin" - verity cards slide through the card's frame, slowing down, and the last one is the
-    /// pet you got (it then pops in with its normal card).
-    fn draw_spin_card(&mut self, rect: Rect) {
-        let Some((res_idx, _)) = self.state.last_roll else { return };
-        let left = (self.spin_until - now_ts()).max(0.0);
-        let k = 1.0 - left / crate::game::gameplay::SPIN_TIME;
-        let n_cards = 7.0;
-        let pos = crate::ui::drawing::ease_out_cubic(k.clamp(0.0, 1.0)) * (n_cards - 1.0);
-        let i = pos.floor() as i64;
-        let frac = pos - i as f64;
-        let order = crate::core::data::pet_order();
-        let seed = (self.spin_until * 1000.0) as i64;
-        let pet_at = |j: i64| -> usize {
-            if j >= n_cards as i64 - 1 {
-                res_idx
-            } else {
-                order[((seed + j * 7919).rem_euclid(order.len() as i64)) as usize]
-            }
-        };
-        draw_panel(&mut self.canvas, rect, Some(panel_light()), 12, true, None);
-        self.push_clip(rect);
-        for (j, dy) in [(i, frac), (i + 1, frac - 1.0)] {
-            let r = &rarities()[pet_at(j)];
-            let card = render_pet_card(r, "normal", rect.w, rect.h, &[], 0, false);
-            self.canvas.blit(&card, rect.x, rect.y + (dy * rect.h as f64) as i32);
-        }
-        self.pop_clip();
-        // a light veil at the top and bottom, like a slot machine window
-        let mut veil = Surface::new_alpha(rect.w, rect.h);
-        for y in 0..rect.h {
-            let d = (y.min(rect.h - 1 - y)) as f64 / (rect.h as f64 * 0.22);
-            if d < 1.0 {
-                draw::line(&mut veil, Color::rgba(10, 10, 16, (150.0 * (1.0 - d)) as u8), (0, y), (rect.w, y), 1);
-            }
-        }
-        self.canvas.blit(&veil, rect.x, rect.y);
-        draw_state_border(&mut self.canvas, rect, accent(), 12, 3);
-    }
-
     pub fn draw_main(&mut self, mouse_pos: (f64, f64)) {
         let center_x = self.main_center_x();
         let card_rect = self.main_card_rect();
         let (card_w, card_h) = card_rect.size();
 
-        if now_ts() < self.spin_until {
-            self.draw_spin_card(card_rect); // v3.0: spinning through verities before showing the pet
-        } else if now_ts() < self.too_fast_until {
+        if now_ts() < self.too_fast_until {
             self.draw_too_fast_card(card_rect); // the Auto Roller is too fast to show each pet
         } else if let Some((r_idx, m)) = self.state.last_roll {
             let rarity = &rarities()[r_idx];

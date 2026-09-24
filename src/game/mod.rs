@@ -27,6 +27,7 @@ pub mod trades;
 pub mod titles_panel;
 pub mod traits_panel;
 pub mod update_panel;
+pub mod verity_fx;
 pub mod updatelog;
 pub mod upgrades_panel;
 
@@ -193,10 +194,9 @@ pub struct Game {
     pub last_click_pos: Option<(f64, f64)>,
     /// v3.0: where and when a button was last clicked (for its ripple)
     pub press_fx: Option<((f64, f64), f64)>,
-    /// v3.0: a manual roll "spins" through verities until this time, then shows the pet
-    pub spin_until: f64,
-    /// particles waiting for the spin to end (the rolled pet's index)
-    pub spin_particles: Option<usize>,
+    /// v3.0 (Cookie Clicker style): verities drifting down behind the roll screen, and the ones popping up
+    /// from clicks
+    pub vfx: verity_fx::VerityFx,
     /// v3.0: the coins shown in the top bar count up smoothly to the real value
     pub coins_display: Option<f64>,
     pub nav_mode: bool,
@@ -378,8 +378,7 @@ impl Game {
             buttons: Vec::new(),
             last_click_pos: None,
             press_fx: None,
-            spin_until: 0.0,
-            spin_particles: None,
+            vfx: verity_fx::VerityFx::default(),
             coins_display: None,
             nav_mode: false,
             clip_stack: Vec::new(),

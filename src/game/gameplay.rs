@@ -8,9 +8,6 @@ use crate::gfx::Color;
 use crate::ui::cards::rarity_glow_color;
 use crate::ui::widgets::Particle;
 
-/// v3.0: how long a manual roll spins through verities before showing the pet
-pub const SPIN_TIME: f64 = 0.45;
-
 /// rolls done one by one per frame; the rest go in bulk
 pub const AUTO_MAX_EXACT: i64 = 50;
 
@@ -125,16 +122,7 @@ impl Game {
     }
 
     pub fn update_animations(&mut self, dt: f64) {
-        // the spin landed: the pet's sparks and sound now
-        if let Some(r_idx) = self.spin_particles {
-            if now_ts() >= self.spin_until {
-                self.spin_particles = None;
-                self.spawn_roll_particles(r_idx);
-                if let Some((r, m)) = self.state.last_roll {
-                    self.play_roll_sfx(r, m, true, false);
-                }
-            }
-        }
+        self.update_verity_fx(dt);
         // the top bar's coins count up smoothly (spending shows at once)
         let target = self.state.coins;
         self.coins_display = Some(match self.coins_display {
@@ -157,8 +145,7 @@ impl Game {
 
     pub fn do_roll(&mut self) {
         let now = crate::core::state::perf_counter();
-        let prev = self.last_manual_roll;
-        if let Some(last) = prev {
+        if let Some(last) = self.last_manual_roll {
             if now - last < 1.0 / MAX_MANUAL_CPS {
                 return;
             }
@@ -168,22 +155,11 @@ impl Game {
         let was = (st.cyclic_bonus_ready, st.diamond_bonus_ready, st.rainbow_bonus_ready);
         let (r_idx, m, gained, _b) = self.state.roll();
         self.trigger_cutscene(r_idx, m);
-        // v3.0: the card spins through verities before showing the pet - only for unhurried clicks, without a
-        // cutscene (it covers the screen anyway) and without the Auto Roller changing the card underneath
-        let auto_running = self.state.auto_on && self.state.auto_rolls_per_second() > 0.0;
-        let spin = self.animations() && self.cutscene_active.is_none() && !auto_running && prev.is_none_or(|p| now - p > SPIN_TIME + 0.1);
-        if spin {
-            self.spin_until = now_ts() + SPIN_TIME;
-            self.roll_anim_start = self.spin_until;
-            self.spin_particles = Some(r_idx);
-            self.play("roll", 0.0);
-        } else {
-            self.spin_until = 0.0;
-            self.spin_particles = None;
-            self.roll_anim_start = now_ts();
-            self.spawn_roll_particles(r_idx);
-            self.play_roll_sfx(r_idx, m, true, false);
-        }
+        self.roll_anim_start = now_ts();
+        self.spawn_roll_particles(r_idx);
+        self.play_roll_sfx(r_idx, m, true, false);
+        // v3.0 (like Cookie Clicker's clicks): the verity you got pops up from where you clicked
+        self.spawn_roll_pop(r_idx, m);
         if gained {
             self.notify_trait_charges(1);
             self.play("trait_charge", 0.0);
