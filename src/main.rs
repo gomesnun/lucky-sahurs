@@ -570,6 +570,44 @@ fn shots(dir: &str) {
         g.draw(m);
         save(&g, "n_evolve_monster");
         g.close_overlays();
+        // a battle: the team picker, the start, the moves, an attack and the result
+        g.close_overlays();
+        g.open_battle();
+        g.draw(m);
+        save(&g, "n_battle_pick");
+        g.start_battle();
+        g.tick_battle(6.0);
+        g.draw(m);
+        save(&g, "n_battle_start");
+        g.battle.menu = "fight";
+        g.draw(m);
+        save(&g, "n_battle_moves");
+        g.battle_use(core::battle::Move::Special);
+        g.tick_battle(1.3);
+        g.tick_battle(0.15);
+        g.draw(m);
+        save(&g, "n_battle_attack");
+        g.tick_battle(0.4);
+        g.draw(m);
+        save(&g, "n_battle_hit");
+        for _ in 0..200 {
+            g.tick_battle(30.0);
+            let Some(b) = g.battle.battle.as_ref() else { break };
+            if b.winner.is_some() {
+                break;
+            }
+            if b.needs_switch() {
+                let next = (0..b.teams[0].len()).find(|&i| b.can_switch_to(0, i)).unwrap_or(0);
+                g.battle_switch(next);
+            } else {
+                g.battle_use(core::battle::Move::Special);
+                g.battle_use(core::battle::Move::Strike);
+            }
+        }
+        g.tick_battle(30.0);
+        g.draw(m);
+        save(&g, "n_battle_result");
+        g.close_battle();
         g.left_panel.close();
         g.left_panel.update(5.0);
         // the tutorial (a few of its steps) and the "What's new" pop-up

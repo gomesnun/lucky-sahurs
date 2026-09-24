@@ -109,6 +109,8 @@ pub struct GameState {
     pub total_ethereal_rolled: i64,
     pub total_celestial_rolled: i64,
     pub total_absolute_rolled: i64,
+    /// battles won (game/battle_panel.rs)
+    pub battles_won: i64,
     pub milestones_claimed: HashSet<String>,
     ms_bonus: HashMap<&'static str, f64>,
 
@@ -270,6 +272,7 @@ impl GameState {
             owned: IndexMap::new(),
             seen_pets: BTreeSet::new(),
             phases: IndexMap::new(),
+            battles_won: 0,
             equipped: Vec::new(),
             avatar: None,
             title: None,
@@ -1651,6 +1654,9 @@ impl GameState {
         let owned: Map<String, Value> = self.owned.iter().map(|(k, v)| (k.clone(), json!(v))).collect();
         d.insert("owned".into(), Value::Object(owned));
         d.insert("seen_pets".into(), Value::Array(self.seen_pets.iter().map(|k| json!(k)).collect()));
+        if self.battles_won > 0 {
+            d.insert("battles_won".into(), json!(self.battles_won));
+        }
         if !self.phases.is_empty() {
             // only written when there is one, so older games read the save exactly as before
             let phases: Map<String, Value> = self.phases.iter().map(|(k, v)| (k.clone(), json!(v))).collect();
@@ -1784,6 +1790,7 @@ impl GameState {
                 None => false,
             }
         };
+        self.battles_won = d.get("battles_won").and_then(|v| v.as_i64()).unwrap_or(0).max(0);
         self.phases = IndexMap::new();
         if let Some(Value::Object(ph)) = d.get("phases") {
             for (k, v) in ph {

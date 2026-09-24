@@ -23,6 +23,7 @@ pub mod rebirth_panel;
 pub mod prestige_panel;
 pub mod sell_panel;
 pub mod evolve_panel;
+pub mod battle_panel;
 pub mod tutorial;
 pub mod shop_panel;
 pub mod title_saves;
@@ -284,6 +285,7 @@ pub struct Game {
     pub shop: shop_panel::ShopUi,
     pub sell: sell_panel::SellUi,
     pub evolve: evolve_panel::EvolveUi,
+    pub battle: battle_panel::BattleUi,
     pub titles: titles_panel::TitlesUi,
     pub text_input_on: bool,
 }
@@ -470,6 +472,7 @@ impl Game {
             shop: shop_panel::ShopUi::new(),
             sell: sell_panel::SellUi::new(),
             evolve: evolve_panel::EvolveUi::new(),
+            battle: battle_panel::BattleUi::new(),
             titles: titles_panel::TitlesUi::new(),
             text_input_on: true,
         };
@@ -871,6 +874,7 @@ impl Game {
             }
         }
         self.tick_sell(dt);
+        self.tick_battle(dt);
         if self.rebirth_confirm {
             self.rebirth_confirm_timer -= dt;
             if self.rebirth_confirm_timer <= 0.0 {
@@ -1047,7 +1051,7 @@ impl Game {
         } else if self.cutscene_active.is_some() && k != Keycode::F11 {
             self.skip_cutscene();
         } else if self.screen_mode == "account" && self.handle_account_key(ev) {
-        } else if self.screen_mode == "game" && (self.handle_tutorial_key(ev) || self.handle_whats_new_key(ev)) {
+        } else if self.screen_mode == "game" && (self.handle_tutorial_key(ev) || self.handle_whats_new_key(ev) || self.handle_battle_key(ev)) {
         } else if self.handle_sell_key(ev)
             || self.handle_evolve_key(ev)
             || self.handle_ban_key(ev)
@@ -1113,6 +1117,7 @@ impl Game {
             || self.evolve.target.is_some()
             || self.tutorial_active()
             || self.whats_new_open
+            || self.battle.open
             || self.screen_mode != "game"
         {
         } else if k == Keycode::U || k == Keycode::T {
@@ -1190,6 +1195,7 @@ impl Game {
             || self.evolve.target.is_some()
             || self.tutorial_active()
             || self.whats_new_open
+            || self.battle.open
             || self.leaderboard_open
             || self.credits_open
             || self.update_modal_active()
@@ -1296,6 +1302,9 @@ impl Game {
         if self.evolve.target.is_some() {
             self.begin_modal();
             self.draw_evolve_page(mouse_pos);
+        }
+        if self.battle.open {
+            self.draw_battle(mouse_pos);
         }
         if self.whats_new_open && !self.tutorial_active() {
             self.draw_whats_new(mouse_pos);

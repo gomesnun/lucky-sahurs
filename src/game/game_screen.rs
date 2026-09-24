@@ -51,19 +51,18 @@ impl Game {
         (left + right).div_euclid(2)
     }
 
-    /// Where the 8 side buttons sit: Index, Upgrades, Milestones, Quests (right column), then Bag, Rebirth, Traits,
-    /// Shop (left column). The tutorial points at them too.
-    pub fn side_button_rects(&self) -> [Rect; 8] {
+    /// Where the 9 side buttons sit: Index, Upgrades, Milestones, Quests (right column), then Bag, Rebirth, Traits,
+    /// Shop, Battle (left column). The tutorial points at them too.
+    pub fn side_button_rects(&self) -> [Rect; 9] {
         let size = SIDE_SIZE;
         let step = size + 38;
         let label_h = 26;
-        let top = VIRTUAL_H / 2 - (3 * step + size + label_h) / 2; // both columns have 4 buttons
+        let top = |n: i32| VIRTUAL_H / 2 - ((n - 1) * step + size + label_h) / 2;
         let shown_r = if self.right_panel.visible() { self.right_panel.shown_width(self.right_w) } else { 0 };
         let shown_l = if self.left_panel.visible() { self.left_panel.shown_width(self.left_w) } else { 0 };
         let (rx, lx) = (self.vw - shown_r - size - 18, shown_l + 18);
         std::array::from_fn(|i| {
-            let x = if i < 4 { rx } else { lx };
-            Rect::new(x, top + (i as i32 % 4) * step, size, size)
+            if i < 4 { Rect::new(rx, top(4) + i as i32 * step, size, size) } else { Rect::new(lx, top(5) + (i as i32 - 4) * step, size, size) }
         })
     }
 
@@ -221,7 +220,7 @@ impl Game {
     pub fn draw_side_buttons(&mut self, mouse_pos: (f64, f64)) {
         let size = SIDE_SIZE;
         let rects = self.side_button_rects();
-        let labels = [tr("INDEX"), tr("UPGRADES"), tr("MILESTONES"), tr("QUESTS"), tr("BAG"), tr("REBIRTH"), tr("TRAITS"), tr("SHOP")];
+        let labels = [tr("INDEX"), tr("UPGRADES"), tr("MILESTONES"), tr("QUESTS"), tr("BAG"), tr("REBIRTH"), tr("TRAITS"), tr("SHOP"), tr("BATTLE")];
         let mut lf = self.f.small_b.clone();
         if labels.iter().map(|t| lf.render(t, WHITE).w).max().unwrap_or(0) > size + 24 {
             lf = self.f.tiny_b.clone();
@@ -254,6 +253,8 @@ impl Game {
             draw::rect(&mut veil, Color::rgba(10, 12, 20, 150), vr, 0, 12);
             self.canvas.blit(&veil, shop_rect.x, shop_rect.y);
         }
+        let bt_open = self.battle.open;
+        self.side_button(rects[8], &labels[8], "battle", mouse_pos, bt_open, Rc::new(|g: &mut Game| g.toggle_battle()), Some(lf.clone()), 0, false);
         self.nav_mode = false;
     }
 

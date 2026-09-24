@@ -1,3 +1,4 @@
+pub mod battle;
 pub mod data;
 pub mod event;
 pub mod formatting;

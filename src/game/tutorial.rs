@@ -40,6 +40,7 @@ const STEPS: &[(&str, &str, Spot)] = &[
     ("Traits", "Rolling sometimes gives trait charges. Roll traits with them and equip one for extra money, luck and speed.", Spot::Side(6)),
     ("Rebirth & Prestige", "Reset your coins for permanent Money and Luck boosts. After enough Rebirths, Prestige gives even bigger ones.", Spot::Side(5)),
     ("Shop", "Unlocks at Rebirth 1: dice for permanent luck and potions, with new stock every 10 minutes.", Spot::Side(7)),
+    ("Battle", "Pick a team of 3 of your Verities and fight a rival, turn by turn. Monsters and rare mutations hit the hardest - winning pays coins.", Spot::Side(8)),
     ("Milestones & Quests", "Long-term goals with permanent bonuses, plus daily and weekly quests with rewards that grow with you.", Spot::Sides(2, 3)),
     ("Friends, Stats & Options", "Add friends, chat and trade, check your stats and change settings. You're all set - good luck!", Spot::Topbar),
 ];
