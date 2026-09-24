@@ -715,6 +715,9 @@ pub struct CloudDoc {
 pub struct LbEntry {
     pub username: String,
     pub value: f64,
+    /// v3.0 (0 = none / an older version of the game)
+    pub prestige: i64,
+    pub rebirths: i64,
 }
 
 #[derive(Default)]
@@ -1099,19 +1102,24 @@ impl FirebaseClient {
         self.fs("POST", ":commit", Some(body), &[]).map(|_| ())
     }
 
-    pub fn publish_score(&self, coins: f64, playtime: f64, rolls: i64, rebirths: i64) -> Res<()> {
+    /// `prestige`: sent only when > 0 (v3.0; needs the "prestige" line in the /leaderboard rules).
+    pub fn publish_score(&self, coins: f64, playtime: f64, rolls: i64, rebirths: i64, prestige: Option<i64>) -> Res<()> {
         let uid = self.need_uid()?;
         let name = format!("{}/leaderboard/{}", self.docs_root, uid);
         let rolls = (rolls as f64).min(9e18).max(0.0) as i64;
         let rebirths = (rebirths as f64).min(1e9).max(0.0) as i64;
+        let mut fields = json!({
+            "username": fs_str(&self.username().unwrap_or_else(|| "None".into())),
+            "coins": fs_f64(coins),
+            "playtime": fs_f64(playtime),
+            "rolls": fs_int(rolls),
+            "rebirths": fs_int(rebirths),
+        });
+        if let Some(p) = prestige.filter(|p| *p > 0) {
+            fields["prestige"] = fs_int(p.min(5));
+        }
         let body = json!({"writes": [{
-            "update": {"name": name, "fields": {
-                "username": fs_str(&self.username().unwrap_or_else(|| "None".into())),
-                "coins": fs_f64(coins),
-                "playtime": fs_f64(playtime),
-                "rolls": fs_int(rolls),
-                "rebirths": fs_int(rebirths),
-            }},
+            "update": {"name": name, "fields": fields},
             "updateTransforms": [{"fieldPath": "updated_at", "setToServerValue": "REQUEST_TIME"}],
         }]});
         self.fs("POST", ":commit", Some(body), &[]).map(|_| ())
@@ -1745,7 +1753,7 @@ impl FirebaseClient {
             .map(|doc| {
                 let f = fs_fields(doc);
                 let username = f.get("username").map(|v| v.py_str()).unwrap_or_else(|| "?".into());
-                LbEntry { username, value: f.f64_or0(field) }
+                LbEntry { username, value: f.f64_or0(field), prestige: f.i64_or0("prestige"), rebirths: f.i64_or0("rebirths") }
             })
             .collect())
     }

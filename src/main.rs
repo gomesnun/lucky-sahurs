@@ -463,6 +463,29 @@ fn shots(dir: &str) {
     g.update_verity_fx(0.3);
     g.draw(m);
     save(&g, "v3_rain");
+    // v3.0 Prestige: the tabs, the page, the picker, and after one
+    let rb_before = g.state.rebirths;
+    g.state.rebirths = 12;
+    g.toggle_rebirth();
+    g.draw(m);
+    save(&g, "v3_rebirth_tabs");
+    g.set_rebirth_tab("prestige");
+    g.draw(m);
+    save(&g, "v3_prestige");
+    g.prestige_picking = true;
+    g.draw(m);
+    save(&g, "v3_prestige_pick");
+    g.prestige_picking = false;
+    g.do_prestige_clicked();
+    g.draw(m);
+    save(&g, "v3_prestige_confirm");
+    g.do_prestige_clicked();
+    g.draw(m);
+    save(&g, "v3_prestige_done");
+    g.close_rebirth();
+    g.draw(m);
+    save(&g, "v3_after_prestige");
+    g.state.rebirths = rb_before;
     let roll_c = {
         let c = g.main_card_rect();
         (c.centerx() as f64 - 40.0, (c.bottom() + 50) as f64)
@@ -670,6 +693,12 @@ fn shots(dir: &str) {
     g.set_lb_tab("rebirths");
     g.draw(m);
     save(&g, "o_leaderboard_empty");
+    g.lb_data.as_mut().unwrap()["rebirths"] = serde_json::json!([
+        {"username": "alice", "value": 4.0, "prestige": 3}, {"username": "tommy", "value": 17.0, "prestige": 1},
+        {"username": "bob", "value": 38.0}, {"username": "zed", "value": 2.0}
+    ]);
+    g.draw(m);
+    save(&g, "v3_lb_prestige");
     g.close_leaderboard();
     g.screen_mode = "game";
     g.draw(m);

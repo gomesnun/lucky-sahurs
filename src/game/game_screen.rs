@@ -222,7 +222,7 @@ impl Game {
         let lp_open = self.left_panel.is_open();
         self.side_button(Rect::new(lx, y, size, size), &labels[4], "bag", mouse_pos, lp_open, Rc::new(|g: &mut Game| g.open_left_panel("bag")), Some(lf.clone()), 0, false);
         let rb_open = self.rebirth_open;
-        let rb_avail = self.state.rebirth_available();
+        let rb_avail = self.state.rebirth_available() || self.state.prestige_available();
         self.side_button(Rect::new(lx, y + step, size, size), &labels[5], "rebirth", mouse_pos, rb_open, Rc::new(|g: &mut Game| g.toggle_rebirth()), Some(lf.clone()), 0, rb_avail);
         let tr_open = self.traits_open;
         self.side_button(Rect::new(lx, y + 2 * step, size, size), &labels[6], "trait", mouse_pos, tr_open, Rc::new(|g: &mut Game| g.toggle_traits()), Some(lf.clone()), 0, false);

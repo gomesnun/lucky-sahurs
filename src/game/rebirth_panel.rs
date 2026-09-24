@@ -9,12 +9,15 @@ use crate::gfx::{Color, Rect, ti};
 use crate::i18n::tr;
 use crate::pyfmt::format as pyformat;
 use crate::theme::*;
+use super::prestige_panel::PRESTIGE_COLOR;
 use crate::ui::drawing::{dim_overlay, draw_panel, draw_state_border};
 use crate::ui::fonts::{fit_text, wrap_text};
 use crate::{args, tr};
 use std::rc::Rc;
 
 const REWARD_ROW_H: i32 = 68;
+const TAB_W: i32 = 150;
+const TAB_H: i32 = 56;
 const REWARD_GAP: i32 = 8;
 
 /// core/rebirths.format_rebirth_reward
@@ -38,6 +41,33 @@ impl Game {
     pub fn close_rebirth(&mut self) {
         self.rebirth_open = false;
         self.rebirth_confirm = false;
+        self.prestige_picking = false;
+    }
+
+    /// The two tabs on the panel's right side: Rebirth (top) and Prestige (below). The one open is joined to the panel.
+    fn draw_rebirth_tabs(&mut self, rect: Rect, tab_w: i32, mouse_pos: (f64, f64)) {
+        let sb = self.f.small_b.clone();
+        let tabs: [(&'static str, String, &'static str, Color); 2] = [
+            ("rebirth", tr("Rebirth"), "rebirth", accent()),
+            ("prestige", tr("Prestige"), "prestige", PRESTIGE_COLOR),
+        ];
+        for (i, (key, label, icon, color)) in tabs.into_iter().enumerate() {
+            let active = self.rebirth_tab == key;
+            // the active tab tucks under the panel's edge so it looks attached
+            let r = Rect::new(rect.right() - if active { 16 } else { 8 }, rect.y + 96 + i as i32 * (TAB_H + 10), tab_w + if active { 16 } else { 8 }, TAB_H);
+            let alert = key == "prestige" && self.state.prestige_available();
+            self.button(
+                r,
+                &label,
+                &sb,
+                mouse_pos,
+                if active { panel() } else { panel_light() },
+                panel_lighter(),
+                if active { color } else { WHITE },
+                cb(move |g| g.set_rebirth_tab(key)),
+                Bo::r(12).icon(icon).border(if active { Some(color) } else if alert { Some(PRESTIGE_COLOR) } else { None }),
+            );
+        }
     }
 
     pub fn toggle_rebirth(&mut self) {
@@ -87,11 +117,15 @@ impl Game {
         let panel_w = 560.max((self.vw - 400).min(760));
         let top = TOPBAR_H + 12;
         let panel_h = VIRTUAL_H - top - 14;
-        let rect = Rect::new(self.vw / 2 - panel_w / 2, top, panel_w, panel_h);
+        // v3.0: the Rebirth / Prestige tabs stick out of the panel's right side (panel + tabs centred together)
+        let tab_w = TAB_W.min(((self.vw - panel_w) / 2 - 10).max(90) * 2 - 20);
+        let rect = Rect::new((self.vw - panel_w - tab_w) / 2, top, panel_w, panel_h);
+        self.draw_rebirth_tabs(rect, tab_w, mouse_pos);
         draw_panel(&mut self.canvas, rect, Some(panel()), 16, true, None);
         self.register_button(rect, Rc::new(|_: &mut Game| {}), None);
 
-        let title = self.f.big.render(&tr("Rebirth"), WHITE);
+        let prestige_tab = self.rebirth_tab == "prestige";
+        let title = self.f.big.render(&if prestige_tab { tr("Prestige") } else { tr("Rebirth") }, if prestige_tab { PRESTIGE_COLOR } else { WHITE });
         self.canvas.blit(&title, rect.x + 26, rect.y + 16);
         let close_rect = Rect::new(rect.right() - 48, rect.y + 18, 30, 30);
         let sb = self.f.small_b.clone();
@@ -99,10 +133,17 @@ impl Game {
         let med = self.f.med.clone();
         let tiny = self.f.tiny.clone();
         self.button(close_rect, "X", &sb, mouse_pos, panel_light(), BAD, WHITE, cb(|g| g.close_rebirth()), Bo::r(8));
+        if prestige_tab {
+            self.draw_prestige_body(rect, rect.y + 16 + title.h + 2, mouse_pos);
+            return;
+        }
 
         let keep = self.state.rebirth_keeps_upgrades();
+        let keep_all = self.state.rebirth_keeps_everything();
         let sub_y = rect.y + 16 + title.h + 2;
-        let sub_text = if keep {
+        let sub_text = if keep_all {
+            tr("A PERMANENT boost to Money and Luck. Thanks to Prestige III a Rebirth resets nothing - you even keep your coins.")
+        } else if keep {
             tr("Reset your coins for a PERMANENT boost to Money and Luck. Upgrades, pets, traits, milestones and playtime are all kept.")
         } else {
             tr("Reset your coins and upgrades for a PERMANENT boost to Money and Luck. Pets, traits, milestones and playtime are all kept.")
@@ -142,7 +183,7 @@ impl Game {
 
         let btn_w = 420.min(rect.w - 60);
         let (label, color) = if self.rebirth_confirm {
-            (if keep { tr("Click again to confirm - resets your coins!") } else { tr("Click again to confirm - resets coins & upgrades!") }, BAD)
+            (if keep_all { tr("Click again to confirm!") } else if keep { tr("Click again to confirm - resets your coins!") } else { tr("Click again to confirm - resets coins & upgrades!") }, BAD)
         } else {
             (tr!("Rebirth  (+%.0f%% Money, +%.0f%% Luck)", REBIRTH_MONEY_PER * 100.0, REBIRTH_LUCK_PER * 100.0), if can { accent() } else { Color::rgb(70, 73, 88) })
         };
@@ -159,7 +200,9 @@ impl Game {
         );
         y += 50 + 18;
 
-        let note_text = if keep {
+        let note_text = if keep_all {
+            tr("Nothing resets: your coins, upgrades, pets and traits all stay.")
+        } else if keep {
             tr("Only your coins reset. Everything else (upgrades, pets, traits...) stays.")
         } else {
             tr("Only coins and upgrade levels reset. Everything else (pets, traits, milestones...) stays.")

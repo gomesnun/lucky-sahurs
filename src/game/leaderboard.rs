@@ -289,7 +289,7 @@ impl Game {
                 self.canvas.blit(&rt, rrect.x + 14, rrect.centery() - rt.h / 2);
                 let value = med.render(&self.lb_format(entry_value(e)), if self.lb_tab == "money" { GOOD } else { WHITE });
                 self.canvas.blit(&value, rrect.right() - 16 - value.w, rrect.centery() - value.h / 2);
-                let icon_w = self.draw_lb_value_icon(rrect.right() - 16 - value.w - 6, rrect.centery());
+                let icon_w = self.draw_lb_value_icon(rrect.right() - 16 - value.w - 6, rrect.centery(), e);
                 let name = fit_text(&med, &uname, rrect.w - 74 - value.w - 40 - icon_w);
                 let nt = med.render(&name, if is_own { accent() } else { WHITE });
                 self.canvas.blit(&nt, rrect.x + 74, rrect.centery() - nt.h / 2);
@@ -303,11 +303,19 @@ impl Game {
         self.draw_scrollbar(rect, scroll, content_h, Some("leaderboard"), Some(mouse_pos));
     }
 
-    fn draw_lb_value_icon(&mut self, right: i32, cy: i32) -> i32 {
-        let Some(img) = load_icon(lb_icon(self.lb_tab), LB_VALUE_ICON) else { return 0 };
-        let r = Rect::with_midright(img.w, img.h, (right, cy));
-        self.canvas.blit(&img, r.x, r.y);
-        img.w + 6
+    /// The tab's icon left of the value and, on Rebirths, the player's Prestige pill left of that. Returns the width.
+    fn draw_lb_value_icon(&mut self, right: i32, cy: i32, e: &Value) -> i32 {
+        let mut w = 0;
+        if let Some(img) = load_icon(lb_icon(self.lb_tab), LB_VALUE_ICON) {
+            let r = Rect::with_midright(img.w, img.h, (right, cy));
+            self.canvas.blit(&img, r.x, r.y);
+            w += img.w + 6;
+        }
+        let prestige = e.get("prestige").and_then(crate::storage::value_i64).unwrap_or(0);
+        if self.lb_tab == "rebirths" && prestige > 0 {
+            w += self.draw_prestige_pill(right - w, cy, prestige) + 8;
+        }
+        w
     }
 
     fn draw_lb_own_row(&mut self, rect: Rect, entries: &[Value], own_name: Option<&str>, mouse_pos: (f64, f64)) {
@@ -332,7 +340,7 @@ impl Game {
                 self.canvas.blit(&head, rect.x + 16, rect.centery() - head.h / 2);
                 let val = med.render(&self.lb_format(entry_value(e)), if self.lb_tab == "money" { GOOD } else { WHITE });
                 self.canvas.blit(&val, rect.right() - 16 - val.w, rect.centery() - val.h / 2);
-                self.draw_lb_value_icon(rect.right() - 16 - val.w - 6, rect.centery());
+                self.draw_lb_value_icon(rect.right() - 16 - val.w - 6, rect.centery(), e);
                 return;
             }
         }

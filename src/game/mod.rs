@@ -20,6 +20,7 @@ pub mod milestones_panel;
 pub mod options;
 pub mod pets_panel;
 pub mod rebirth_panel;
+pub mod prestige_panel;
 pub mod sell_panel;
 pub mod shop_panel;
 pub mod title_saves;
@@ -162,6 +163,11 @@ pub struct Game {
     pub rebirth_confirm: bool,
     pub rebirth_confirm_timer: f64,
     pub rebirth_scroll: f64,
+    /// v3.0: "rebirth" or "prestige" (the tabs beside the Rebirth page)
+    pub rebirth_tab: &'static str,
+    /// the verity a Prestige keeps (None = your best one)
+    pub prestige_keep: Option<crate::core::state::Pet>,
+    pub prestige_picking: bool,
     pub rebirth_max_scroll: f64,
     pub rebirth_list_rect: Rect,
     pub milestones_selected_category: Option<&'static str>,
@@ -171,6 +177,7 @@ pub struct Game {
     pub particles: Vec<Particle>,
     pub auto_accum: f64,
     pub auto_upgrade_timer: f64,
+    pub auto_trait_timer: f64,
     /// the Auto Roller rolls faster than the card can show until this time (see draw_too_fast_card)
     pub too_fast_until: f64,
     /// the best pet since it got that fast
@@ -245,6 +252,8 @@ pub struct Game {
     pub pub_inflight: bool,
     pub pub_last_time: f64,
     pub pub_retry_at: f64,
+    /// the /leaderboard rules refused the "prestige" field (not published yet): send without it
+    pub lb_no_prestige: bool,
     pub pub_jitter: f64,
     pub leaderboard_open: bool,
     pub lb_tab: &'static str,
@@ -352,6 +361,9 @@ impl Game {
             rebirth_confirm: false,
             rebirth_confirm_timer: 0.0,
             rebirth_scroll: 0.0,
+            rebirth_tab: "rebirth",
+            prestige_keep: None,
+            prestige_picking: false,
             rebirth_max_scroll: 0.0,
             rebirth_list_rect: Rect::ZERO,
             milestones_selected_category: None,
@@ -361,6 +373,7 @@ impl Game {
             particles: Vec::new(),
             auto_accum: 0.0,
             auto_upgrade_timer: 0.0,
+            auto_trait_timer: 0.0,
             too_fast_until: 0.0,
             too_fast_best: None,
             right_rect: Rect::ZERO,
@@ -421,6 +434,7 @@ impl Game {
             pub_inflight: false,
             pub_last_time: 0.0,
             pub_retry_at: 0.0,
+            lb_no_prestige: false,
             pub_jitter: crate::core::state::rand_uniform(0.0, crate::online::firebase::LEADERBOARD_PUBLISH_JITTER),
             leaderboard_open: false,
             lb_tab: "money",
@@ -499,6 +513,9 @@ impl Game {
         self.rebirth_scroll = 0.0;
         self.rebirth_max_scroll = 0.0;
         self.rebirth_list_rect = Rect::ZERO;
+        self.rebirth_tab = "rebirth";
+        self.prestige_keep = None;
+        self.prestige_picking = false;
         self.milestones_selected_category = None;
         self.milestones_selected_group = None;
         self.tree_selected_category = None;
@@ -797,6 +814,7 @@ impl Game {
             self.state.last_seen = Some(now_ts());
             self.update_auto(dt);
             self.update_auto_upgrade(dt);
+            self.update_auto_trait(dt);
             self.state.tick_potions(dt); // active potions only use up time with the game open
             self.update_cutscenes(dt);
             self.update_roll_rate(dt);

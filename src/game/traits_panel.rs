@@ -34,7 +34,8 @@ impl Game {
     }
 
     pub fn notify_trait_charges(&mut self, n: i64) {
-        if n <= 0 || !self.settings.get_bool("trait_notifications", true) {
+        // the Auto Trait Roller spends them right away: no "You gained a Trait Roll!" every few rolls
+        if n <= 0 || !self.settings.get_bool("trait_notifications", true) || (self.state.auto_trait_unlocked() && self.state.auto_trait_on) {
             return;
         }
         if self.toast_kind == Some("trait") && self.toast_timer > 0.0 {
@@ -239,6 +240,25 @@ impl Game {
             Bo::r(10).enabled(can).sfx(None),
         );
         y += 54;
+        if self.state.auto_trait_unlocked() {
+            // v3.0: the Auto Trait Roller switch (only after buying it in Upgrades > Traits)
+            let on = self.state.auto_trait_on;
+            self.button(
+                Rect::new(rect.centerx() - btn_w / 2, y - 6, btn_w, 36),
+                &tr!("Auto Trait Roller: %s", if on { tr("ON") } else { tr("OFF") }),
+                &sb,
+                mouse_pos,
+                if on { Color::rgb(52, 120, 80) } else { panel_light() },
+                panel_lighter(),
+                WHITE,
+                cb(|g| {
+                    g.state.auto_trait_on = !g.state.auto_trait_on;
+                    g.state.dirty = true;
+                }),
+                Bo::r(9),
+            );
+            y += 42;
+        }
 
         let eq = self.state.equipped_trait;
         let box_rect = Rect::new(rect.x + 10, y, rect.w - 20, rect.bottom() - y - 4);

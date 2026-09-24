@@ -461,23 +461,25 @@ impl Game {
         self.tick_wallet(now);
     }
 
-    pub fn leaderboard_values(&self) -> (f64, f64, i64, i64) {
+    /// (money, playtime, rolls, rebirths, prestige). Rebirths/Prestige: the best slot, Prestige first (the other
+    /// slots' Prestige isn't in the cloud summary, so they count as 0 there).
+    pub fn leaderboard_values(&self) -> (f64, f64, i64, i64, i64) {
         let st = &self.state;
-        let (mut best_coins, mut best_rebirths, mut total_pt, mut total_rolls) = (0.0f64, 0i64, 0.0f64, 0i64);
+        let (mut best_coins, mut best_rb, mut total_pt, mut total_rolls) = (0.0f64, (0i64, 0i64), 0.0f64, 0i64);
         for slot in 1..=SAVE_SLOTS {
-            let (coins, pt, rolls, rebirths) = if Some(slot) == st.slot {
-                (st.total_coins_earned, st.playtime, st.total_rolls, st.rebirths)
+            let (coins, pt, rolls, rb) = if Some(slot) == st.slot {
+                (st.total_coins_earned, st.playtime, st.total_rolls, (st.prestige, st.rebirths))
             } else if let Some(s) = self.cloud_slots.get(&slot) {
-                (s.total_earned, s.playtime, s.rolls, s.rebirths)
+                (s.total_earned, s.playtime, s.rolls, (0, s.rebirths))
             } else {
-                (0.0, 0.0, 0, 0)
+                (0.0, 0.0, 0, (0, 0))
             };
             best_coins = best_coins.max(coins);
-            best_rebirths = best_rebirths.max(rebirths);
+            best_rb = best_rb.max(rb);
             total_pt += pt;
             total_rolls += rolls;
         }
-        (best_coins, total_pt, total_rolls, best_rebirths)
+        (best_coins, total_pt, total_rolls, best_rb.1, best_rb.0)
     }
 
     pub fn tick_publish(&mut self, now: f64) {
@@ -494,18 +496,23 @@ impl Game {
         }
         let Some(client) = self.client.clone() else { return };
         let v = self.leaderboard_values();
+        // the Prestige is only sent once the rules allow it (a "denied" with it -> sent without it from then on)
+        let prestige = if self.lb_no_prestige { None } else { Some(v.4).filter(|p| *p > 0) };
         self.pub_inflight = true;
         self.run_job(
-            move || client.publish_score(v.0, v.1, v.2, v.3),
+            move || client.publish_score(v.0, v.1, v.2, v.3, prestige),
             |g, _| {
                 g.pub_inflight = false;
                 g.pub_last_time = now_ts();
                 g.pub_jitter = rand_uniform(0.0, LEADERBOARD_PUBLISH_JITTER);
                 g.save_session_file();
             },
-            |g, e| {
+            move |g, e| {
                 g.pub_inflight = false;
-                if e.code == "denied" || e.status == 429 {
+                if e.code == "denied" && prestige.is_some() && !g.lb_no_prestige {
+                    g.lb_no_prestige = true;
+                    g.pub_retry_at = now_ts() + 5.0;
+                } else if e.code == "denied" || e.status == 429 {
                     g.pub_retry_at = now_ts() + LEADERBOARD_PERIOD;
                 } else {
                     g.pub_retry_at = now_ts() + 120.0;

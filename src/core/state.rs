@@ -119,6 +119,8 @@ pub struct GameState {
 
     pub auto_equip_best_on: bool,
     pub auto_upgrade_on: bool,
+    /// v3.0: the Auto Trait Roller switch
+    pub auto_trait_on: bool,
     /// dice, potions and what was bought this period (core/shop.rs)
     pub shop: crate::core::shop::ShopState,
     /// with no bonus roll, the chances are the same for every roll of a frame: the Auto Roller keeps them here
@@ -133,6 +135,8 @@ pub struct GameState {
     pub save_seq: i64,
 
     pub rebirths: i64,
+    /// v3.0: how many Prestiges (0-5)
+    pub prestige: i64,
     rb_cache: RefCell<Option<(i64, HashMap<&'static str, f64>)>>,
 
     pub last_seen: Option<f64>,
@@ -245,6 +249,7 @@ impl GameState {
             cycle_paused: cp,
             auto_equip_best_on: true,
             auto_upgrade_on: true,
+            auto_trait_on: true,
             shop: Default::default(),
             probs_cache: None,
             cloud_uid: None,
@@ -254,6 +259,7 @@ impl GameState {
             sync_conflict: false,
             save_seq: 0,
             rebirths: 0,
+            prestige: 0,
             rb_cache: RefCell::new(None),
             last_seen: None,
             daily_date: None,
@@ -285,7 +291,7 @@ impl GameState {
 
     // ================================================================ economy
     pub fn max_slots(&self) -> i64 {
-        BASE_SLOTS + self.upgrade_level("slots") + self.upgrade_level("slots_plus") + self.rebirth_bonus("slots") as i64
+        BASE_SLOTS + self.upgrade_level("slots") + self.upgrade_level("slots_plus") + self.rebirth_bonus("slots") as i64 + self.prestige_def().map_or(0, |p| p.slots)
     }
 
     pub fn money_multiplier(&self) -> f64 {
@@ -299,6 +305,7 @@ impl GameState {
             * INCOME_SCALE
             * event_mult("money")
             * self.potion_mult("money")
+            * self.prestige_def().map_or(1.0, |p| p.money)
     }
 
     pub fn auto_unlocked(&self) -> bool {
@@ -316,6 +323,7 @@ impl GameState {
             * (1.0 + self.rebirth_bonus("auto_speed"))
             * event_mult("speed")
             * self.potion_mult("speed")
+            * self.prestige_def().map_or(1.0, |p| p.auto_speed)
     }
 
     pub fn pet_income(&self, rarity_index: usize, mutation_key: &str) -> f64 {
@@ -623,7 +631,8 @@ impl GameState {
         }
         // v2.9: a bit less (see LUCK_BONUS_SCALE). The global event, the die, the luck potion and the
         // Golden/Diamond/Rainbow Rolls are NOT here: they are "flat" luck (see flat_luck / pet_probs)
-        1.0 + (m - 1.0) * LUCK_BONUS_SCALE
+        // v3.0: the Prestige luck multiplies everything, at full strength
+        (1.0 + (m - 1.0) * LUCK_BONUS_SCALE) * self.prestige_def().map_or(1.0, |p| p.luck)
     }
 
     /// "Flat" luck (like Sol's RNG): admin event x equipped die x luck potion x the Golden/Diamond/Rainbow Roll
@@ -1059,6 +1068,7 @@ impl GameState {
         c *= 1.0 + 0.06 * self.upgrade_level("trait_charge_luck") as f64;
         c *= 1.0 + 0.10 * self.upgrade_level("trait_charge_luck_2") as f64;
         c *= 1.0 + self.rebirth_bonus("charge_chance");
+        c *= self.prestige_def().map_or(1.0, |p| p.charge_chance);
         c.min(1.0)
     }
 
@@ -1258,7 +1268,12 @@ impl GameState {
     }
 
     pub fn rebirth_keeps_upgrades(&self) -> bool {
-        self.rebirth_bonus("keep_upgrades") > 0.0
+        self.rebirth_bonus("keep_upgrades") > 0.0 || self.prestige >= PRESTIGE_KEEP_UPGRADES
+    }
+
+    /// v3.0 Prestige III: a Rebirth resets nothing, you even keep your coins
+    pub fn rebirth_keeps_everything(&self) -> bool {
+        self.prestige >= PRESTIGE_REBIRTH_FREE
     }
 
     pub fn next_rebirth_reward(&self) -> Option<usize> {
@@ -1271,7 +1286,9 @@ impl GameState {
         }
         let keep = self.rebirth_keeps_upgrades();
         self.rebirths += 1;
-        self.coins = 0.0;
+        if !self.rebirth_keeps_everything() {
+            self.coins = 0.0;
+        }
         if !keep {
             for (i, u) in upgrade_defs().iter().enumerate() {
                 if !KEEP_ON_REBIRTH.contains(&u.key) {
@@ -1283,6 +1300,75 @@ impl GameState {
             self.equipped.truncate(ms);
         }
         true
+    }
+
+    // ================================================================ prestige (v3.0)
+    /// The Prestige you have (None = none yet).
+    pub fn prestige_def(&self) -> Option<&'static PrestigeDef> {
+        if self.prestige <= 0 { None } else { PRESTIGES.get((self.prestige - 1).min(PRESTIGES.len() as i64 - 1) as usize) }
+    }
+
+    /// The next Prestige (None = all 5 done).
+    pub fn next_prestige(&self) -> Option<&'static PrestigeDef> {
+        PRESTIGES.get(self.prestige.max(0) as usize)
+    }
+
+    pub fn prestige_available(&self) -> bool {
+        self.next_prestige().is_some_and(|p| self.rebirths >= p.need)
+    }
+
+    /// The verity a Prestige keeps when you don't pick one: the one that earns the most.
+    pub fn best_owned_pet(&self) -> Option<Pet> {
+        let mut best: Option<(f64, Pet)> = None;
+        for r_idx in 0..rarities().len() {
+            for m in MUT_ORDER {
+                if self.count_owned(r_idx, m) > 0 {
+                    let inc = self.pet_income(r_idx, m);
+                    if best.map_or(true, |b| inc > b.0) {
+                        best = Some((inc, (r_idx, m)));
+                    }
+                }
+            }
+        }
+        best.map(|b| b.1)
+    }
+
+    /// Resets coins, Rebirths, upgrades (not the automation) and pets, keeping ONE copy of `keep`. Dice, potions,
+    /// traits and charges, milestones, the Index, titles, stats and playtime stay.
+    pub fn do_prestige(&mut self, keep: Option<Pet>) -> bool {
+        if !self.prestige_available() {
+            return false;
+        }
+        let keep = keep.filter(|(r, m)| self.count_owned(*r, m) > 0);
+        self.prestige += 1;
+        self.rebirths = 0;
+        *self.rb_cache.borrow_mut() = None;
+        self.coins = 0.0;
+        for (i, u) in upgrade_defs().iter().enumerate() {
+            if !KEEP_ON_PRESTIGE.contains(&u.key) {
+                self.upgrades[i] = 0;
+            }
+        }
+        self.owned.clear();
+        self.equipped.clear();
+        if let Some((r, m)) = keep {
+            self.owned.insert(format!("{}_{}", r, m), 1);
+            self.equipped.push((r, m));
+        }
+        self.cyclic_roll_count = 0;
+        self.cyclic_bonus_ready = false;
+        self.diamond_roll_count = 0;
+        self.diamond_bonus_ready = false;
+        self.rainbow_roll_count = 0;
+        self.rainbow_bonus_ready = false;
+        self.probs_cache = None;
+        self.dirty = true;
+        true
+    }
+
+    // ---------------- auto trait roller ----------------
+    pub fn auto_trait_unlocked(&self) -> bool {
+        self.upgrade_level("auto_trait_unlock") >= 1
     }
 
     // ================================================================ daily missions
@@ -1416,6 +1502,7 @@ impl GameState {
         st.insert("auto_on".into(), json!(self.auto_on));
         st.insert("auto_equip_best_on".into(), json!(self.auto_equip_best_on));
         st.insert("auto_upgrade_on".into(), json!(self.auto_upgrade_on));
+        st.insert("auto_trait_on".into(), json!(self.auto_trait_on));
         d.insert("settings".into(), Value::Object(st));
         let mut tr = Map::new();
         tr.insert("charges".into(), json!(self.trait_charges));
@@ -1450,6 +1537,10 @@ impl GameState {
         let cp: Map<String, Value> = self.cycle_paused.iter().map(|(k, v)| (k.to_string(), json!(v))).collect();
         d.insert("cycle_paused".into(), Value::Object(cp));
         d.insert("rebirths".into(), json!(self.rebirths));
+        if self.prestige > 0 {
+            // only once there is one: saves without Prestige stay exactly as before
+            d.insert("prestige".into(), json!(self.prestige));
+        }
         d.insert("last_seen".into(), match self.last_seen {
             Some(t) => pyjson::float(t),
             None => Value::Null,
@@ -1567,6 +1658,7 @@ impl GameState {
         }
         self.title = d.get("title").and_then(|v| v.as_str()).and_then(crate::core::titles::title_key);
         self.rebirths = get_i("rebirths", 0)?.max(0);
+        self.prestige = get_i("prestige", 0)?.clamp(0, PRESTIGES.len() as i64);
         *self.rb_cache.borrow_mut() = None;
         let empty = Map::new();
         let loaded_up = match d.get("upgrades") {
@@ -1590,6 +1682,7 @@ impl GameState {
         self.auto_on = st.get("auto_on").map(value_truthy).unwrap_or(true);
         self.auto_equip_best_on = st.get("auto_equip_best_on").map(value_truthy).unwrap_or(true);
         self.auto_upgrade_on = st.get("auto_upgrade_on").map(value_truthy).unwrap_or(true);
+        self.auto_trait_on = st.get("auto_trait_on").map(value_truthy).unwrap_or(true);
         let ms = self.max_slots().max(0) as usize;
         self.equipped.truncate(ms);
 
@@ -1794,4 +1887,51 @@ pub fn py_gt_int_float(i: i128, f: f64) -> bool {
 
 pub fn int_to_f64(i: i128) -> f64 {
     i as f64
+}
+
+#[cfg(test)]
+mod prestige_tests {
+    use super::*;
+
+    #[test]
+    fn prestige_resets_and_keeps_one_verity() {
+        let mut s = GameState::new();
+        let money0 = s.money_multiplier();
+        s.rebirths = 12;
+        s.coins = 1e15;
+        s.owned.insert("5_golden".into(), 7);
+        s.owned.insert("2_normal".into(), 100);
+        s.equipped = vec![(5, "golden"), (2, "normal")];
+        s.trait_charges = 50;
+        s.upgrades[upgrade_index("money")] = 10;
+        s.upgrades[upgrade_index("auto_trait_unlock")] = 1;
+        assert!(s.prestige_available());
+        assert!(s.do_prestige(Some((5, "golden"))));
+        assert_eq!((s.prestige, s.rebirths, s.coins), (1, 0, 0.0));
+        assert_eq!(s.owned.len(), 1);
+        assert_eq!(s.count_owned(5, "golden"), 1);
+        assert_eq!(s.equipped, vec![(5, "golden")]);
+        assert_eq!(s.trait_charges, 50); // traits stay
+        assert_eq!(s.upgrade_level("money"), 0);
+        assert_eq!(s.upgrade_level("auto_trait_unlock"), 1); // the automation stays
+        assert!((s.money_multiplier() / money0 - 3.0).abs() < 1e-9);
+        assert!(!s.prestige_available()); // Prestige II needs 15 Rebirths
+        // saved and loaded
+        let d = s.to_dict();
+        let mut t = GameState::new();
+        t.load_dict(&d).unwrap();
+        assert_eq!(t.prestige, 1);
+    }
+
+    #[test]
+    fn prestige_three_makes_rebirth_free() {
+        let mut s = GameState::new();
+        s.prestige = 3;
+        s.coins = s.rebirth_cost() * 2.0;
+        s.upgrades[upgrade_index("money")] = 5;
+        let coins = s.coins;
+        assert!(s.do_rebirth());
+        assert_eq!(s.coins, coins);
+        assert_eq!(s.upgrade_level("money"), 5);
+    }
 }

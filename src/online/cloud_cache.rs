@@ -265,13 +265,21 @@ pub fn fetch_leaderboards(client: &Client, period: i64) -> Res<Value> {
 pub fn fetch_leaderboards_direct(client: &Client, period: i64) -> Res<Value> {
     let mut data = Map::new();
     for (key, field) in LB_FIELDS {
-        let entries = client.top_entries(field, LEADERBOARD_SIZE, if key == "rebirths" { Some(1) } else { None })?;
+        let mut entries = client.top_entries(field, LEADERBOARD_SIZE, if key == "rebirths" { Some(1) } else { None })?;
+        if key == "rebirths" {
+            // v3.0: Prestige ranks first, so a Prestiged player with few Rebirths still makes the board
+            let prestiged = client.top_entries("prestige", LEADERBOARD_SIZE, Some(1)).unwrap_or_default();
+            entries = merge_rebirth_entries(entries, prestiged);
+        }
         let arr: Vec<Value> = entries
             .into_iter()
             .map(|e| {
                 let mut m = Map::new();
                 m.insert("username".into(), json!(e.username));
-                m.insert("value".into(), pyjson::float(e.value));
+                m.insert("value".into(), pyjson::float(if key == "rebirths" { e.rebirths as f64 } else { e.value }));
+                if e.prestige > 0 {
+                    m.insert("prestige".into(), json!(e.prestige));
+                }
                 Value::Object(m)
             })
             .collect();
@@ -281,6 +289,19 @@ pub fn fetch_leaderboards_direct(client: &Client, period: i64) -> Res<Value> {
     data.insert("period_len".into(), pyjson::float(LEADERBOARD_SNAPSHOT_PERIOD));
     data.insert("fetched_at".into(), pyjson::float(crate::core::state::now_ts()));
     Ok(Value::Object(data))
+}
+
+/// The Rebirths board: the top by Rebirths and the top by Prestige together, ranked Prestige first, then Rebirths.
+fn merge_rebirth_entries(a: Vec<crate::online::firebase::LbEntry>, b: Vec<crate::online::firebase::LbEntry>) -> Vec<crate::online::firebase::LbEntry> {
+    let mut out: Vec<crate::online::firebase::LbEntry> = Vec::new();
+    for e in a.into_iter().chain(b) {
+        if !out.iter().any(|o| o.username == e.username) {
+            out.push(e);
+        }
+    }
+    out.sort_by(|x, y| (y.prestige, y.rebirths).cmp(&(x.prestige, x.rebirths)));
+    out.truncate(LEADERBOARD_SIZE);
+    out
 }
 
 pub fn lb_tables_complete(d: &Value) -> bool {

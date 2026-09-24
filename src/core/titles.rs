@@ -19,6 +19,8 @@ pub enum Unlock {
     Category(&'static str),
     /// every tier of every category of this milestone group
     Group(&'static str),
+    /// v3.0: this many Prestiges
+    Prestige(i64),
 }
 
 pub struct TitleDef {
@@ -29,11 +31,13 @@ pub struct TitleDef {
 }
 
 /// Best first (the picker shows them in this order).
-pub const TITLES: [TitleDef; 17] = [
+pub const TITLES: [TitleDef; 19] = [
     TitleDef { id: "owner", name: "Owner", color: Color::rgb(255, 84, 84), unlock: Unlock::Admin },
     TitleDef { id: "top1", name: "Top 1", color: Color::rgb(255, 205, 60), unlock: Unlock::TopRank(1) },
     TitleDef { id: "top2", name: "Top 2", color: Color::rgb(205, 215, 230), unlock: Unlock::TopRank(2) },
     TitleDef { id: "top3", name: "Top 3", color: Color::rgb(222, 140, 70), unlock: Unlock::TopRank(3) },
+    TitleDef { id: "ascended", name: "Ascended", color: Color::rgb(220, 150, 255), unlock: Unlock::Prestige(5) },
+    TitleDef { id: "prestiged", name: "Prestiged", color: Color::rgb(186, 104, 255), unlock: Unlock::Prestige(1) },
     TitleDef { id: "completionist", name: "Completionist", color: Color::rgb(255, 120, 230), unlock: Unlock::AllMilestones },
     TitleDef { id: "master", name: "Master", color: Color::rgb(170, 120, 255), unlock: Unlock::MilestonesClaimed(180) },
     TitleDef { id: "veteran", name: "Veteran", color: Color::rgb(90, 170, 255), unlock: Unlock::MilestonesClaimed(100) },
@@ -78,6 +82,7 @@ pub fn title_unlocked(t: &TitleDef, st: &GameState, is_admin: bool, top_rank: Op
         Unlock::AllMilestones => st.milestones_claimed.len() >= total_milestones(),
         Unlock::Category(c) => category_done(st, c),
         Unlock::Group(g) => milestone_group(g).is_some_and(|g| g.categories.iter().all(|c| category_done(st, c))),
+        Unlock::Prestige(n) => st.prestige >= n,
     }
 }
 
@@ -91,5 +96,7 @@ pub fn title_hint(t: &TitleDef) -> (&'static str, Option<i64>, Option<&'static s
         Unlock::AllMilestones => ("Claim every milestone.", None, None),
         Unlock::Category(c) => ("Complete every \"%s\" milestone.", None, milestone_cat(c).map(|m| m.label)),
         Unlock::Group(g) => ("Complete every \"%s\" milestone.", None, milestone_group(g).map(|m| m.label)),
+        Unlock::Prestige(1) => ("Do your first Prestige.", None, None),
+        Unlock::Prestige(n) => ("Reach Prestige %d.", Some(n), None),
     }
 }
