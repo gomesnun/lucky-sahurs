@@ -50,6 +50,12 @@ fn main() {
             for fw in ["CoreFoundation", "AppKit", "QuartzCore"] {
                 println!("cargo:rustc-link-lib=framework={fw}");
             }
+            // SDL's @available checks call ___isPlatformVersionAtLeast, which lives in clang's runtime
+            // library; rustc doesn't link it on its own
+            let out = std::process::Command::new("clang").arg("-print-resource-dir").output().expect("clang is required");
+            let rt = PathBuf::from(String::from_utf8_lossy(&out.stdout).trim()).join("lib").join("darwin");
+            println!("cargo:rustc-link-search=native={}", rt.display());
+            println!("cargo:rustc-link-lib=static=clang_rt.osx");
         }
         if target_os == "windows" {
             for lib in ["advapi32", "shlwapi", "cfgmgr32"] {
