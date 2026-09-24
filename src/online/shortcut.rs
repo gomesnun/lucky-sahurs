@@ -78,12 +78,7 @@ fn make_shortcut(target: &Path, desktop: &Path) {
     if link.exists() {
         return;
     }
-    let icon = crate::config::game_dir().join("icons").join("verity.png");
-    let content = format!(
-        "[Desktop Entry]\nType=Application\nName=Lucky Verities\nExec=\"{}\"\nIcon={}\nTerminal=false\nCategories=Game;\n",
-        target.display(),
-        if icon.exists() { icon.display().to_string() } else { String::new() }
-    );
+    let content = desktop_entry(target);
     if std::fs::write(&link, content).is_ok() {
         use std::os::unix::fs::PermissionsExt;
         let _ = std::fs::set_permissions(&link, std::fs::Permissions::from_mode(0o755));
@@ -91,8 +86,54 @@ fn make_shortcut(target: &Path, desktop: &Path) {
     }
 }
 
+/// The icon, written out of the executable (the icons are built into it) to ~/.local/share/icons.
+#[cfg(all(unix, not(target_os = "macos")))]
+fn linux_icon() -> Option<PathBuf> {
+    let dir = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local").join("share")))?;
+    let icon = dir.join("icons").join("lucky-verities.png");
+    if !icon.exists() {
+        let data = crate::assets::read("icons/verity.png")?;
+        std::fs::create_dir_all(icon.parent()?).ok()?;
+        std::fs::write(&icon, data).ok()?;
+    }
+    Some(icon)
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn desktop_entry(target: &Path) -> String {
+    let icon = linux_icon().map(|p| p.display().to_string()).unwrap_or_default();
+    format!(
+        "[Desktop Entry]\nType=Application\nName=Lucky Verities\nComment=Roll for Verities\nExec=\"{}\"\nIcon={}\nTerminal=false\nCategories=Game;\n",
+        target.display(),
+        icon
+    )
+}
+
+/// Linux: puts the game in the app menu (~/.local/share/applications) with its icon, and keeps it pointing at this
+/// executable (it may have moved). Cheap: only writes when something changed. Every start of a release build.
+#[cfg(all(unix, not(target_os = "macos")))]
+pub fn ensure_app_menu_entry() {
+    if BUILD_VERSION == "dev" || std::env::var_os("LUCKY_VERITIES_NO_SHORTCUT").is_some() {
+        return;
+    }
+    let Ok(target) = std::env::current_exe() else { return };
+    let Some(dir) = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local").join("share"))) else { return };
+    let apps = dir.join("applications");
+    let file = apps.join("lucky-verities.desktop");
+    let content = desktop_entry(&target);
+    if std::fs::read_to_string(&file).ok().as_deref() == Some(content.as_str()) {
+        return;
+    }
+    let _ = std::fs::create_dir_all(&apps);
+    let _ = std::fs::write(&file, content);
+}
+
+#[cfg(not(all(unix, not(target_os = "macos"))))]
+pub fn ensure_app_menu_entry() {}
+
 /// Call once at start (on a separate thread). Only does something in a release build, and only the first time.
 pub fn create_desktop_shortcut_once() {
+    ensure_app_menu_entry();
     if BUILD_VERSION == "dev" || std::env::var_os("LUCKY_VERITIES_NO_SHORTCUT").is_some() || marker_path().exists() {
         return;
     }
@@ -101,4 +142,23 @@ pub fn create_desktop_shortcut_once() {
     }
     let _ = std::fs::create_dir_all(save_dir());
     let _ = std::fs::write(marker_path(), "1");
+}
+
+#[cfg(all(test, unix, not(target_os = "macos")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn menu_entry_has_the_icon_and_the_game() {
+        let dir = std::env::temp_dir().join(format!("lv-menu-test-{}", std::process::id()));
+        // SAFETY: only this test reads XDG_DATA_HOME
+        unsafe { std::env::set_var("XDG_DATA_HOME", &dir) };
+        let entry = desktop_entry(Path::new("/opt/lv/LuckyVerities"));
+        let icon = dir.join("icons").join("lucky-verities.png");
+        assert!(icon.exists() && std::fs::metadata(&icon).unwrap().len() > 1000);
+        assert!(entry.contains("Exec=\"/opt/lv/LuckyVerities\""));
+        assert!(entry.contains(&format!("Icon={}", icon.display())));
+        assert!(entry.contains("Categories=Game;"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

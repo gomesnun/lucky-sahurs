@@ -779,6 +779,7 @@ pub const PT: &[(&str, &str)] = &[
     ("Reach Prestige %d.", "Chega ao Prestígio %d."),
     ("Done", "Feito"),
     ("Ready!", "Pronto!"),
+    ("Linux: the game adds itself to your app menu (Games) with its icon, and the desktop shortcut now has the icon too.", "Linux: o jogo aparece no menu de aplicações (Jogos) com o ícone, e o atalho no ambiente de trabalho agora também tem o ícone."),
     ("Your settings (animations, cutscenes, sounds, language...) now follow your save: open it on another PC and they come with it. Fullscreen stays per PC.", "As tuas definições (animações, cutscenes, sons, idioma...) agora vão com o teu save: abre-o noutro PC e vêm com ele. O ecrã inteiro fica em cada PC."),
     ("QUESTS", "MISSÕES"),
     ("Quests", "Missões"),
