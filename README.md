@@ -85,7 +85,7 @@ same line again updates it. Your saves are kept either way.
 
 **Ubuntu / Debian / Mint / Pop!_OS**
 ```bash
-sudo apt update && sudo apt install -y git curl build-essential pkg-config libsdl2-dev libfreetype-dev libharfbuzz-dev && curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && . "$HOME/.cargo/env" && { git clone --depth 1 https://github.com/gomesnun/lucky-verities ~/lucky-verities || git -C ~/lucky-verities pull; } && cd ~/lucky-verities && cargo build --release && install -Dm755 target/release/lucky-verities ~/.local/bin/lucky-verities
+sudo apt update; sudo apt install -y git curl build-essential pkg-config libsdl2-dev libfreetype-dev libharfbuzz-dev && curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && . "$HOME/.cargo/env" && { git clone --depth 1 https://github.com/gomesnun/lucky-verities ~/lucky-verities || git -C ~/lucky-verities pull; } && cd ~/lucky-verities && cargo build --release && install -Dm755 target/release/lucky-verities ~/.local/bin/lucky-verities
 ```
 **Fedora**
 ```bash
