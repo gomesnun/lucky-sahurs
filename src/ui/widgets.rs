@@ -28,6 +28,7 @@ impl TextField {
             "email" => 80,
             "code" => 6,
             "text" => 280,
+            "digits" => 9,
             _ => 64,
         };
         TextField { kind, text: String::new(), caret: 0, max_len }
@@ -58,7 +59,7 @@ impl TextField {
                 if !(ch.is_ascii() && (ch.is_ascii_alphanumeric() || ch == '_')) {
                     continue;
                 }
-            } else if self.kind == "code" {
+            } else if self.kind == "code" || self.kind == "digits" {
                 if !ch.is_ascii_digit() {
                     continue;
                 }

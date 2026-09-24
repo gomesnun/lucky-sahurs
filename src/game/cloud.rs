@@ -70,6 +70,8 @@ impl Game {
         }
         self.account = None;
         self.ev.is_admin = false;
+        self.adm.menu_open = false;
+        self.adm.ban_open = false;
         self.ev.admin_checked = false;
         self.ev.admin_open = false;
         self.cloud_slots.clear();
@@ -456,6 +458,7 @@ impl Game {
         self.tick_friends(now);
         self.tick_chat(now);
         self.tick_events(now);
+        self.tick_wallet(now);
     }
 
     pub fn leaderboard_values(&self) -> (f64, f64, i64, i64) {

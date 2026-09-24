@@ -9,7 +9,7 @@ use crate::core::formatting::{format_number, format_playtime};
 use crate::core::state::now_ts;
 use crate::gfx::{Color, Rect, draw, ti};
 use crate::i18n::{tr, tr_short};
-use crate::online::firebase::{Person, PublicStats, username_ok, online_error_text};
+use crate::online::firebase::{PRESENCE_INTERVAL, PRESENCE_ONLINE, Person, PublicStats, online_error_text, server_now, username_ok};
 use crate::theme::*;
 use crate::tr;
 use crate::ui::avatar::{avatar_ring_color, avatar_surface};
@@ -20,8 +20,11 @@ use sdl2::keyboard::Keycode;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub const FRIEND_REFRESH: f64 = 90.0;
-pub const FRIEND_BADGE_POLL: f64 = 240.0;
+/// the list (and who's online) only refreshes when the page opens or on Refresh; this is the minimum between
+/// two refreshes when opening/closing the page quickly
+pub const FRIEND_REFRESH: f64 = 20.0;
+/// with the page closed only the received requests are counted, every 5 min
+pub const FRIEND_BADGE_POLL: f64 = 300.0;
 pub const FRIEND_PROFILE_FETCH: usize = 24;
 pub const FRIEND_MAX: usize = 100;
 
@@ -33,7 +36,16 @@ const AVATAR_BIG: i32 = 96;
 const PICKER_CELL: i32 = 84;
 const PICKER_GAP: i32 = 10;
 
-const FRIEND_TABS: [(&str, &str); 3] = [("friends", "Friends"), ("requests", "Requests"), ("add", "Add friend")];
+const FRIEND_TABS: [(&str, &str); 4] = [("friends", "Friends"), ("requests", "Requests"), ("add", "Add friend"), ("trades", "Trades")];
+
+/// icons/<name>.png of each tab
+fn friend_tab_icon(key: &str) -> Option<&'static str> {
+    match key {
+        "friends" => Some("friends"),
+        "trades" => Some("trade"),
+        _ => None,
+    }
+}
 
 pub struct FriendsUi {
     pub open: bool,
@@ -62,6 +74,8 @@ pub struct FriendsUi {
     pub stats_busy: Option<String>,
     pub avatar_picker: bool,
     pub profile_pushed: bool,
+    /// next time "I'm playing" (last_seen) is published
+    pub presence_at: f64,
 }
 
 impl FriendsUi {
@@ -91,6 +105,7 @@ impl FriendsUi {
             stats_busy: None,
             avatar_picker: false,
             profile_pushed: false,
+            presence_at: 0.0,
         }
     }
 }
@@ -102,7 +117,8 @@ struct Refreshed {
     chats: Vec<(String, f64)>,
 }
 
-type CardButton = (String, Color, Option<Cb>);
+/// (label, colour, callback, icon)
+type CardButton = (String, Color, Option<Cb>, Option<&'static str>);
 
 enum Row {
     Section(String),
@@ -128,6 +144,7 @@ impl Game {
 
     pub fn close_friends(&mut self) {
         self.close_chat();
+        self.close_trade_propose();
         self.fr.open = false;
         self.fr.avatar_picker = false;
         self.fr.view = None;
@@ -248,6 +265,7 @@ impl Game {
                     if let Ok(Some(prof)) = client.get_public_profile(&entry.uid) {
                         entry.avatar_pet = prof.avatar_pet;
                         entry.avatar_mut = prof.avatar_mut.clone();
+                        entry.last_seen = prof.last_seen; // to show who's online
                         if !prof.username.is_empty() {
                             entry.username = prof.username;
                         }
@@ -290,7 +308,38 @@ impl Game {
         );
     }
 
+    /// While you play, refreshes the public profile's last_seen every PRESENCE_INTERVAL seconds: that's what makes
+    /// friends see you "Online" (1 small write each time).
+    pub fn tick_presence(&mut self, now: f64) {
+        if !self.friends_ready() || now < self.fr.presence_at {
+            return;
+        }
+        self.fr.presence_at = now + PRESENCE_INTERVAL;
+        self.fr.profile_pushed = true;
+        let (pet, m) = self.avatar_pair();
+        let client = self.client.clone().unwrap();
+        self.worker.run::<()>(move || client.publish_profile(pet, m), None, Some(Box::new(|_: &mut Game, _| {})));
+    }
+
+    /// Some(true) = the friend is playing now; Some(false) = no; None = unknown (an old version of the game).
+    pub fn friend_online(entry: &Person) -> Option<bool> {
+        let seen = entry.last_seen.filter(|s| *s != 0.0)?;
+        Some(server_now() - seen < PRESENCE_ONLINE)
+    }
+
+    pub fn last_seen_text(seen: Option<f64>) -> String {
+        let ago = (server_now() - seen.unwrap_or(0.0)).max(0.0) as i64;
+        if ago < 3600 {
+            tr!("Last seen %d min ago", (ago / 60).max(1))
+        } else if ago < 86400 {
+            tr!("Last seen %d h ago", ago / 3600)
+        } else {
+            tr!("Last seen %d days ago", ago / 86400)
+        }
+    }
+
     pub fn tick_friends(&mut self, now: f64) {
+        self.tick_presence(now);
         if !self.friends_ready() || self.fr.open || self.fr.loading {
             return;
         }
@@ -373,7 +422,7 @@ impl Game {
             move || client.send_friend_request(&uid, &username),
             move |g, _: ()| {
                 g.fr.action = None;
-                g.fr.outgoing.push(Person { uid: u2, username: n2.clone(), avatar_pet: None, avatar_mut: "normal".into(), time: None });
+                g.fr.outgoing.push(Person { uid: u2, username: n2.clone(), avatar_pet: None, avatar_mut: "normal".into(), time: None, last_seen: None });
                 g.fr.msg = Some((tr!("Friend request sent to %s.", n2), GOOD));
             },
             Game::friend_err,
@@ -393,13 +442,16 @@ impl Game {
                 g.fr.action = None;
                 g.fr.incoming.retain(|r| r.uid != u2);
                 if !g.fr.list.iter().any(|f| f.uid == u2) {
-                    g.fr.list.push(Person { uid: u2, username: n2.clone(), avatar_pet: None, avatar_mut: "normal".into(), time: None });
+                    g.fr.list.push(Person { uid: u2, username: n2.clone(), avatar_pet: None, avatar_mut: "normal".into(), time: None, last_seen: None });
                     g.fr.list.sort_by(|a, b| a.username.cmp(&b.username));
                 }
                 g.fr.msg = Some((tr!("%s is now your friend.", n2), GOOD));
                 g.refresh_friends(true);
             },
-            Game::friend_err,
+            |g, e| {
+                Game::friend_err(g, e);
+                g.refresh_friends(true); // the list could be stale (a request already cancelled)
+            },
         );
     }
 
@@ -476,7 +528,7 @@ impl Game {
 
     // ================================================================ drawing
     pub fn draw_friends(&mut self, mouse_pos: (f64, f64)) {
-        self.refresh_friends(false);
+        // the list (and who's online) only refreshes when the page opens and on the Refresh button
         let ov = dim_overlay(self.vw, VIRTUAL_H, 170);
         self.canvas.blit(&ov, 0, 0);
 
@@ -506,6 +558,10 @@ impl Game {
             self.draw_avatar_picker(body, mouse_pos);
             return;
         }
+        if self.trades.target.is_some() {
+            self.draw_trade_propose(body, mouse_pos);
+            return;
+        }
         if self.chat.uid.is_some() {
             self.draw_chat(body, mouse_pos);
             return;
@@ -523,6 +579,7 @@ impl Game {
             let n = match *key {
                 "friends" => self.fr.list.len(),
                 "requests" => self.fr.incoming.len(),
+                "trades" => self.trades_pending_count(),
                 _ => 0,
             };
             if n != 0 {
@@ -541,9 +598,12 @@ impl Game {
                 if active { accent_hover() } else { panel_lighter() },
                 if active { BLACK } else { WHITE },
                 cb(move |g| g.set_friends_tab(k)),
-                Bo::r(10),
+                match friend_tab_icon(k) {
+                    Some(i) => Bo::r(10).icon(i),
+                    None => Bo::r(10),
+                },
             );
-            if *key == "requests" && n != 0 && !active {
+            if (*key == "requests" || *key == "trades") && n != 0 && !active {
                 self.draw_friends_badge(trect.topright(), n as i64);
             }
         }
@@ -555,6 +615,7 @@ impl Game {
         match self.fr.tab {
             "add" => self.draw_friends_add(list_rect, mouse_pos),
             "requests" => self.draw_friends_requests(list_rect, mouse_pos),
+            "trades" => self.draw_trades_list(list_rect, mouse_pos),
             _ => self.draw_friends_friends(list_rect, mouse_pos),
         }
     }
@@ -643,24 +704,44 @@ impl Game {
             draw::circle(&mut self.canvas, BAD, c, 6, 0);
             draw::circle(&mut self.canvas, panel(), c, 6, 2);
         }
+        // the whole row's click is registered BEFORE the buttons: clicks are resolved from the last registered
+        // to the first, so the buttons (registered next) win when clicked - otherwise the row always "swallowed"
+        // the click and Chat opened the stats too
+        if let Some(c) = on_click {
+            self.register_button(rect, c, Some("click"));
+        }
         let sb = self.f.small_b.clone();
         let med = self.f.med.clone();
         let mut bx = rect.right() - 10;
         let busy = self.fr.action.as_deref() == Some(entry.uid.as_str());
-        for (label, color, callback) in buttons.into_iter().rev() {
-            let bw = 84.max(sb.size(&label).0 + 26);
+        for (label, color, callback, icon) in buttons.into_iter().rev() {
+            let bw = 84.max(sb.size(&label).0 + 26 + if icon.is_some() { 28 } else { 0 });
             let brect = Rect::new(bx - bw, rect.centery() - 16, bw, 32);
             let hover = Color::rgb(color.r.saturating_add(30), color.g.saturating_add(30), color.b.saturating_add(30));
             let text_color = if color == accent() || color == GOOD { BLACK } else { WHITE };
-            self.button(brect, &label, &sb, mouse_pos, color, hover, text_color, callback, Bo::r(8).enabled(!busy));
+            let mut o = Bo::r(8).enabled(!busy);
+            if let Some(i) = icon {
+                o = o.icon(i);
+            }
+            self.button(brect, &label, &sb, mouse_pos, color, hover, text_color, callback, o);
             bx = brect.x - 8;
         }
         let name_w = 40.max(bx - (rect.x + 60));
         let nt = med.render(&fit_text(&med, &entry.username, name_w), WHITE);
-        self.canvas.blit(&nt, rect.x + 60, rect.centery() - nt.h / 2);
-        if let Some(c) = on_click {
-            self.register_button(rect, c, Some("click"));
-        }
+        let Some(online) = Game::friend_online(entry) else {
+            self.canvas.blit(&nt, rect.x + 60, rect.centery() - nt.h / 2);
+            return hovering;
+        };
+        // green (online) / grey (offline) dot on the photo's corner + "Online" / "Last seen ..." under the name
+        let dot = (rect.x + 10 + AVATAR_ROW - 4, rect.centery() + AVATAR_ROW / 2 - 4);
+        draw::circle(&mut self.canvas, if online { GOOD } else { grey_dim() }, dot, 7, 0);
+        draw::circle(&mut self.canvas, panel(), dot, 7, 2);
+        let status = if online { tr("Online") } else { Game::last_seen_text(entry.last_seen) };
+        let tiny = self.f.tiny.clone();
+        let stt = tiny.render(&fit_text(&tiny, &status, name_w), if online { GOOD } else { grey() });
+        let top = rect.centery() - (nt.h + stt.h - 4) / 2;
+        self.canvas.blit(&nt, rect.x + 60, top);
+        self.canvas.blit(&stt, rect.x + 62, top + nt.h - 4);
         hovering
     }
 
@@ -701,10 +782,12 @@ impl Game {
         }
         let mut rows = Vec::new();
         for e in self.fr.list.clone() {
-            let (u1, n1, u2, u3) = (e.uid.clone(), e.username.clone(), e.uid.clone(), e.uid.clone());
+            let (u1, n1, u2, n2, u3) = (e.uid.clone(), e.username.clone(), e.uid.clone(), e.username.clone(), e.uid.clone());
+            // Chat opens the conversation; Trade opens a trade offer. To see the friend's stats just click the
+            // row outside the buttons (on_click below).
             let buttons = vec![
-                (tr("Chat"), accent(), cb(move |g| g.open_chat(&u1, &n1))),
-                (tr("Stats"), panel_lighter(), cb(move |g| g.open_friend(u2.clone()))),
+                (tr("Chat"), accent(), cb(move |g| g.open_chat(&u1, &n1)), Some("chat")),
+                (tr("Trade"), panel_lighter(), cb(move |g| g.open_trade_propose(&u2, &n2)), Some("trade")),
             ];
             rows.push((ROW_H, Row::Card(e, buttons, cb(move |g| g.open_friend(u3.clone())))));
         }
@@ -723,8 +806,8 @@ impl Game {
             for req in self.fr.incoming.clone() {
                 let (u1, n1, u2) = (req.uid.clone(), req.username.clone(), req.uid.clone());
                 let buttons = vec![
-                    (tr("Accept"), GOOD, cb(move |g| g.accept_friend(u1.clone(), n1.clone()))),
-                    (tr("Decline"), BAD, cb(move |g| g.drop_request(u2.clone(), true))),
+                    (tr("Accept"), GOOD, cb(move |g| g.accept_friend(u1.clone(), n1.clone())), None),
+                    (tr("Decline"), BAD, cb(move |g| g.drop_request(u2.clone(), true)), None),
                 ];
                 rows.push((ROW_H, Row::Card(req, buttons, None)));
             }
@@ -733,7 +816,7 @@ impl Game {
             rows.push((28, Row::Section(tr("Sent"))));
             for req in self.fr.outgoing.clone() {
                 let u = req.uid.clone();
-                let buttons = vec![(tr("Cancel"), panel_lighter(), cb(move |g| g.drop_request(u.clone(), false)))];
+                let buttons = vec![(tr("Cancel"), panel_lighter(), cb(move |g| g.drop_request(u.clone(), false)), None)];
                 rows.push((ROW_H, Row::Card(req, buttons, None)));
             }
         }
@@ -745,7 +828,7 @@ impl Game {
         let field = Rect::new(rect.x, rect.y, rect.w - 130, 46);
         let text = self.fr.search.text.clone();
         let focus = self.fr.focus;
-        self.draw_text_field(field, FieldRef::FriendsSearch, &text, &tr("username"), focus, Rc::new(|g: &mut Game| g.set_friends_focus(true)));
+        self.draw_text_field(field, FieldRef::FriendsSearch, &text, &tr("Username"), focus, Rc::new(|g: &mut Game| g.set_friends_focus(true)));
         let med = self.f.med.clone();
         let busy = self.fr.search_busy;
         self.button(Rect::new(field.right() + 10, field.y, 120, 46), &tr("Search"), &med, mouse_pos, accent(), accent_hover(), BLACK, cb(|g| g.submit_friend_search()), Bo::r(10).enabled(!busy));
@@ -762,10 +845,10 @@ impl Game {
         let Some(Some(profile)) = self.fr.result.clone() else { return };
         let (u, n) = (profile.uid.clone(), profile.username.clone());
         let buttons: Vec<CardButton> = match self.friend_relation(&profile.uid) {
-            Some("friend") => vec![(tr("Friends"), panel_light(), None)],
-            Some("sent") => vec![(tr("Request sent"), panel_light(), None)],
-            Some(_) => vec![(tr("Accept"), GOOD, cb(move |g| g.accept_friend(u.clone(), n.clone())))],
-            None => vec![(tr("Add"), accent(), cb(move |g| g.send_friend_request(u.clone(), n.clone())))],
+            Some("friend") => vec![(tr("Friends"), panel_light(), None, None)],
+            Some("sent") => vec![(tr("Request sent"), panel_light(), None, None)],
+            Some(_) => vec![(tr("Accept"), GOOD, cb(move |g| g.accept_friend(u.clone(), n.clone())), None)],
+            None => vec![(tr("Add"), accent(), cb(move |g| g.send_friend_request(u.clone(), n.clone())), None)],
         };
         self.draw_friend_card(card, &profile, mouse_pos, buttons, None);
     }
@@ -829,11 +912,12 @@ impl Game {
         }
 
         let sb = self.f.small_b.clone();
-        self.button(Rect::new(rect.x, rect.bottom() - 40, 140, 40), &tr("Back"), &sb, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.close_friend_view()), Bo::r(10));
-        let (u1, n1, u2) = (entry.uid.clone(), entry.username.clone(), entry.uid.clone());
-        self.button(Rect::new(rect.centerx() - 75, rect.bottom() - 40, 150, 40), &tr("Message"), &sb, mouse_pos, accent(), accent_hover(), BLACK, cb(move |g| g.open_chat(&u1, &n1)), Bo::r(10));
+        self.button(Rect::new(rect.x, rect.bottom() - 40, 110, 40), &tr("Back"), &sb, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.close_friend_view()), Bo::r(10));
+        let (u1, n1, u2, u3, n3) = (entry.uid.clone(), entry.username.clone(), entry.uid.clone(), entry.uid.clone(), entry.username.clone());
+        self.button(Rect::new(rect.x + 120, rect.bottom() - 40, 130, 40), &tr("Message"), &sb, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(move |g| g.open_chat(&u1, &n1)), Bo::r(10).icon("chat"));
+        self.button(Rect::new(rect.centerx() - 65, rect.bottom() - 40, 130, 40), &tr("Trade"), &sb, mouse_pos, accent(), accent_hover(), BLACK, cb(move |g| g.open_trade_propose(&u3, &n3)), Bo::r(10).icon("trade"));
         let busy = self.fr.action.as_deref() == Some(entry.uid.as_str());
-        self.button(Rect::new(rect.right() - 170, rect.bottom() - 40, 170, 40), &tr("Remove friend"), &sb, mouse_pos, panel_light(), BAD, WHITE, cb(move |g| g.remove_friend(u2.clone())), Bo::r(10).enabled(!busy));
+        self.button(Rect::new(rect.right() - 150, rect.bottom() - 40, 150, 40), &tr("Remove friend"), &sb, mouse_pos, panel_light(), BAD, WHITE, cb(move |g| g.remove_friend(u2.clone())), Bo::r(10).enabled(!busy));
     }
 
     fn draw_avatar_picker(&mut self, rect: Rect, mouse_pos: (f64, f64)) {

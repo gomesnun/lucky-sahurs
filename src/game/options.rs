@@ -252,7 +252,7 @@ impl Game {
         self.button(Rect::new(x0, y, w, 44), &tr("Leaderboard"), &med, mouse_pos, panel_light(), panel_lighter(), accent(), cb(|g| g.open_leaderboard()), Bo::r(10).icon("leaderboard"));
         y += 54;
         if self.ev.is_admin {
-            self.button(Rect::new(x0, y, w, 44), &tr("Global event"), &med, mouse_pos, panel_light(), panel_lighter(), accent(), cb(|g| g.toggle_event_admin()), Bo::r(10));
+            self.button(Rect::new(x0, y, w, 44), &tr("Admin commands"), &med, mouse_pos, panel_light(), panel_lighter(), accent(), cb(|g| g.toggle_admin_menu()), Bo::r(10).icon("admin_event"));
             y += 54;
         }
         if in_game {

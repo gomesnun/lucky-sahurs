@@ -17,6 +17,10 @@ pub enum FieldRef {
     FriendsSearch,
     Chat,
     Feedback,
+    EventMult,
+    EventSeconds,
+    BanSearch,
+    BanReason,
 }
 
 /// Optional arguments of button().
@@ -94,6 +98,10 @@ impl Game {
             FieldRef::FriendsSearch => &mut self.fr.search,
             FieldRef::Chat => &mut self.chat.field,
             FieldRef::Feedback => &mut self.fb.field,
+            FieldRef::EventMult => &mut self.ev.mult_field,
+            FieldRef::EventSeconds => &mut self.ev.seconds_field,
+            FieldRef::BanSearch => &mut self.adm.search,
+            FieldRef::BanReason => &mut self.adm.reason,
         }
     }
 

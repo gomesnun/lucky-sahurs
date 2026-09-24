@@ -439,7 +439,7 @@ fn shots(dir: &str) {
     save(&g, "o_saves_local");
     g.screen_mode = "title";
     g.account = Some(game::Account { uid: "u_me".into(), username: "tommy".into(), email: Some("t@x.io".into()), email_verified: true });
-    let person = |uid: &str, name: &str, pet: Option<i64>, m: &str| Person { uid: uid.into(), username: name.into(), avatar_pet: pet, avatar_mut: m.into(), time: None };
+    let person = |uid: &str, name: &str, pet: Option<i64>, m: &str| Person { uid: uid.into(), username: name.into(), avatar_pet: pet, avatar_mut: m.into(), time: None, last_seen: None };
     g.fr.list = vec![person("u_a", "alice", Some(3), "golden"), person("u_b", "bob", None, "normal"), person("u_c", "carol_long_name", Some(12), "diamond")];
     g.fr.incoming = vec![person("u_d", "dave", Some(0), "normal")];
     g.fr.outgoing = vec![person("u_e", "eve", None, "normal")];
@@ -499,7 +499,7 @@ fn shots(dir: &str) {
     g.draw(m);
     save(&g, "o_feedback_edit");
     g.close_feedback();
-    g.ev.current = Some(Event { kind: "luck".into(), mult: 10.0, ends_at: now + 250.0, by: "tommy".into() });
+    g.ev.current = vec![Event { kind: "luck".into(), mult: 10.0, ends_at: now + 250.0, by: "tommy".into() }];
     g.ev.is_admin = true;
     g.ev.admin_checked = true;
     g.ev.next_poll = f64::INFINITY;

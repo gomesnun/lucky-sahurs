@@ -2,6 +2,7 @@
 //! (main.py). Each former Python mixin is an `impl Game` block in its own file.
 
 pub mod account;
+pub mod admin;
 pub mod audio;
 pub mod base;
 pub mod chat_panel;
@@ -20,6 +21,7 @@ pub mod options;
 pub mod pets_panel;
 pub mod rebirth_panel;
 pub mod title_saves;
+pub mod trades;
 pub mod traits_panel;
 pub mod update_panel;
 pub mod updatelog;
@@ -234,6 +236,8 @@ pub struct Game {
     pub fb: feedback::FeedbackUi,
     pub chat: chat_panel::ChatUi,
     pub ev: events::EventsUi,
+    pub adm: admin::AdminUi,
+    pub trades: trades::TradesUi,
     pub text_input_on: bool,
 }
 
@@ -391,6 +395,8 @@ impl Game {
             fb: feedback::FeedbackUi::new(),
             chat: chat_panel::ChatUi::new(),
             ev: events::EventsUi::new(),
+            adm: admin::AdminUi::new(),
+            trades: trades::TradesUi::new(),
             text_input_on: true,
         };
         if let Some(sdl) = sdl {
@@ -660,6 +666,10 @@ impl Game {
     }
 
     pub fn close_overlays(&mut self) {
+        self.adm.menu_open = false;
+        if self.adm.ban_open {
+            self.close_ban_admin();
+        }
         if self.options_open {
             self.close_options();
         }
@@ -669,7 +679,9 @@ impl Game {
         if self.fb.open {
             self.close_feedback();
         }
-        self.ev.admin_open = false;
+        if self.ev.admin_open {
+            self.close_event_admin();
+        }
         self.traits_open = false;
         self.rebirth_open = false;
         self.rebirth_confirm = false;
@@ -680,7 +692,11 @@ impl Game {
     }
 
     pub fn close_overlay_on_outside_click(&mut self) {
-        if self.ev.admin_open {
+        if self.adm.menu_open {
+            self.close_admin_menu();
+        } else if self.adm.ban_open {
+            self.close_ban_admin();
+        } else if self.ev.admin_open {
             self.close_event_admin();
         } else if self.fr.open {
             self.close_friends();
@@ -769,6 +785,7 @@ impl Game {
             last = now;
             self.poll_worker();
             self.tick_updater(); // now and then checks GitHub for a new version
+            self.tick_ban(now_ts()); // was this account banned? (see admin.rs)
             self.tick_theme(dt);
             running = self.handle_events(&mut pump);
             if self.quit_requested {
@@ -880,12 +897,21 @@ impl Game {
     }
 
     pub fn on_text(&mut self, text: &str) {
-        if self.fr.open && self.fr.focus && !self.update_modal_active() {
+        if self.ban_screen_active() {
+        } else if self.adm.ban_open && self.adm.focus.is_some() && !self.update_modal_active() {
+            self.ban_type(text);
+        } else if self.fr.open && self.fr.focus && !self.update_modal_active() {
             self.fr.search.add(text);
         } else if self.chat.uid.is_some() && self.chat.focus && !self.update_modal_active() {
             self.chat.field.add(text);
         } else if self.fb.open && self.fb.focus && !self.update_modal_active() {
             self.fb.field.add(text);
+        } else if self.ev.admin_open && self.ev.admin_focus.is_some() && !self.update_modal_active() {
+            if self.ev.admin_focus == Some("mult") {
+                self.ev.mult_field.add(text);
+            } else {
+                self.ev.seconds_field.add(text);
+            }
         } else if self.screen_mode == "account" && !self.update_modal_active() {
             if let Some(f) = self.acc.focus {
                 if let Some(fl) = self.acc.fields.get_mut(f) {
@@ -897,16 +923,23 @@ impl Game {
 
     pub fn on_key(&mut self, ev: KeyEv) {
         let k = ev.key;
-        if self.update_modal_active() && k != Keycode::F11 {
+        if (self.update_modal_active() || self.ban_screen_active()) && k != Keycode::F11 {
         } else if self.cutscene_active.is_some() && k != Keycode::F11 {
             self.skip_cutscene();
         } else if self.screen_mode == "account" && self.handle_account_key(ev) {
-        } else if self.handle_chat_key(ev) || self.handle_friends_key(ev) || self.handle_feedback_key(ev) {
+        } else if self.handle_ban_key(ev)
+            || self.handle_chat_key(ev)
+            || self.handle_friends_key(ev)
+            || self.handle_feedback_key(ev)
+            || self.handle_event_admin_key(ev)
+        {
         } else if k == Keycode::F11 || (k == Keycode::F && ev.ctrl) {
             self.toggle_fullscreen();
         } else if k == Keycode::Escape || k == Keycode::AcBack {
             if self.screen_mode == "account" {
                 self.close_account();
+            } else if self.adm.menu_open {
+                self.close_admin_menu();
             } else if self.ev.admin_open {
                 self.close_event_admin();
             } else if self.fr.open {
@@ -945,6 +978,8 @@ impl Game {
             || self.fr.open
             || self.fb.open
             || self.ev.admin_open
+            || self.adm.menu_open
+            || self.adm.ban_open
             || self.screen_mode != "game"
         {
         } else if k == Keycode::U || k == Keycode::T {
@@ -976,6 +1011,16 @@ impl Game {
 
     pub fn scroll_at(&mut self, pos: (f64, f64), step: f64) -> bool {
         let clamp = |v: f64, m: f64| v.min(m).max(0.0);
+        if self.ban_screen_active() || self.adm.menu_open {
+            return false;
+        }
+        if self.adm.ban_open {
+            if self.adm.list_rect.collidepoint(pos) {
+                self.adm.scroll = clamp(self.adm.scroll + step, self.adm.max_scroll);
+                return true;
+            }
+            return false;
+        }
         if self.fb.open {
             if self.fb.list_rect.collidepoint(pos) {
                 self.fb.scroll = clamp(self.fb.scroll + step, self.fb.max_scroll);
@@ -991,7 +1036,7 @@ impl Game {
                 }
                 return false;
             }
-            if self.fr.list_rect.collidepoint(pos) || self.fr.avatar_picker {
+            if self.fr.list_rect.collidepoint(pos) || self.fr.avatar_picker || self.trades.target.is_some() {
                 self.fr.scroll = clamp(self.fr.scroll + step, self.fr.max_scroll);
                 return true;
             }
@@ -1078,8 +1123,20 @@ impl Game {
             self.begin_modal();
             self.draw_event_admin(mouse_pos);
         }
+        if self.adm.menu_open {
+            self.begin_modal();
+            self.draw_admin_menu(mouse_pos);
+        }
+        if self.adm.ban_open {
+            self.begin_modal();
+            self.draw_ban_admin(mouse_pos);
+        }
         if self.cutscene_active.is_some() {
             self.draw_cutscene(mouse_pos);
+        }
+        if self.ban_screen_active() && !self.update_modal_active() {
+            // banned account: on top of everything, it can only log out or quit
+            self.draw_ban_screen(mouse_pos);
         }
         if self.update_modal_active() {
             // "New version available": on top of EVERYTHING, blocks the rest
