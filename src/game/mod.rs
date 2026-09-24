@@ -22,6 +22,7 @@ pub mod pets_panel;
 pub mod rebirth_panel;
 pub mod prestige_panel;
 pub mod sell_panel;
+pub mod evolve_panel;
 pub mod shop_panel;
 pub mod title_saves;
 pub mod trades;
@@ -275,6 +276,7 @@ pub struct Game {
     pub trades: trades::TradesUi,
     pub shop: shop_panel::ShopUi,
     pub sell: sell_panel::SellUi,
+    pub evolve: evolve_panel::EvolveUi,
     pub titles: titles_panel::TitlesUi,
     pub text_input_on: bool,
 }
@@ -457,6 +459,7 @@ impl Game {
             trades: trades::TradesUi::new(),
             shop: shop_panel::ShopUi::new(),
             sell: sell_panel::SellUi::new(),
+            evolve: evolve_panel::EvolveUi::new(),
             titles: titles_panel::TitlesUi::new(),
             text_input_on: true,
         };
@@ -742,6 +745,7 @@ impl Game {
         if self.sell.target.is_some() {
             self.close_sell();
         }
+        self.close_evolve();
         self.adm.menu_open = false;
         if self.adm.ban_open {
             self.close_ban_admin();
@@ -772,6 +776,8 @@ impl Game {
     pub fn close_overlay_on_outside_click(&mut self) {
         if self.sell.target.is_some() {
             self.close_sell();
+        } else if self.evolve.target.is_some() {
+            self.close_evolve();
         } else if self.adm.menu_open {
             self.close_admin_menu();
         } else if self.adm.ban_open {
@@ -1019,6 +1025,7 @@ impl Game {
             self.skip_cutscene();
         } else if self.screen_mode == "account" && self.handle_account_key(ev) {
         } else if self.handle_sell_key(ev)
+            || self.handle_evolve_key(ev)
             || self.handle_ban_key(ev)
             || self.handle_chat_key(ev)
             || self.handle_friends_key(ev)
@@ -1079,6 +1086,7 @@ impl Game {
             || self.adm.menu_open
             || self.adm.ban_open
             || self.sell.target.is_some()
+            || self.evolve.target.is_some()
             || self.screen_mode != "game"
         {
         } else if k == Keycode::U || k == Keycode::T {
@@ -1153,6 +1161,7 @@ impl Game {
             || self.options_open
             || self.stats_open
             || self.sell.target.is_some()
+            || self.evolve.target.is_some()
             || self.leaderboard_open
             || self.credits_open
             || self.update_modal_active()
@@ -1255,6 +1264,10 @@ impl Game {
         if self.sell.target.is_some() {
             self.begin_modal();
             self.draw_sell_page(mouse_pos);
+        }
+        if self.evolve.target.is_some() {
+            self.begin_modal();
+            self.draw_evolve_page(mouse_pos);
         }
         if self.cutscene_active.is_some() {
             self.draw_cutscene(mouse_pos);

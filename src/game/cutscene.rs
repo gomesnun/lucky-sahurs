@@ -7,7 +7,7 @@ use crate::core::formatting::format_number;
 use crate::gfx::{Color, Rect, Surface, draw, ti, transform};
 use crate::i18n::tr;
 use crate::tr;
-use crate::ui::cards::{cell, rarity_glow_color, render_pet_card};
+use crate::ui::cards::{cell, rarity_glow_color, render_pet_card_phase};
 use crate::ui::drawing::{draw_rainbow_border, draw_shockwave, ease_out_back, ease_out_cubic, rarity_glow};
 use crate::ui::widgets::Particle;
 use std::f64::consts::PI;
@@ -197,7 +197,7 @@ impl Game {
         let base = 220.max(380.min((self.vw.min(VIRTUAL_H) as f64 * 0.46) as i32));
         let income = self.state.pet_income(r_idx, mutation_key);
         let plates = vec![vec![cell(tr("Income"), tr!("+%s/sec", format_number(income)))]];
-        let mut card_surf = render_pet_card(rarity, mutation_key, base, base, &plates, 0, false);
+        let mut card_surf = render_pet_card_phase(rarity, mutation_key, self.state.phase(r_idx, mutation_key), base, base, &plates, 0, false);
         if (scale - 1.0).abs() > 0.005 {
             let s = 1.max((base as f64 * scale) as i32);
             card_surf = Rc::new(transform::smoothscale(&card_surf, s, s));

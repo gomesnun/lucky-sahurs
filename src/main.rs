@@ -537,6 +537,41 @@ fn shots(dir: &str) {
     g.draw(m);
     save(&g, "n_sell");
     g.close_overlays();
+    // phases (stacking): one verity in each phase, then the Evolve page ready / maxed
+    {
+        let (owned0, phases0, equipped0) = (g.state.owned.clone(), g.state.phases.clone(), g.state.equipped.clone());
+        let pets = [(0usize, 60i64, 0usize), (1, 20, 1), (2, 3, 2), (3, 2, 3)];
+        g.state.equipped.clear();
+        for (i, n, ph) in pets {
+            g.state.owned.insert(format!("{}_normal", i), n);
+            g.state.phases.insert(format!("{}_normal", i), ph);
+            g.state.equip_add(i, "normal");
+        }
+        g.inv_sort = "rarity";
+        g.draw(m);
+        save(&g, "n_phases_inventory");
+        g.bag_view = "equipped";
+        g.draw(m);
+        save(&g, "n_phases_equipped");
+        g.bag_view = "inventory";
+        g.open_evolve(0, "normal");
+        g.draw(m);
+        save(&g, "n_evolve");
+        g.press_evolve();
+        g.draw(m);
+        save(&g, "n_evolve_done");
+        g.open_evolve(2, "normal");
+        g.draw(m);
+        save(&g, "n_evolve_short");
+        g.open_evolve(3, "normal");
+        g.draw(m);
+        save(&g, "n_evolve_monster");
+        g.close_overlays();
+        g.inv_sort = "money";
+        g.state.owned = owned0;
+        g.state.phases = phases0;
+        g.state.equipped = equipped0;
+    }
     g.left_panel.close();
     g.left_panel.update(5.0);
     g.right_panel.open("milestones");

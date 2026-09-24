@@ -1,13 +1,13 @@
 //! Verity and trait cards (ui/cards.py): the verity image, the big outlined name, the rarity in a pill
 //! and the income / chance in dark plates.
 
-use crate::core::data::{Rarity, TRAITS, mutation};
+use crate::core::data::{PHASES, Rarity, TRAITS, mutation};
 use crate::gfx::{BLEND_RGBA_MIN, Color, Rect, Surf, Surface, draw};
 use crate::i18n::tr;
 use crate::theme::{BORDER_W_SMALL, GOLD_BORDER, WHITE, outline, panel_light};
 use crate::ui::drawing::{draw_rarity_bg, mix, rounded_gradient, shade};
 use crate::ui::fonts::{Font, fit_text, font_at, wrap_text};
-use crate::ui::icons::load_pet_image;
+use crate::ui::icons::{load_pet_image, load_pet_phase_image};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -254,7 +254,7 @@ fn fit_name(name: &str, base_size: i32, max_w: i32, max_h: i32, extra_h: i32) ->
 }
 
 #[allow(clippy::too_many_arguments)]
-fn draw_pet_art(surf: &mut Surface, rarity: &Rarity, locked: bool, area_top: i32, area_bottom: i32, inner_w: i32, s: f64, radius: i32, inset: i32, pill_s: &Surface) {
+fn draw_pet_art(surf: &mut Surface, rarity: &Rarity, phase: usize, locked: bool, area_top: i32, area_bottom: i32, inner_w: i32, s: f64, radius: i32, inset: i32, pill_s: &Surface) {
     let (w, h) = surf.get_size();
     let (lines, pitch, total) = if locked {
         let font = font_at(16.max(rnd(30.0 * s)), true, None);
@@ -268,7 +268,7 @@ fn draw_pet_art(surf: &mut Surface, rarity: &Rarity, locked: bool, area_top: i32
     let diameter = ball_bottom - ball_top;
     if diameter >= 18 {
         let side = ((diameter as f64 / BALL_FRAC) as i32).min((w as f64 * 1.15) as i32);
-        if let Some(art) = load_pet_image(rarity.pet, side, locked) {
+        if let Some(art) = load_pet_phase_image(rarity.pet, phase, side, locked) {
             let mut layer = Surface::new_alpha(w, h);
             let cy = (ball_top + ball_bottom).div_euclid(2);
             layer.blit(&art, w / 2 - side.div_euclid(2), (cy as f64 - BALL_CY * side as f64) as i32);
@@ -279,6 +279,14 @@ fn draw_pet_art(surf: &mut Surface, rarity: &Rarity, locked: bool, area_top: i32
     let r = Rect::with_midtop(pill_s.w, pill_s.h, (w / 2, area_top));
     surf.blit(pill_s, r.x, r.y);
     let mut y = area_bottom - total;
+    if phase > 0 && !locked {
+        // the phase just above the name ("Phase 2", "Phase 3", "Monster"): clear of the face and the monster's head
+        let ph = &PHASES[phase.min(PHASES.len() - 1)];
+        let size = 9.max(rnd(13.0 * s));
+        let p = pill(&font_at(size, true, None).render(&tr(ph.name).to_uppercase(), ph.color), Some(ph.color), 8, 2);
+        let pr = Rect::with_midbottom(p.w, p.h, (w / 2, y + 2));
+        surf.blit(&p, pr.x, pr.y);
+    }
     for t in &lines {
         let r = Rect::with_midtop(t.w, t.h, (w / 2, y));
         surf.blit(t, r.x, r.y);
@@ -288,7 +296,13 @@ fn draw_pet_art(surf: &mut Surface, rarity: &Rarity, locked: bool, area_top: i32
 
 /// The verity card (cached; the result must not be modified).
 pub fn render_pet_card(rarity: &Rarity, mutation_key: &str, w: i32, h: i32, plates: &[Vec<Cell>], footer_h: i32, locked: bool) -> Surf {
-    let key = format!("{}|{}|{}|{}|{}|{:?}|{}|{}", rarity.pet, mutation_key, tr(rarity.name), w, h, plates, footer_h, locked);
+    render_pet_card_phase(rarity, mutation_key, 0, w, h, plates, footer_h, locked)
+}
+
+/// The verity card in a phase (0 = as rolled ... 3 = Monster): the phase's art and a badge under the rarity.
+#[allow(clippy::too_many_arguments)]
+pub fn render_pet_card_phase(rarity: &Rarity, mutation_key: &str, phase: usize, w: i32, h: i32, plates: &[Vec<Cell>], footer_h: i32, locked: bool) -> Surf {
+    let key = format!("{}|{}|{}|{}|{}|{}|{:?}|{}|{}", rarity.pet, mutation_key, phase, tr(rarity.name), w, h, plates, footer_h, locked);
     if let Some(s) = CARDS.with(|c| c.borrow_mut().get(&key)) {
         return s;
     }
@@ -334,7 +348,7 @@ pub fn render_pet_card(rarity: &Rarity, mutation_key: &str, w: i32, h: i32, plat
     let pill_size = 11.max(rnd(16.0 * s));
     let pill_s = pill(&font_at(pill_size, true, None).render(&tr(rarity.name), accent), Some(accent), 10, 2);
     if load_pet_image(rarity.pet, 16, false).is_some() {
-        draw_pet_art(&mut surf, rarity, locked, area_top, area_bottom, inner_w, s, radius, if border.is_some() { 6 } else { 3 }, &pill_s);
+        draw_pet_art(&mut surf, rarity, phase, locked, area_top, area_bottom, inner_w, s, radius, if border.is_some() { 6 } else { 3 }, &pill_s);
     } else if locked {
         let q = font_at(20.max(rnd(58.0 * s)), true, None).render("?", LOCKED_MARK);
         let block_h = q.h - 8 + gap + pill_s.h;

@@ -30,6 +30,7 @@ Press **ROLL**. Get a pet. The rare ones pay better. The rarest one is a **1-in-
 | **16** rarity tiers | Common → Uncommon → Rare → Epic → Legendary → Mythic → Exotic → Secret → Divine → Cosmic → Transcendent → Ethereal → Celestial → Absolute → Primordial → **Paradox** |
 | **64** collectible Verities | each with its own income; the **Index** remembers every one you ever rolled (256 entries with the mutations) |
 | **4** mutations | Normal, **Golden** (x3), **Diamond** (x9) and **Rainbow** (x27), plus Golden / Diamond / Rainbow Rolls every so many rolls |
+| **Phases** | stack copies of one verity into it to evolve it: Phase 1 → Phase 2 (the grin) → Phase 3 (worn out) → its **Monster** form, x2 / x4 / x10 income |
 | **17** traits | rolled with trait charges, one equipped at a time; the **Auto Trait Roller** spends your charges for you |
 | **Upgrades** | a tree of 48 upgrades: luck for every tier, money, mutation chance, bonus rolls, Auto Roller, offline earnings, slots, the **Auto Upgrader** |
 | **Rebirths** | reset your coins for permanent Money and Luck, with 17 rewards along the way |

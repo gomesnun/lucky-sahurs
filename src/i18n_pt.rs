@@ -800,6 +800,24 @@ pub const PT: &[(&str, &str)] = &[
     ("Prestige (the new tab beside Rebirth, from 10 Rebirths): 5 Prestiges at 10, 15, 20, 30 and 40 Rebirths, each with a bigger PERMANENT boost - up to x200 Money and x60 Luck. Prestige II makes Rebirths keep your upgrades for good, Prestige III makes Rebirths reset nothing at all. A Prestige resets coins, Rebirths, upgrades and pets, but you keep 1 verity of your choice, and dice, potions and traits stay.", "Prestígio (o separador novo ao lado do Renascer, a partir de 10 Renascimentos): 5 Prestígios aos 10, 15, 20, 30 e 40 Renascimentos, cada um com um boost PERMANENTE maior - até x200 Dinheiro e x60 Sorte. O Prestígio II faz os Renascimentos guardarem as tuas melhorias para sempre, o Prestígio III faz os Renascimentos não resetarem nada. Um Prestígio reseta moedas, Renascimentos, melhorias e pets, mas ficas com 1 verity à tua escolha, e os dados, poções e traits ficam."),
     ("The Rebirths leaderboard shows each player's Prestige next to their Rebirths (Prestige counts first), and there are new Prestiged and Ascended titles.", "O ranking de Renascimentos mostra o Prestígio de cada jogador ao lado dos Renascimentos (o Prestígio conta primeiro), e há os títulos novos Prestigiado e Ascendido."),
     ("Auto Trait Roller (Upgrades > Traits): rolls your trait charges by itself, with a switch on the Traits page. It never resets on Rebirth or Prestige.", "Auto Rolador de Traits (Melhorias > Traits): usa as tuas cargas de traits sozinho, com um interruptor na página das Traits. Nunca é resetado no Renascer nem no Prestígio."),
+    // phases (stacking)
+    ("Phase 1", "Fase 1"),
+    ("Phase 2", "Fase 2"),
+    ("Phase 3", "Fase 3"),
+    ("Monster", "Monstro"),
+    ("Phase", "Fase"),
+    ("Evolve", "Evoluir"),
+    ("Close", "Fechar"),
+    ("Copies to stack", "Cópias a empilhar"),
+    ("%s (you have %s)", "%s (tens %s)"),
+    ("Income each", "Rendimento cada"),
+    ("Stacking uses up the copies. The one that evolves stays, and every copy of this pet you get from now on has the new phase.", "Empilhar gasta as cópias. A que evolui fica, e todas as cópias deste pet que receberes a partir de agora têm a nova fase."),
+    ("Fully evolved: this is its Monster form.", "Evolução completa: esta é a sua forma de Monstro."),
+    ("Evolve (stack %s)", "Evoluir (empilhar %s)"),
+    ("Become a Monster (stack %s)", "Virar Monstro (empilhar %s)"),
+    ("Need %s more", "Faltam %s"),
+    ("%s evolved to %s!", "%s evoluiu para %s!"),
+    ("%s became a MONSTER!", "%s virou um MONSTRO!"),
 ];
 
 pub const PT_SHORT: &[(&str, &str)] = &[

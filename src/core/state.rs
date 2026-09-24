@@ -77,6 +77,9 @@ pub struct GameState {
     pub owned: IndexMap<String, i64>,
     /// "{rarity_index}_{mutation}" ever rolled (for the Index; never shrinks)
     pub seen_pets: BTreeSet<String>,
+    /// "{rarity_index}_{mutation}" -> phase (0 = Phase 1 ... 3 = Monster), raised by stacking copies (evolve);
+    /// missing = Phase 1. Like the Index it stays even if you later have none of that pet.
+    pub phases: IndexMap<String, usize>,
     pub equipped: Vec<Pet>,
     pub avatar: Option<Pet>,
     /// the equipped title (core/titles.rs), shown to other players; None = no title
@@ -266,6 +269,7 @@ impl GameState {
             coins: 0.0,
             owned: IndexMap::new(),
             seen_pets: BTreeSet::new(),
+            phases: IndexMap::new(),
             equipped: Vec::new(),
             avatar: None,
             title: None,
@@ -384,16 +388,57 @@ impl GameState {
     }
 
     pub fn pet_income(&self, rarity_index: usize, mutation_key: &str) -> f64 {
-        rarities()[rarity_index].income * mutation(mutation_key).map(|m| m.mult).unwrap_or(1.0) * self.money_multiplier()
+        self.pet_base_income(rarity_index, mutation_key) * self.money_multiplier()
+    }
+
+    /// Income of one pet before the money multipliers: rarity x mutation x phase.
+    pub fn pet_base_income(&self, rarity_index: usize, mutation_key: &str) -> f64 {
+        rarities()[rarity_index].income * mutation(mutation_key).map(|m| m.mult).unwrap_or(1.0) * PHASES[self.phase(rarity_index, mutation_key)].mult
     }
 
     pub fn income_per_second(&self) -> f64 {
-        let r = rarities();
         let mut total = 0.0;
         for (idx, m) in &self.equipped {
-            total += r[*idx].income * mutation(m).map(|m| m.mult).unwrap_or(1.0);
+            total += self.pet_base_income(*idx, m);
         }
         total * self.money_multiplier()
+    }
+
+    // ================================================================ phases (stacking)
+    /// This pet's phase: 0 = Phase 1 ... MAX_PHASE = Monster.
+    pub fn phase(&self, rarity_index: usize, m: &str) -> usize {
+        self.phases.get(&format!("{}_{}", rarity_index, m)).copied().unwrap_or(0).min(MAX_PHASE)
+    }
+
+    /// Copies needed to evolve this pet to its next phase (None = already a Monster).
+    pub fn evolve_cost(&self, rarity_index: usize, m: &str) -> Option<i64> {
+        stack_cost(rarities()[rarity_index].tier, self.phase(rarity_index, m))
+    }
+
+    /// Evolving stacks `cost` extra copies into the pet: you need the cost plus the one that evolves.
+    pub fn can_evolve(&self, rarity_index: usize, m: &str) -> bool {
+        self.evolve_cost(rarity_index, m).is_some_and(|c| self.count_owned(rarity_index, m) > c)
+    }
+
+    /// Uses up the copies and raises the phase of every copy of this pet (income x PHASES[..].mult). Copies that
+    /// were equipped and are gone get unequipped. Returns the new phase, or None if it couldn't evolve.
+    pub fn evolve(&mut self, rarity_index: usize, m: &str) -> Option<usize> {
+        if !self.can_evolve(rarity_index, m) {
+            return None;
+        }
+        let cost = self.evolve_cost(rarity_index, m)?;
+        let key = format!("{}_{}", rarity_index, mut_key(m));
+        let left = self.count_owned(rarity_index, m) - cost;
+        self.owned.insert(key.clone(), left);
+        while self.equipped_count(rarity_index, m) > left {
+            self.equip_remove_one(rarity_index, m);
+        }
+        // the online wallet (trades) loses the stacked copies too (see tick_wallet)
+        *self.wallet_pending.entry(key.clone()).or_insert(0) -= cost;
+        let phase = self.phase(rarity_index, m) + 1;
+        self.phases.insert(key, phase);
+        self.dirty = true;
+        Some(phase)
     }
 
     // ================================================================ upgrades
@@ -1410,7 +1455,13 @@ impl GameState {
         }
         self.owned.clear();
         self.equipped.clear();
+        // phases go with the pets; the kept verity keeps its phase
+        let kept_phase = keep.map(|(r, m)| self.phase(r, m)).unwrap_or(0);
+        self.phases.clear();
         if let Some((r, m)) = keep {
+            if kept_phase > 0 {
+                self.phases.insert(format!("{}_{}", r, m), kept_phase);
+            }
             self.owned.insert(format!("{}_{}", r, m), 1);
             self.equipped.push((r, m));
         }
@@ -1600,6 +1651,11 @@ impl GameState {
         let owned: Map<String, Value> = self.owned.iter().map(|(k, v)| (k.clone(), json!(v))).collect();
         d.insert("owned".into(), Value::Object(owned));
         d.insert("seen_pets".into(), Value::Array(self.seen_pets.iter().map(|k| json!(k)).collect()));
+        if !self.phases.is_empty() {
+            // only written when there is one, so older games read the save exactly as before
+            let phases: Map<String, Value> = self.phases.iter().map(|(k, v)| (k.clone(), json!(v))).collect();
+            d.insert("phases".into(), Value::Object(phases));
+        }
         d.insert("equipped".into(), Value::Array(self.equipped.iter().map(|(i, m)| json!([i, m])).collect()));
         d.insert("avatar".into(), match self.avatar {
             Some((i, m)) => json!([i, m]),
@@ -1728,6 +1784,15 @@ impl GameState {
                 None => false,
             }
         };
+        self.phases = IndexMap::new();
+        if let Some(Value::Object(ph)) = d.get("phases") {
+            for (k, v) in ph {
+                let p = v.as_i64().or_else(|| v.as_f64().map(|f| f as i64)).unwrap_or(0);
+                if valid_key(k) && p > 0 {
+                    self.phases.insert(k.clone(), (p as usize).min(MAX_PHASE));
+                }
+            }
+        }
         self.seen_pets = BTreeSet::new();
         if d.contains_key("seen_pets") {
             for k in &py_iter(d.get("seen_pets"))? {
@@ -2091,6 +2156,71 @@ mod prestige_tests {
         assert!(s.do_rebirth());
         assert_eq!(s.coins, coins);
         assert_eq!(s.upgrade_level("money"), 5);
+    }
+}
+
+#[cfg(test)]
+mod phase_tests {
+    use super::*;
+
+    #[test]
+    fn stacking_evolves_up_to_monster() {
+        let mut s = GameState::new();
+        // pet 0 is a Common: 5 / 15 / 40 copies
+        s.owned.insert("0_normal".into(), 6);
+        s.equipped = vec![(0, "normal"); 3];
+        let base = s.pet_income(0, "normal");
+        assert_eq!((s.phase(0, "normal"), s.evolve_cost(0, "normal")), (0, Some(5)));
+        assert_eq!(s.evolve(0, "normal"), Some(1));
+        // 5 copies used up, the one left evolved; the extra equipped copies are gone
+        assert_eq!(s.count_owned(0, "normal"), 1);
+        assert_eq!(s.equipped, vec![(0, "normal")]);
+        assert_eq!(s.wallet_pending.get("0_normal"), Some(&-5));
+        assert!((s.pet_income(0, "normal") / base - 2.0).abs() < 1e-9);
+        // not enough for the next one (15 + the one that evolves)
+        s.owned.insert("0_normal".into(), 15);
+        assert!(!s.can_evolve(0, "normal"));
+        assert_eq!(s.evolve(0, "normal"), None);
+        s.owned.insert("0_normal".into(), 100);
+        assert_eq!(s.evolve(0, "normal"), Some(2));
+        assert_eq!(s.evolve(0, "normal"), Some(3));
+        assert_eq!(s.count_owned(0, "normal"), 100 - 15 - 40);
+        assert_eq!(s.evolve_cost(0, "normal"), None); // a Monster doesn't evolve further
+        assert_eq!(s.evolve(0, "normal"), None);
+        assert!((s.income_per_second() / base - 10.0).abs() < 1e-9);
+        // other mutations have their own phase
+        assert_eq!(s.phase(0, "golden"), 0);
+        // saved and loaded
+        let d = s.to_dict();
+        let mut t = GameState::new();
+        t.load_dict(&d).unwrap();
+        assert_eq!(t.phase(0, "normal"), MAX_PHASE);
+        // a save without phases loads as Phase 1 everywhere
+        let mut d0 = GameState::new().to_dict();
+        d0.as_object_mut().unwrap().remove("phases");
+        t.load_dict(&d0).unwrap();
+        assert_eq!(t.phase(0, "normal"), 0);
+    }
+
+    #[test]
+    fn rarer_tiers_stack_fewer_copies() {
+        assert_eq!(stack_cost(0, 0), Some(5));
+        assert_eq!(stack_cost(5, 2), Some(20));
+        assert_eq!(stack_cost(15, 0), Some(2));
+        assert_eq!(stack_cost(15, MAX_PHASE), None);
+    }
+
+    #[test]
+    fn prestige_keeps_the_kept_verity_phase() {
+        let mut s = GameState::new();
+        s.rebirths = 12;
+        s.owned.insert("5_golden".into(), 2);
+        s.owned.insert("2_normal".into(), 9);
+        s.phases.insert("5_golden".into(), 2);
+        s.phases.insert("2_normal".into(), 1);
+        assert!(s.do_prestige(Some((5, "golden"))));
+        assert_eq!(s.phase(5, "golden"), 2);
+        assert_eq!(s.phase(2, "normal"), 0);
     }
 }
 

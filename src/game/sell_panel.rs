@@ -11,7 +11,7 @@ use crate::gfx::{Color, Rect, draw};
 use crate::i18n::tr;
 use crate::theme::*;
 use crate::tr;
-use crate::ui::cards::render_pet_card;
+use crate::ui::cards::render_pet_card_phase;
 use crate::ui::drawing::{dim_overlay, draw_panel};
 use crate::ui::fonts::fit_text;
 use crate::ui::icons::load_icon;
@@ -207,7 +207,7 @@ impl Game {
         // ---- the pet's card (left) + details (right) ----
         let top = rect.y + 72;
         let (card_w, card_h) = (140, 160);
-        let card = render_pet_card(&rarities()[r_idx], m, card_w, card_h, &[], 0, false);
+        let card = render_pet_card_phase(&rarities()[r_idx], m, self.state.phase(r_idx, m), card_w, card_h, &[], 0, false);
         self.canvas.blit(&card, x0, top);
 
         let info_x = x0 + card_w + 20;

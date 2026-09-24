@@ -11,12 +11,12 @@ use crate::i18n::tr;
 use crate::pyfmt::format as pyformat;
 use crate::theme::*;
 use crate::tr;
-use crate::ui::cards::{cell, rarity_glow_color, render_pet_card};
+use crate::ui::cards::{cell, rarity_glow_color, render_pet_card_phase};
 use crate::ui::drawing::{
     bar_fill_surface, dim_overlay, draw_panel, draw_rainbow_border, draw_state_border, ease_out_back, rainbow_glow_surface, rarity_glow,
 };
 use crate::ui::fonts::{fit_text, is_light};
-use crate::ui::icons::{load_icon, load_pet_image};
+use crate::ui::icons::{load_icon, load_pet_phase_image};
 use std::rc::Rc;
 
 const HINT_H: i32 = 0;
@@ -288,7 +288,7 @@ impl Game {
             let rarity = &rarities()[r_idx];
             let label = self.f.tiny_b.render(&tr("Best so far:"), grey());
             blit_midtop(&mut self.canvas, &label, (rect.centerx(), rect.bottom() - 86));
-            let img = load_pet_image(rarity.pet, 44, false);
+            let img = load_pet_phase_image(rarity.pet, self.state.phase(r_idx, m), 44, false);
             let ml = mutation(m).map(|x| x.label).unwrap_or("");
             let name = if ml.is_empty() { rarity.pet.to_string() } else { format!("{} {}", tr(ml), rarity.pet) };
             let sb = self.f.small_b.clone();
@@ -317,7 +317,7 @@ impl Game {
             let income = self.state.pet_income(r_idx, m);
             let chance = self.state.combined_chance(r_idx, m, None, None);
             let plates = vec![vec![cell(tr("Income"), tr!("+%s/sec", format_number(income)))], vec![cell(tr("Roll Chance"), format_one_in(chance))]];
-            let card = render_pet_card(rarity, m, card_w, card_h, &plates, 0, false);
+            let card = render_pet_card_phase(rarity, m, self.state.phase(r_idx, m), card_w, card_h, &plates, 0, false);
             let c = rarity.color;
             let glow_color = if c.b > 60 || is_light(c) { c } else { Color::rgb(90, 90, 110) };
             let glow = rarity_glow((card_w, card_h), glow_color, 30);

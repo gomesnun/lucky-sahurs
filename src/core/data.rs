@@ -248,6 +248,34 @@ pub const MUTATIONS: [Mutation; 4] = [
 pub const MUT_ORDER: [&str; 4] = ["normal", "golden", "diamond", "rainbow"];
 pub const INDEX_ENTRIES: usize = N_PETS * 4;
 
+// ---------------------------------------------------------------- phases (stacking)
+/// Each verity (per mutation) grows through 4 phases by stacking copies of itself into it: Phase 1 (as rolled),
+/// Phase 2 (the grin), Phase 3 (worn out) and Phase 4, its Monster form. The art is icons/pets/phases/<slug>_p<n>.png.
+pub struct PhaseDef {
+    pub name: &'static str,
+    pub mult: f64,
+    pub color: Color,
+}
+
+pub const PHASES: [PhaseDef; 4] = [
+    PhaseDef { name: "Phase 1", mult: 1.0, color: Color::rgb(170, 176, 196) },
+    PhaseDef { name: "Phase 2", mult: 2.0, color: Color::rgb(255, 196, 60) },
+    PhaseDef { name: "Phase 3", mult: 4.0, color: Color::rgb(186, 120, 255) },
+    PhaseDef { name: "Monster", mult: 10.0, color: Color::rgb(255, 70, 70) },
+];
+pub const MAX_PHASE: usize = PHASES.len() - 1;
+
+/// Copies used up to go from `phase` to `phase + 1` (None once it's a Monster). Rarer tiers need fewer copies:
+/// Common-Legendary 5 / 15 / 40, Mythic-Divine 3 / 8 / 20, Cosmic and up 2 / 4 / 8.
+pub fn stack_cost(tier: usize, phase: usize) -> Option<i64> {
+    const COSTS: [[i64; 3]; 3] = [[5, 15, 40], [3, 8, 20], [2, 4, 8]];
+    if phase >= MAX_PHASE {
+        return None;
+    }
+    let band = if tier <= 4 { 0 } else if tier <= 8 { 1 } else { 2 };
+    Some(COSTS[band][phase])
+}
+
 pub fn mutation(key: &str) -> Option<&'static Mutation> {
     MUTATIONS.iter().find(|m| m.key == key)
 }

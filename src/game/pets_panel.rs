@@ -3,13 +3,13 @@
 use super::base::{Bo, blit_center};
 use super::{Game, cb};
 use crate::config::{TOPBAR_H, VIRTUAL_H};
-use crate::core::data::{INDEX_ENTRIES, MUT_ORDER, RARITY_TIERS, base_pet_chance, is_mutation, mutation, pet_order, rarities};
+use crate::core::data::{INDEX_ENTRIES, MUT_ORDER, RARITY_TIERS, base_pet_chance, is_mutation, pet_order, rarities};
 use crate::core::formatting::{format_number, format_one_in};
 use crate::gfx::{Color, Rect, draw, ti};
 use crate::i18n::tr;
 use crate::theme::*;
 use crate::tr;
-use crate::ui::cards::{cell, cell3, render_pet_card};
+use crate::ui::cards::{cell, cell3, render_pet_card, render_pet_card_phase};
 use crate::ui::drawing::{dim_overlay, draw_panel, draw_rainbow_border};
 use crate::ui::fonts::{Font, wrap_text};
 use crate::ui::icons::load_icon;
@@ -336,7 +336,7 @@ impl Game {
                 let (r_idx, m) = self.state.equipped[actual];
                 let income = self.state.pet_income(r_idx, m);
                 let plates = vec![vec![cell(tr("Income"), tr!("+%s/sec", format_number(income)))]];
-                let s = render_pet_card(&rarities()[r_idx], m, card, card, &plates, 0, false);
+                let s = render_pet_card_phase(&rarities()[r_idx], m, self.state.phase(r_idx, m), card, card, &plates, 0, false);
                 self.canvas.blit(&s, crect.x, crect.y);
                 if crect.collidepoint(mouse_pos) && content.collidepoint(mouse_pos) {
                     draw::rect(&mut self.canvas, WHITE, crect, 3, 12);
@@ -471,7 +471,7 @@ impl Game {
             }
         }
         let rank = |i: usize| pet_order().iter().position(|p| *p == i).unwrap_or(0) as f64;
-        let money = |e: &(usize, &str)| rarities()[e.0].income * mutation(e.1).map(|m| m.mult).unwrap_or(1.0);
+        let money = |e: &(usize, &str)| st.pet_base_income(e.0, e.1);
         let mi = |m: &str| MUT_ORDER.iter().position(|x| *x == m).unwrap_or(0) as f64;
         let primary = |e: &(usize, &str)| -> f64 {
             match self.inv_sort {
@@ -522,7 +522,7 @@ impl Game {
             let eq = self.state.equipped_count(idx, m);
             let income = self.state.pet_income(idx, m);
             let plates = vec![vec![cell(tr("Income"), tr!("+%s/sec", format_number(income)))], vec![cell(tr("Have"), format_number(owned as f64)), cell(tr("Equip"), eq.to_string())]];
-            let s = render_pet_card(&rarities()[idx], m, card_w, card_h, &plates, 30, false);
+            let s = render_pet_card_phase(&rarities()[idx], m, self.state.phase(idx, m), card_w, card_h, &plates, 30, false);
             self.canvas.blit(&s, crect.x, crect.y);
             let bw = (card_w - 18) / 2;
             let minus = Rect::new(crect.x + 6, crect.bottom() - 28, bw, 22);
@@ -531,6 +531,18 @@ impl Game {
             let can_plus = eq < owned && (self.state.equipped.len() as i64) < self.state.max_slots();
             self.button(minus, "-", &sb, mouse_pos, Color::rgb(38, 40, 52), BAD, WHITE, if can_minus { cb(move |g| { g.state.equip_remove_one(idx, m); }) } else { None }, Bo::r(7).enabled(can_minus).sfx(Some("equip")));
             self.button(plus, "+", &sb, mouse_pos, Color::rgb(38, 40, 52), GOOD, WHITE, if can_plus { cb(move |g| { g.state.equip_add(idx, m); }) } else { None }, Bo::r(7).enabled(can_plus).sfx(Some("equip")));
+
+            // the evolve button: on the left, mirroring the sell one; lit up when there are enough copies to stack
+            let evo_rect = Rect::new(crect.x + 6, crect.y + 34, 28, 28);
+            let ready = self.state.can_evolve(idx, m);
+            let (base, hover) = if ready { (Color::rgb(120, 40, 40), Color::rgb(170, 60, 60)) } else { (Color::rgb(38, 40, 52), Color::rgb(62, 66, 84)) };
+            let evo_label = if load_icon("evolve", 16).is_some() { "" } else { "^" };
+            self.button(evo_rect, evo_label, &sb, mouse_pos, base, hover, WHITE, cb(move |g| g.open_evolve(idx, m)), Bo::r(7));
+            if let Some(icon) = load_icon("evolve", 20) {
+                if self.clip_allows(&evo_rect) {
+                    blit_center(&mut self.canvas, &icon, evo_rect.center());
+                }
+            }
 
             // the sell button ($): on the right, under the rarity, next to the verity's image
             let sell_size = 28;
