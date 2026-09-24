@@ -216,10 +216,29 @@ impl Game {
         self.left_panel.scroll.insert(Some("bag"), 0.0);
     }
 
-    pub fn draw_bag_panel(&mut self, rect: Rect, mouse_pos: (f64, f64)) {
-        self.panel_header(rect, &tr("Bag"), mouse_pos, Rc::new(|g: &mut Game| g.left_panel.close()));
+    /// v3.0.1: the Bag opens as a big page (like the Index): the buttons in a column on the left, the pets in a
+    /// grid with as many columns as fit.
+    pub fn draw_bag_page(&mut self, mouse_pos: (f64, f64)) {
+        let ov = dim_overlay(self.vw, VIRTUAL_H, 170);
+        self.canvas.blit(&ov, 0, 0);
+        let panel_w = 640.max((self.vw - 240).min(1300));
+        let top = TOPBAR_H + 12;
+        let rect = Rect::new(self.vw / 2 - panel_w / 2, top, panel_w, VIRTUAL_H - top - 14);
+        draw_panel(&mut self.canvas, rect, Some(panel()), 16, true, None);
+        self.register_blocker(rect);
+        self.left_rect = rect; // the mouse wheel scrolls the grid anywhere on the page
+        self.draw_bag_panel(rect, mouse_pos);
+    }
+
+    pub fn draw_bag_panel(&mut self, full: Rect, mouse_pos: (f64, f64)) {
+        self.panel_header(full, &tr("Bag"), mouse_pos, Rc::new(|g: &mut Game| g.left_panel.close()));
         let sub = self.f.small.render(&tr!("%d/%d slots  ·  %s $/sec", self.state.equipped.len() as i64, self.state.max_slots(), format_number(self.state.income_per_second())), grey());
-        self.canvas.blit(&sub, rect.x + 22, rect.y + 50);
+        self.canvas.blit(&sub, full.x + 22, full.y + 50);
+        // wide (the page): the buttons in two columns across the top, the grid (all the width) below
+        let wide = full.w >= 760;
+        let half_w = full.w / 2;
+        let rect = if wide { Rect::new(full.x, full.y, half_w, full.h) } else { full };
+        let grid = full;
         let pad = 20;
         let row_h = 34;
         let btn_y = rect.y + 74;
@@ -292,18 +311,23 @@ impl Game {
             btn_bottom = hint_y - 8;
         }
         if in_inv {
-            btn_bottom = self.draw_inventory_controls(rect, btn_bottom, pad, mouse_pos);
+            btn_bottom = if wide {
+                let right = Rect::new(full.x + half_w - pad, full.y, full.w - half_w + pad, full.h);
+                btn_bottom.max(self.draw_inventory_controls(right, btn_y - 8, pad, mouse_pos))
+            } else {
+                self.draw_inventory_controls(rect, btn_bottom, pad, mouse_pos)
+            };
         }
         let content_top = btn_bottom + 14;
-        let content = Rect::new(rect.x, content_top, rect.w, rect.bottom() - content_top);
+        let content = Rect::new(grid.x, content_top, grid.w, grid.bottom() - 10 - content_top);
         let scroll = self.left_panel.get_scroll();
         self.push_clip(content);
         let content_h = if in_potions {
-            self.draw_bag_potions(rect, content, scroll, mouse_pos) as f64
+            self.draw_bag_potions(grid, content, scroll, mouse_pos) as f64
         } else if in_inv {
-            self.draw_bag_inventory(rect, content, scroll, mouse_pos)
+            self.draw_bag_inventory(grid, content, scroll, mouse_pos)
         } else {
-            self.draw_bag_equipped(rect, content, scroll, mouse_pos, pad)
+            self.draw_bag_equipped(grid, content, scroll, mouse_pos, pad)
         };
         self.left_panel.set_max_scroll((content_h - content.h as f64).max(0.0));
         self.pop_clip();
@@ -311,9 +335,9 @@ impl Game {
     }
 
     fn draw_bag_equipped(&mut self, rect: Rect, content: Rect, scroll: f64, mouse_pos: (f64, f64), pad: i32) -> f64 {
-        let cols = 2;
         let gap = 12;
-        let card = (rect.w - pad * 2 - gap - 6) / cols;
+        let cols = 2.max((rect.w - pad * 2 - 6 + gap) / (170 + gap));
+        let card = (rect.w - pad * 2 - gap * (cols - 1) - 6) / cols;
         let n_slots = self.state.max_slots() as i32;
         let top_y = content.top() as f64 + 6.0 - scroll;
         let mut order: Vec<usize> = (0..self.state.equipped.len()).collect();
@@ -496,9 +520,10 @@ impl Game {
         let entries = self.inventory_entries();
         let ipad = 14;
         let gap = 8;
-        let cols = 3;
+        // square cards like the Index (a strip at the bottom for the - / + buttons)
+        let cols = 3.max((rect.w - ipad * 2 - 6 + gap) / (180 + gap));
         let card_w = (rect.w - ipad * 2 - gap * (cols - 1) - 6) / cols;
-        let card_h = 196;
+        let card_h = card_w + 16;
         let top_y = content.top() as f64 + 6.0 - scroll;
         if entries.is_empty() {
             let msg = if self.inventory_filter_active() && !self.state.owned.is_empty() { tr("No pets match these filters.") } else { tr("You don't have any pets yet. Roll some!") };

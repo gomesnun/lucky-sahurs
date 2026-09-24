@@ -12,6 +12,8 @@ use std::rc::Rc;
 
 pub const UPDATE_LOG: &[(&str, &str, &[&str])] = &[
     ("v3.0.1", "2026-09-24", &[
+        "Rebirths now stop at each Prestige's goal (10, 15, 20, 30 and 40): do the Prestige to keep rebirthing. After Prestige V there's no limit.",
+        "The Bag opens as a big page like the Index, with square cards and many more per row.",
         "No more sparkle cloud over the card when rolling is \"too fast to show\".",
         "Every cutscene has a \"Turn off ... cutscenes\" button: one click and that rarity's cutscenes stop (turn them back on in Options > Game).",
         "Your settings (animations, cutscenes, sounds, language...) now follow your save: open it on another PC and they come with it. Fullscreen stays per PC.",

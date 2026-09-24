@@ -1289,7 +1289,13 @@ impl GameState {
         self.rebirth_cost_n(self.rebirths)
     }
     pub fn rebirth_available(&self) -> bool {
-        self.coins >= self.rebirth_cost()
+        self.coins >= self.rebirth_cost() && !self.rebirth_locked()
+    }
+
+    /// v3.0.1: at 10 / 15 / 20 / 30 / 40 Rebirths you have to Prestige before rebirthing again (after Prestige V
+    /// there's no limit).
+    pub fn rebirth_locked(&self) -> bool {
+        self.next_prestige().is_some_and(|p| self.rebirths >= p.need)
     }
     pub fn rebirth_money_mult(&self) -> f64 {
         1.0 + REBIRTH_MONEY_PER * self.rebirths as f64
@@ -2079,6 +2085,25 @@ mod prestige_tests {
         let mut t = GameState::new();
         t.load_dict(&d).unwrap();
         assert_eq!(t.prestige, 1);
+    }
+
+    #[test]
+    fn rebirths_lock_until_the_next_prestige() {
+        let mut s = GameState::new();
+        s.rebirths = 9;
+        s.coins = 1e300;
+        assert!(s.rebirth_available());
+        assert!(s.do_rebirth());
+        assert_eq!(s.rebirths, 10);
+        assert!(s.rebirth_locked() && !s.rebirth_available() && !s.do_rebirth()); // stuck at 10 until Prestige I
+        assert!(s.do_prestige(None));
+        s.coins = 1e300;
+        assert!(s.rebirth_available()); // Prestige I: rebirths again, up to 15
+        s.rebirths = 15;
+        assert!(s.rebirth_locked());
+        s.prestige = 5;
+        s.rebirths = 400;
+        assert!(!s.rebirth_locked()); // after Prestige V: no limit
     }
 
     #[test]

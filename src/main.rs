@@ -488,6 +488,7 @@ fn shots(dir: &str) {
     // v3.0 Prestige: the tabs, the page, the picker, and after one
     let rb_before = g.state.rebirths;
     g.state.rebirths = 12;
+    g.state.prestige = 0; // at 12 Rebirths without a Prestige: Rebirth is locked
     g.toggle_rebirth();
     g.draw(m);
     save(&g, "v3_rebirth_tabs");

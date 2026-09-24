@@ -176,13 +176,21 @@ impl Game {
 
         let cost = self.state.rebirth_cost();
         let can = self.state.rebirth_available();
-        let cost_txt = med.render(&tr!("Next rebirth costs $%s  (you have $%s)", format_number(cost), format_number(self.state.coins)), if can { WHITE } else { grey() });
+        let locked = self.state.rebirth_locked();
+        let next_p = super::prestige_panel::roman(self.state.prestige + 1);
+        let cost_txt = if locked {
+            med.render(&tr!("%d Rebirths reached: do Prestige %s to keep rebirthing.", self.state.rebirths, next_p), PRESTIGE_COLOR)
+        } else {
+            med.render(&tr!("Next rebirth costs $%s  (you have $%s)", format_number(cost), format_number(self.state.coins)), if can { WHITE } else { grey() })
+        };
         let r = Rect::with_center(cost_txt.w, cost_txt.h, (rect.centerx(), y));
         self.canvas.blit(&cost_txt, r.x, r.y);
         y += 24;
 
         let btn_w = 420.min(rect.w - 60);
-        let (label, color) = if self.rebirth_confirm {
+        let (label, color) = if locked {
+            (tr!("Locked - do Prestige %s first", next_p), Color::rgb(70, 73, 88))
+        } else if self.rebirth_confirm {
             (if keep_all { tr("Click again to confirm!") } else if keep { tr("Click again to confirm - resets your coins!") } else { tr("Click again to confirm - resets coins & upgrades!") }, BAD)
         } else {
             (tr!("Rebirth  (+%.0f%% Money, +%.0f%% Luck)", REBIRTH_MONEY_PER * 100.0, REBIRTH_LUCK_PER * 100.0), if can { accent() } else { Color::rgb(70, 73, 88) })

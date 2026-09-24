@@ -45,7 +45,7 @@ impl Game {
     }
 
     pub fn main_center_x(&self) -> i32 {
-        let left = if self.left_panel.visible() { self.left_panel.shown_width(self.left_w) } else { 0 };
+        let left = 0; // the Bag is a page now (v3.0.1), it doesn't push the game over
         let right = self.vw - if self.right_panel.visible() { self.right_panel.shown_width(self.right_w) } else { 0 };
         (left + right).div_euclid(2)
     }
@@ -66,12 +66,6 @@ impl Game {
         self.left_rect = Rect::ZERO;
         let panel_top = TOPBAR_H;
         let panel_h = VIRTUAL_H - TOPBAR_H - HINT_H;
-        if self.left_panel.visible() {
-            let shown = self.left_panel.shown_width(self.left_w);
-            let rect = Rect::new(shown - self.left_w, panel_top, self.left_w, panel_h);
-            self.left_rect = rect;
-            self.draw_bag_panel(rect, mouse_pos);
-        }
         if self.right_panel.visible() {
             let shown = self.right_panel.shown_width(self.right_w);
             let rect = Rect::new(self.vw - shown, panel_top, self.right_w, panel_h);
@@ -84,6 +78,10 @@ impl Game {
             }
         }
         self.draw_side_buttons(mouse_pos);
+        if self.left_panel.is_open() {
+            self.begin_modal();
+            self.draw_bag_page(mouse_pos);
+        }
         if self.traits_open {
             self.begin_modal();
             self.draw_traits_page(mouse_pos);
@@ -217,8 +215,7 @@ impl Game {
         let quests_ready = self.quests_claimable();
         self.side_button(Rect::new(x, y + 3 * step, size, size), &labels[3], "daily", mouse_pos, rp_open && rc == Some("daily"), Rc::new(|g: &mut Game| g.open_right_panel("daily")), Some(lf.clone()), 0, quests_ready);
 
-        let shown_l = if self.left_panel.visible() { self.left_panel.shown_width(self.left_w) } else { 0 };
-        let lx = shown_l + 18;
+        let lx = 18;
         let y = column_top(4); // the left column has 4 buttons (Bag, Rebirth, Traits, Shop)
         let lp_open = self.left_panel.is_open();
         self.side_button(Rect::new(lx, y, size, size), &labels[4], "bag", mouse_pos, lp_open, Rc::new(|g: &mut Game| g.open_left_panel("bag")), Some(lf.clone()), 0, false);
