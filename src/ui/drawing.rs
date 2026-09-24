@@ -94,7 +94,7 @@ thread_local! {
     static RARITY_BG: Cache<(&'static str, i32, i32, i32)> = RefCell::new(HashMap::new());
 }
 
-fn rounded_mask(w: i32, h: i32, radius: i32) -> Surface {
+pub fn rounded_mask(w: i32, h: i32, radius: i32) -> Surface {
     let mut m = Surface::new_alpha(w, h);
     let mr = m.get_rect();
     draw::rect(&mut m, Color::rgba(255, 255, 255, 255), mr, 0, radius);

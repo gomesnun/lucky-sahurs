@@ -110,7 +110,8 @@ impl Game {
             self.canvas.blit(&cash, 12, (TOPBAR_H - 54) / 2);
             off = 58;
         }
-        let coins = self.f.big.render(&format!("$ {}", format_number(self.state.coins)), GOOD);
+        let shown = self.coins_display.unwrap_or(self.state.coins);
+        let coins = self.f.big.render(&format!("$ {}", format_number(shown)), GOOD);
         self.canvas.blit(&coins, 22 + off, 11);
         let dps = self.f.small.render(&tr!("%s / sec", format_number(self.state.income_per_second())), grey());
         self.canvas.blit(&dps, 25 + off, 44);
@@ -301,12 +302,53 @@ impl Game {
         }
     }
 
+    /// v3.0: the roll "spin" - verity cards slide through the card's frame, slowing down, and the last one is the
+    /// pet you got (it then pops in with its normal card).
+    fn draw_spin_card(&mut self, rect: Rect) {
+        let Some((res_idx, _)) = self.state.last_roll else { return };
+        let left = (self.spin_until - now_ts()).max(0.0);
+        let k = 1.0 - left / crate::game::gameplay::SPIN_TIME;
+        let n_cards = 7.0;
+        let pos = crate::ui::drawing::ease_out_cubic(k.clamp(0.0, 1.0)) * (n_cards - 1.0);
+        let i = pos.floor() as i64;
+        let frac = pos - i as f64;
+        let order = crate::core::data::pet_order();
+        let seed = (self.spin_until * 1000.0) as i64;
+        let pet_at = |j: i64| -> usize {
+            if j >= n_cards as i64 - 1 {
+                res_idx
+            } else {
+                order[((seed + j * 7919).rem_euclid(order.len() as i64)) as usize]
+            }
+        };
+        draw_panel(&mut self.canvas, rect, Some(panel_light()), 12, true, None);
+        self.push_clip(rect);
+        for (j, dy) in [(i, frac), (i + 1, frac - 1.0)] {
+            let r = &rarities()[pet_at(j)];
+            let card = render_pet_card(r, "normal", rect.w, rect.h, &[], 0, false);
+            self.canvas.blit(&card, rect.x, rect.y + (dy * rect.h as f64) as i32);
+        }
+        self.pop_clip();
+        // a light veil at the top and bottom, like a slot machine window
+        let mut veil = Surface::new_alpha(rect.w, rect.h);
+        for y in 0..rect.h {
+            let d = (y.min(rect.h - 1 - y)) as f64 / (rect.h as f64 * 0.22);
+            if d < 1.0 {
+                draw::line(&mut veil, Color::rgba(10, 10, 16, (150.0 * (1.0 - d)) as u8), (0, y), (rect.w, y), 1);
+            }
+        }
+        self.canvas.blit(&veil, rect.x, rect.y);
+        draw_state_border(&mut self.canvas, rect, accent(), 12, 3);
+    }
+
     pub fn draw_main(&mut self, mouse_pos: (f64, f64)) {
         let center_x = self.main_center_x();
         let card_rect = self.main_card_rect();
         let (card_w, card_h) = card_rect.size();
 
-        if now_ts() < self.too_fast_until {
+        if now_ts() < self.spin_until {
+            self.draw_spin_card(card_rect); // v3.0: spinning through verities before showing the pet
+        } else if now_ts() < self.too_fast_until {
             self.draw_too_fast_card(card_rect); // the Auto Roller is too fast to show each pet
         } else if let Some((r_idx, m)) = self.state.last_roll {
             let rarity = &rarities()[r_idx];
@@ -338,6 +380,14 @@ impl Game {
                 None => card,
             };
             blit_center(&mut self.canvas, &card, card_rect.center());
+            if self.animations() && zoom.is_none() {
+                // v3.0: a subtle glare sweeps across the card now and then
+                if let Some(phase) = crate::ui::fx::glare_phase(now_ts(), card_rect, 4.5, 0.9) {
+                    if let Some(g) = crate::ui::fx::glare_band(card_rect.w, card_rect.h, 14, phase, 48) {
+                        self.canvas.blit(&g, card_rect.x, card_rect.y);
+                    }
+                }
+            }
             if let Some(ae) = anim_elapsed.filter(|_| rarity.tier >= 3) {
                 // a shockwave in the rarity's colour (2 rings from Mythic on) + a quick white flash
                 let t = ae / 0.6;

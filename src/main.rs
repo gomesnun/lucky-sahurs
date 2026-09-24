@@ -449,6 +449,20 @@ fn shots(dir: &str) {
     g.state.use_potion("money", 1);
     g.draw(m);
     save(&g, "n_main_dice");
+    // v3.0 effects
+    let tnow = core::state::now_ts();
+    g.spin_until = tnow + 0.2;
+    g.draw(m);
+    save(&g, "v3_spin");
+    g.spin_until = 0.0;
+    let roll_c = {
+        let c = g.main_card_rect();
+        (c.centerx() as f64 - 40.0, (c.bottom() + 50) as f64)
+    };
+    g.press_fx = Some((roll_c, tnow - 0.12));
+    g.draw(roll_c);
+    save(&g, "v3_hover_ripple");
+    g.press_fx = None;
     g.too_fast_until = f64::INFINITY;
     g.too_fast_best = Some((tier_first_pet(core::data::tier_index("absoluto")), "diamond"));
     g.draw(m);

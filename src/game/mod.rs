@@ -191,6 +191,14 @@ pub struct Game {
     pub autosave_timer: f64,
     pub buttons: Vec<Button>,
     pub last_click_pos: Option<(f64, f64)>,
+    /// v3.0: where and when a button was last clicked (for its ripple)
+    pub press_fx: Option<((f64, f64), f64)>,
+    /// v3.0: a manual roll "spins" through verities until this time, then shows the pet
+    pub spin_until: f64,
+    /// particles waiting for the spin to end (the rolled pet's index)
+    pub spin_particles: Option<usize>,
+    /// v3.0: the coins shown in the top bar count up smoothly to the real value
+    pub coins_display: Option<f64>,
     pub nav_mode: bool,
     pub clip_stack: Vec<Rect>,
     pub dragging_scrollbar: Option<&'static str>,
@@ -369,6 +377,10 @@ impl Game {
             autosave_timer: 0.0,
             buttons: Vec::new(),
             last_click_pos: None,
+            press_fx: None,
+            spin_until: 0.0,
+            spin_particles: None,
+            coins_display: None,
             nav_mode: false,
             clip_stack: Vec::new(),
             dragging_scrollbar: None,
@@ -1064,6 +1076,7 @@ impl Game {
         self.last_click_pos = Some(pos);
         let hit = self.buttons.iter().rev().find(|b| b.rect.collidepoint(pos)).map(|b| (b.cb.clone(), b.sfx));
         if let Some((cbk, sfx)) = hit {
+            self.press_fx = Some((pos, now_ts()));
             if let Some(s) = sfx {
                 self.play(s, 0.0);
             }
