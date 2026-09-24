@@ -19,3 +19,4 @@ dist/
 *.exe
 
 tools/phases/node_modules/
+tools/phases/clean/

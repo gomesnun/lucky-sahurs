@@ -1,12 +1,13 @@
 <!doctype html><html><body style="margin:0;background:transparent">
-<!-- Phase 4 (Monster) art: the 3D monster model, recoloured per verity; tools/phases/monster.mjs drives it.
+<!-- Phase 4 (Monster) bodies: the 3D monster model wearing each verity's own ball (its colours and pattern, projected
+     from the front); tools/phases/monster.mjs drives it, tools/phases/monster.py adds the accessories and effects.
      Serve the repo root with any static server, with three.js installed in tools/phases/node_modules (npm i three@0.169). -->
 <script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js","three/addons/":"./node_modules/three/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
-const S = 512;
+const S = 512, BALL_CY = 0.542, BALL_R = 0.28;
 const r = new THREE.WebGLRenderer({antialias: true, alpha: true, preserveDrawingBuffer: true});
 r.setSize(S, S); r.setClearColor(0, 0); r.toneMapping = THREE.ACESFilmicToneMapping; r.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(r.domElement);
@@ -19,31 +20,46 @@ const root = gltf.scene; scene.add(root);
 const mixer = new THREE.AnimationMixer(root);
 mixer.clipAction(gltf.animations.find(c => c.name === 'Idle')).play(); mixer.setTime(0.35);
 root.updateMatrixWorld(true);
-let mesh; root.traverse(o => { if (o.isMesh) mesh = o; });
-// the skin texture recoloured per verity: its shading (luminance) in the verity's colour; teeth, gums and eyes
-// (low-saturation whites, reds) keep their own colours so the face stays the model's face
-const img = mesh.material.map.image, cv = document.createElement('canvas'); cv.width = img.width; cv.height = img.height;
-const cx = cv.getContext('2d'); cx.drawImage(img, 0, 0);
-const src = cx.getImageData(0, 0, cv.width, cv.height);
-const tex = new THREE.CanvasTexture(cv); tex.flipY = false; tex.colorSpace = THREE.SRGBColorSpace;
-const mat = new THREE.MeshStandardMaterial({map: tex, roughness: 0.55, metalness: 0.0, side: THREE.DoubleSide, alphaTest: 0.3});
-mesh.material = mat;
-function recolor(rgb) {
-  const out = cx.createImageData(cv.width, cv.height), a = src.data, o = out.data;
-  const [R, G, B] = rgb, lumC = (0.299 * R + 0.587 * G + 0.114 * B) / 255;
-  for (let i = 0; i < a.length; i += 4) {
-    const r = a[i], g = a[i + 1], b = a[i + 2], mx = Math.max(r, g, b), mn = Math.min(r, g, b);
-    const sat = mx ? (mx - mn) / mx : 0, red = r > g * 1.9 && r > b * 1.5 && r > 110;
-    o[i + 3] = a[i + 3];
-    if ((sat < 0.15 && mx > 185) || red) { o[i] = r; o[i + 1] = g; o[i + 2] = b; continue; }
-    // skin: 0..1 shading from the yellow texture, re-applied on the verity colour (dark colours lifted a bit)
-    const l = Math.min(1.25, (0.299 * r + 0.587 * g + 0.114 * b) / 190);
-    const lift = lumC < 0.25 ? 45 : 0;
-    o[i] = Math.min(255, R * l + lift); o[i + 1] = Math.min(255, G * l + lift); o[i + 2] = Math.min(255, B * l + lift);
-  }
-  cx.putImageData(out, 0, 0); tex.needsUpdate = true;
-}
+let mesh, head, top;
+root.traverse(o => { if (o.isMesh) mesh = o; if (/HeadTop/.test(o.name)) top = o; else if (/Head/.test(o.name) && o.isBone) head = o; });
+
 const box = new THREE.Box3().setFromObject(root), sz = box.getSize(new THREE.Vector3()), ct = box.getCenter(new THREE.Vector3());
+// where each vertex sits (posed, seen from the front) -> where to read the verity's ball: head top to feet = ball top to
+// bottom, so split / striped / starry balls carry over to the whole body
+const pos = mesh.geometry.attributes.position, uv2 = new Float32Array(pos.count * 2), v = new THREE.Vector3();
+for (let i = 0; i < pos.count; i++) {
+  mesh.getVertexPosition(i, v); v.applyMatrix4(mesh.matrixWorld);
+  let du = (v.x - ct.x) / sz.y * 2 * BALL_R, dv = (ct.y - v.y) / sz.y * 2 * BALL_R;
+  const d = Math.hypot(du, dv), lim = BALL_R * 0.93;
+  if (d > lim) { du *= lim / d; dv *= lim / d; }
+  uv2[i * 2] = 0.5 + du; uv2[i * 2 + 1] = BALL_CY + dv;
+}
+mesh.geometry.setAttribute('ballUv', new THREE.BufferAttribute(uv2, 2));
+
+// the skin texture read as plain sRGB numbers: its shading drives the verity's colours; teeth, gums and eyes keep theirs
+const skin = new THREE.Texture(mesh.material.map.image); skin.flipY = false; skin.colorSpace = THREE.NoColorSpace; skin.needsUpdate = true;
+const ballTex = new THREE.Texture(); ballTex.flipY = false; ballTex.colorSpace = THREE.NoColorSpace;
+const mat = new THREE.MeshStandardMaterial({map: skin, roughness: 0.55, metalness: 0.0, side: THREE.DoubleSide, alphaTest: 0.3});
+mat.onBeforeCompile = sh => {
+  sh.uniforms.ballMap = {value: ballTex};
+  sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 ballUv;\nvarying vec2 vBallUv;')
+    .replace('#include <uv_vertex>', '#include <uv_vertex>\nvBallUv = ballUv;');
+  sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D ballMap;\nvarying vec2 vBallUv;')
+    .replace('#include <map_fragment>', `
+      vec4 t = texture2D(map, vMapUv);
+      vec3 s = t.rgb;
+      float mx = max(max(s.r, s.g), s.b), mn = min(min(s.r, s.g), s.b);
+      float sat = mx > 0.0 ? (mx - mn) / mx : 0.0;
+      bool keep = (sat < 0.15 && mx > 0.72) || (s.r > s.g * 1.9 && s.r > s.b * 1.5 && s.r > 0.43);
+      vec3 ball = texture2D(ballMap, vBallUv).rgb;
+      float l = clamp(dot(s, vec3(0.299, 0.587, 0.114)) / 0.745, 0.0, 1.25);
+      float lift = 0.18 * (1.0 - smoothstep(0.08, 0.3, dot(ball, vec3(0.299, 0.587, 0.114))));
+      vec3 c = keep ? s : min(ball * l + lift, vec3(1.0));
+      diffuseColor.rgb *= pow(c, vec3(2.2));
+      diffuseColor.a *= t.a;`);
+};
+mesh.material = mat;
+
 const cam = new THREE.PerspectiveCamera(22, 1, 0.01, 1000);
 // fit the figure where the ball sits in every verity image (ui/cards.rs BALL_FRAC / BALL_CY): 0.23..0.86 of the height
 const FILL = 0.63, CENTER = 0.545;
@@ -51,6 +67,14 @@ const dist = sz.y / (2 * Math.tan(THREE.MathUtils.degToRad(11))) / FILL;
 const aimY = ct.y + (CENTER - 0.5) / FILL * sz.y;
 cam.position.set(ct.x + dist * 0.22, aimY + sz.y * 0.05, ct.z + dist); cam.lookAt(ct.x, aimY, ct.z);
 cam.updateMatrixWorld(); cam.updateProjectionMatrix();
-window.renderColor = (rgb) => { recolor(rgb); r.render(scene, cam); return r.domElement.toDataURL('image/png'); };
+const proj = p => { const q = p.clone().project(cam); return [(q.x + 1) / 2 * S, (1 - q.y) / 2 * S]; };
+const hp = proj(head.getWorldPosition(new THREE.Vector3())), tp = proj(top.getWorldPosition(new THREE.Vector3()));
+window.headInfo = {neck: hp, top: tp, feet: proj(new THREE.Vector3(ct.x, box.min.y, ct.z))};
+window.renderBall = async (url) => {
+  const img = new Image(); img.src = url; await img.decode();
+  ballTex.image = img; ballTex.needsUpdate = true;
+  r.render(scene, cam);
+  return r.domElement.toDataURL('image/png');
+};
 window.done = true;
 </script></body></html>

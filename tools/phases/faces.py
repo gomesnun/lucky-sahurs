@@ -310,12 +310,14 @@ def make(slug):
 if __name__ == "__main__":
     import sys
     os.makedirs(DST, exist_ok=True)
+    os.makedirs("tools/phases/clean", exist_ok=True)  # the balls without a face: the Monster's skin (monster.mjs)
     slugs = sys.argv[1:] or sorted(f[:-4] for f in os.listdir(SRC) if f.endswith(".png"))
     import json
     colors = {}
     for s in slugs:
         outs, clean, base = make(s)
         colors[s] = [int(c) for c in base]
+        clean.save(f"tools/phases/clean/{s}.png")
         for p, o in outs.items():
             o.save(f"{DST}/{s}_p{p}.png", optimize=True)
         print(s, "ok")
