@@ -14,7 +14,7 @@
 
 <p align="center">
   <img alt="Windows" src="https://img.shields.io/badge/Windows-.exe-0078D6?logo=windows&logoColor=white">
-  <img alt="macOS" src="https://img.shields.io/badge/macOS-Apple%20Silicon%20%2B%20Intel-000000?logo=apple&logoColor=white">
+  <img alt="macOS" src="https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple&logoColor=white">
   <img alt="Linux" src="https://img.shields.io/badge/Linux-x86__64-FCC624?logo=linux&logoColor=black">
   <img alt="Rust" src="https://img.shields.io/badge/Rust-desktop-B7410E?logo=rust&logoColor=white">
 </p>
@@ -57,12 +57,15 @@ Pick your platform. The fastest way is the ready-made download.
 1. Open the [latest release](https://github.com/gomesnun/lucky-verities/releases/latest).
 2. Download `Lucky-Verities-Windows.exe`.
 3. Double-click it. SmartScreen may warn about an unknown publisher → **More info → Run anyway** (the build is unsigned).
+4. The first time, the game installs itself as **Lucky Verities** (in your user's `AppData\Local\Programs`, no admin
+   needed), adds **Lucky Verities** shortcuts to the Desktop and the Start menu, and opens. After that, open it from
+   those shortcuts; the downloaded file can be deleted.
 
 
-### 🍎 macOS (Apple Silicon &amp; Intel)
+### 🍎 macOS (Apple Silicon: M1, M2, M3, M4)
 
 1. Open the [latest release](https://github.com/gomesnun/lucky-verities/releases/latest).
-2. Download `Lucky-Verities-macOS-AppleSilicon.zip` (M1/M2/M3/M4) or `Lucky-Verities-macOS-Intel.zip`.
+2. Download `Lucky-Verities-macOS-AppleSilicon.zip`.
 3. Unzip it, then **right-click the app → Open** the first time (the app is unsigned, so a plain double-click is blocked).
 
 ### 🐧 Linux
@@ -128,7 +131,8 @@ Installed copies update themselves: when a newer release is out, the game offers
 | `icons/`, `sounds/`, `fonts/` | Game files, built into the executable. Shared with `python/` and the website. |
 | `python/` | The original Python + pygame-ce version, kept as the reference for the parity checks. |
 | `tools/` | Parity checks: the Rust build must match `python/` pixel for pixel. |
-| `website/`, `backend/` | Landing page and the e-mail backend. |
+| `website/` | The landing page (its game tables come from `lucky-verities --webdata`). |
+| `backend/` | `firestore_rules.rules` (paste into Firebase → Firestore → Rules) and the Apps Scripts (leaderboard snapshot, e-mail). |
 
 Run from source (needs Rust, SDL2, FreeType and HarfBuzz from your package manager):
 
@@ -139,9 +143,9 @@ cargo run --release
 Parity checks: `lucky-verities --shots DIR` against `tools/screens_reference.py python DIR`, and
 `--sim DIR` against `tools/sim_reference.py python DIR`, compared with `tools/compare_png.py`.
 
-Releases: push a tag `vX.Y.Z` (higher than the last one). `.github/workflows/build.yml` builds the desktop
-files; the release files keep the old names, so every installed copy (including the
-older Python builds) updates itself.
+Releases: push a tag `vX.Y.Z` (higher than the last one), or create the release on GitHub.
+`.github/workflows/build.yml` builds the 3 files (Windows, Linux, macOS Apple Silicon); their names stay the same,
+so every installed copy (including the older Python builds) updates itself.
 
 ---
 
