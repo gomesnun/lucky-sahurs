@@ -13,7 +13,7 @@ use crate::theme::*;
 use crate::tr;
 use crate::ui::cards::{cell, rarity_glow_color, render_pet_card};
 use crate::ui::drawing::{
-    bar_fill_surface, dim_overlay, draw_panel, draw_rainbow_border, draw_shockwave, draw_state_border, ease_out_back, rainbow_glow_surface, rarity_glow,
+    bar_fill_surface, dim_overlay, draw_panel, draw_rainbow_border, draw_state_border, ease_out_back, rainbow_glow_surface, rarity_glow,
 };
 use crate::ui::fonts::{fit_text, is_light};
 use crate::ui::icons::{load_icon, load_pet_image};
@@ -350,17 +350,9 @@ impl Game {
                     }
                 }
             }
-            if let Some(ae) = anim_elapsed.filter(|_| rarity.tier >= 3) {
-                // a shockwave in the rarity's colour (2 rings from Mythic on) + a quick white flash
-                let t = ae / 0.6;
-                let col = rarity_glow_color(rarity.key);
-                let base_r = card_w.max(card_h) as f64 * 0.55;
-                draw_shockwave(&mut self.canvas, card_rect.center(), base_r + t * base_r * 0.9, col, 220.0 * (1.0 - t), 6.0 * (1.0 - t) + 2.0);
-                if rarity.tier >= 5 && t > 0.15 {
-                    let t2 = (t - 0.15) / 0.85;
-                    draw_shockwave(&mut self.canvas, card_rect.center(), base_r + t2 * base_r * 0.6, WHITE, 160.0 * (1.0 - t2), 3.0);
-                }
-                if ae < 0.12 && rarity.tier >= 4 {
+            if let Some(ae) = anim_elapsed.filter(|_| rarity.tier >= 4) {
+                // a quick white flash on the card (the big ring around it was removed in v3.0)
+                if ae < 0.12 {
                     let mut flash = Surface::new_alpha(card_rect.w, card_rect.h);
                     let fr = flash.get_rect();
                     draw::rect(&mut flash, Color::rgba(255, 255, 255, (170.0 * (1.0 - ae / 0.12)) as i32 as u8), fr, 0, 14);
