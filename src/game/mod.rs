@@ -813,6 +813,9 @@ impl Game {
                         self.recompute_layout();
                     }
                 }
+                // pygame drops SDL's auto-repeat KEYDOWNs (no key.set_repeat); without this, holding a key
+                // (or a key-up lost while Wayland switches fullscreen) re-triggers it: F11 flickers forever
+                Event::KeyDown { repeat: true, .. } => {}
                 Event::KeyDown { keycode: Some(key), keymod, .. } => {
                     let ctrl = keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD | Mod::LGUIMOD | Mod::RGUIMOD);
                     let shift = keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD);
