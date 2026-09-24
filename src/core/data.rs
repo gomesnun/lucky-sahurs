@@ -19,7 +19,8 @@ pub const LUCK_TIER_PER_LEVEL: [(&str, f64); 5] =
     [("cosmico", 0.30), ("transcendente", 0.40), ("etereo", 0.50), ("celestial", 0.60), ("absoluto", 0.75)];
 pub const LUCK_ULTRA_PER_LEVEL: f64 = 0.05;
 /// v2.9: only this fraction of the "normal" luck bonus counts (the Shop's dice and potions make room)
-pub const LUCK_BONUS_SCALE: f64 = 0.85;
+/// v3.0: 0.85 -> 0.78, a small nerf now that Prestige multiplies Luck
+pub const LUCK_BONUS_SCALE: f64 = 0.78;
 pub const MONEY_PER_LEVEL: f64 = 0.07;
 pub const MONEY_PRISM_PER_LEVEL: f64 = 0.16;
 pub const INCOME_SCALE: f64 = 0.15;

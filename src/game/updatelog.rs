@@ -18,6 +18,7 @@ pub const UPDATE_LOG: &[(&str, &str, &[&str])] = &[
         "Prestige (the new tab beside Rebirth, from 10 Rebirths): 5 Prestiges at 10, 15, 20, 30 and 40 Rebirths, each with a bigger PERMANENT boost - up to x200 Money and x60 Luck. Prestige II makes Rebirths keep your upgrades for good, Prestige III makes Rebirths reset nothing at all. A Prestige resets coins, Rebirths, upgrades and pets, but you keep 1 verity of your choice, and dice, potions and traits stay.",
         "The Rebirths leaderboard shows each player's Prestige next to their Rebirths (Prestige counts first), and there are new Prestiged and Ascended titles.",
         "Auto Trait Roller (Upgrades > Traits): rolls your trait charges by itself, with a switch on the Traits page. It never resets on Rebirth or Prestige.",
+        "Luck from upgrades, traits, milestones and Rebirths is a little lower (about 8% of the bonus), since Prestige now multiplies your Luck.",
     ]),
     ("v2.9.1", "2026-09-24", &[
         "\"Use All Charges\" with huge amounts of trait charges (like 600M) no longer freezes and crashes the game: they are all used instantly.",
