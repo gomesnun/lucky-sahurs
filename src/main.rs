@@ -591,7 +591,26 @@ fn shots(dir: &str) {
         g.options_tab = "game";
         g.draw(m);
         save(&g, "n_options_game");
+        g.options_tab = "interface";
+        g.draw(m);
+        save(&g, "n_options_interface");
         g.close_options();
+        // the Glow effect (applied to the finished frame, like the real game does before showing it)
+        g.draw(m);
+        save(&g, "n_glow_off");
+        let t0 = std::time::Instant::now();
+        g.apply_glow();
+        eprintln!("glow: {:.2} ms", t0.elapsed().as_secs_f64() * 1000.0);
+        save(&g, "n_glow_on");
+        g.left_panel.open("bag");
+        g.left_panel.update(5.0);
+        g.bag_view = "equipped";
+        g.draw(m);
+        save(&g, "n_glow_bag_off");
+        g.apply_glow();
+        save(&g, "n_glow_bag_on");
+        g.left_panel.close();
+        g.left_panel.update(5.0);
         g.left_panel.open("bag");
         g.left_panel.update(5.0);
         g.inv_sort = "money";

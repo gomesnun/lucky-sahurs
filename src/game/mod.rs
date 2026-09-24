@@ -130,6 +130,8 @@ pub struct Game {
     pub stats_open: bool,
     pub credits_open: bool,
     pub update_log_open: bool,
+    /// scratch buffers for the Glow effect (gfx/glow.rs)
+    pub glow_buf: crate::gfx::glow::GlowBuf,
     /// the first-time tutorial's step (None = not showing)
     pub tutorial_step: Option<usize>,
     /// the "What's new" pop-up after an update
@@ -338,6 +340,7 @@ impl Game {
             stats_open: false,
             credits_open: false,
             update_log_open: false,
+            glow_buf: Default::default(),
             tutorial_step: None,
             whats_new_open: false,
             update_log_scroll: 0.0,
@@ -493,6 +496,18 @@ impl Game {
 
     pub fn animations(&self) -> bool {
         self.settings.get_bool("animations", true)
+    }
+
+    /// The Glow effect (Options > Interface), on by default.
+    pub fn glow_on(&self) -> bool {
+        self.settings.get_bool("glow", true)
+    }
+
+    /// Bright parts of the finished frame bleed a soft light (only when Glow is on).
+    pub fn apply_glow(&mut self) {
+        if self.glow_on() {
+            crate::gfx::glow::apply(&mut self.canvas, &mut self.glow_buf, 1.3);
+        }
     }
 
     /// pygame.time.get_ticks()
@@ -897,6 +912,7 @@ impl Game {
             let ms = pump.mouse_state();
             let mouse = self.mouse_canvas((ms.x(), ms.y()));
             self.draw(mouse);
+            self.apply_glow();
             self.present();
         }
         self.save_everything();

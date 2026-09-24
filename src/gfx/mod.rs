@@ -1,6 +1,7 @@
 //! Software rendering layer that mirrors pygame-ce 2.5.8.
 
 pub mod draw;
+pub mod glow;
 pub mod rect;
 pub mod surface;
 pub mod text;

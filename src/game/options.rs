@@ -245,6 +245,24 @@ impl Game {
         self.button(Rect::new(x0, y, w, 44), &tr!("Theme: %s", self.theme_mode_label()), &med, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.cycle_theme_mode()), Bo::r(10));
         y += 54;
         self.button(Rect::new(x0, y, w, 44), &tr!("Language: %s", language_name(get_language())), &med, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.cycle_language()), Bo::r(10));
+        y += 54;
+        let glow = self.glow_on();
+        self.button(
+            Rect::new(x0, y, w, 44),
+            &tr!("Glow: %s", on_off(glow)),
+            &med,
+            mouse_pos,
+            if glow { panel_light() } else { OFF_COLOR },
+            panel_lighter(),
+            WHITE,
+            cb(|g| {
+                let on = !g.glow_on();
+                g.settings.set_bool("glow", on);
+                save_settings(&g.settings);
+                g.show_toast(&if on { tr("Glow on") } else { tr("Glow off") }, 1.8);
+            }),
+            Bo::r(10),
+        );
     }
 
     fn draw_options_game_tab(&mut self, bx: Rect, mouse_pos: (f64, f64), in_game: bool) {

@@ -16,6 +16,7 @@ pub const UPDATE_LOG: &[(&str, &str, &[&str])] = &[
         "Every Verity keeps its own look in each phase, and its Monster wears its colours, accessories and glow.",
         "New players get a quick tutorial (skippable, and you can replay it from Options > Game).",
         "After an update, a \"What's new\" window shows what changed.",
+        "New Glow effect: bright and colourful things shine softly. Turn it on or off in Options > Interface.",
     ]),
     ("v3.0.0", "2026-09-24", &[
         "New effects: buttons glow when you point at them and ripple when you click, a subtle glare sweeps across buttons and your pet card, your verities rain down behind the roll screen (more the more you earn) and every ROLL pops the verity you got up from your click, the coins count up smoothly and the title screen shows the verities.",
