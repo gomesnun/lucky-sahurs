@@ -385,7 +385,7 @@ pub fn upgrade_defs() -> &'static [UpgradeDef] {
             u("offline_time_2", "Offline Time II", l("+%d hour of max offline time per level, once Offline Time is maxed out.", a![1i64]), 4, 8000000000.0, 2.04, Some("offline_time"), 12, 0),
             u("auto_upgrade_unlock", "Auto Upgrader", p("Buys the cheapest upgrade you can afford by itself while turned on (toggle at the top of Upgrades). Never resets on Rebirth."), 1, 250000.0, 1.0, None, 1, 0),
             u("auto_trait_unlock", "Auto Trait Roller", p("Rolls your trait charges by itself while turned on (toggle on the Traits page). Never resets on Rebirth or Prestige."), 1, 2000000.0, 1.0, None, 1, 0),
-            u("auto_equip_unlock", "Auto Equip Best", p("Unlocks the Auto Equip Best toggle in the Bag: automatically keeps your highest-earning pets equipped as you roll."), 1, 750000.0, 1.0, None, 1, 0),
+            u("auto_equip_unlock", "Auto Equip Best", p("Unlocks the Auto Equip Best toggle in the Bag: automatically keeps your highest-earning pets equipped as you roll. Never resets on Rebirth."), 1, 750000.0, 1.0, None, 1, 0),
         ]
     })
 }
@@ -422,7 +422,7 @@ pub fn upgrade_category(key: &str) -> Option<&'static UpgradeCategory> {
 pub const BASE_SLOTS: i64 = 3;
 
 /// upgrades a Rebirth NEVER resets (not even the first ones, before "Rebirth Master")
-pub const KEEP_ON_REBIRTH: [&str; 4] = ["auto_upgrade_unlock", "auto_trait_unlock", "auto_unlock", "golden_roll_unlock"];
+pub const KEEP_ON_REBIRTH: [&str; 5] = ["auto_upgrade_unlock", "auto_trait_unlock", "auto_unlock", "golden_roll_unlock", "auto_equip_unlock"];
 /// upgrades a Prestige doesn't reset either (the automation)
 pub const KEEP_ON_PRESTIGE: [&str; 2] = ["auto_upgrade_unlock", "auto_trait_unlock"];
 /// how often the Auto Trait Roller spends your charges

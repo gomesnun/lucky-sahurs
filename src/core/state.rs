@@ -2134,11 +2134,11 @@ mod prestige_tests {
         let mut s = GameState::new();
         s.rebirths = 3;
         s.coins = 1e300;
-        for k in ["auto_unlock", "golden_roll_unlock", "auto_upgrade_unlock", "auto_speed", "cyclic_every", "luck"] {
+        for k in ["auto_unlock", "golden_roll_unlock", "auto_upgrade_unlock", "auto_equip_unlock", "auto_speed", "cyclic_every", "luck"] {
             s.upgrades[upgrade_index(k)] = 1;
         }
         assert!(s.do_rebirth());
-        for k in ["auto_unlock", "golden_roll_unlock", "auto_upgrade_unlock"] {
+        for k in ["auto_unlock", "golden_roll_unlock", "auto_upgrade_unlock", "auto_equip_unlock"] {
             assert_eq!(s.upgrade_level(k), 1, "{k} should stay");
         }
         for k in ["auto_speed", "cyclic_every", "luck"] {
