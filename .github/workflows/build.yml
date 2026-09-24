@@ -4,7 +4,7 @@
 # Desde a v2.5.0 os executaveis sao a versao em Rust (a raiz do repositorio): o mesmo jogo, mais rapido.
 # Os ficheiros da Release tem os MESMOS nomes de sempre (Lucky-Verities-Windows.exe, ...), por isso
 # quem ainda tem a versao em Python e atualizado sozinho para a versao em Rust (ver online/updater.py).
-# Os saves ficam na mesma pasta, nao se perde nada. O APK de Android continua em Python (python/, android.yml).
+# Os saves ficam na mesma pasta, nao se perde nada.
 #
 # COMO USAR
 #   1) Publicar uma versao:   git tag v2.5.0 && git push origin v2.5.0

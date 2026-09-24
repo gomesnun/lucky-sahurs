@@ -530,14 +530,10 @@
           <img src="../icons/verity.png" width="256" height="256" alt="">
           <h4>Linux</h4><span>Lucky-Verities-Linux.tar.gz</span>
         </a>
-        <a class="platform" href="https://github.com/gomesnun/lucky-verities/releases/latest">
-          <img src="../icons/verity.png" width="256" height="256" alt="">
-          <h4>Android</h4><span>Lucky-Verities-Android.apk</span>
-        </a>
       </div>
       <div class="source-box">
         <span data-i18n="download.source.title"><b>Run from source instead:</b></span><br>
-        <code>pip install pygame-ce</code> → <code>python main.py</code>
+        <code>cargo run --release</code>
         <span data-i18n="download.source.or">— or on Linux/macOS:</span> <code>./run_linux_mac.sh</code>
       </div>
       <div class="note-row">
@@ -1093,7 +1089,7 @@ if(mascot){
   function detectOS(){
     var platform = navigator.platform || '';
     var ua = navigator.userAgent || '';
-    if(/Android/i.test(ua)) return 'android';
+    if(/Android/i.test(ua)) return null;
     if(/Mac/i.test(platform)) return /iPhone|iPad|iPod/i.test(ua) ? null : 'mac-arm';
     if(/Win/i.test(platform)) return 'windows';
     if(/Linux/i.test(platform)) return 'linux';
@@ -1102,11 +1098,10 @@ if(mascot){
   var ASSET_MATCH = {
     windows: /Windows.*\.exe$/i,
     'mac-arm': /macOS-AppleSilicon.*\.zip$/i,
-    linux: /Linux.*\.tar\.gz$/i,
-    android: /Android.*\.apk$/i
+    linux: /Linux.*\.tar\.gz$/i
   };
-  var LABEL_EN = {windows:'Windows', 'mac-arm':'macOS', linux:'Linux', android:'Android'};
-  var LABEL_PT = {windows:'Windows', 'mac-arm':'macOS', linux:'Linux', android:'Android'};
+  var LABEL_EN = {windows:'Windows', 'mac-arm':'macOS', linux:'Linux'};
+  var LABEL_PT = {windows:'Windows', 'mac-arm':'macOS', linux:'Linux'};
   fetch('https://api.github.com/repos/' + REPO + '/releases/latest')
     .then(function(r){ if(!r.ok) throw new Error('bad status'); return r.json(); })
     .then(function(data){

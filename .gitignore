@@ -18,11 +18,3 @@ dist/
 .venv/
 *.exe
 
-# Android (buildozer)
-.buildozer/
-bin/
-
-# Android (build): copias dos icons/sounds/fonts da raiz, feitas pelo android.yml
-/python/icons/
-/python/sounds/
-/python/fonts/

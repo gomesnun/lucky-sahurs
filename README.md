@@ -3,7 +3,7 @@
 <p align="center">
   <b>An idle collecting game about Verities: little round creatures with big personalities.</b><br>
   Roll for pets from <i>Common</i> to <i>Transcendent</i>, stack income, rebirth for permanent power,
-  add friends and climb the global leaderboard — on desktop and on Android.
+  add friends and climb the global leaderboard — on Windows, macOS and Linux.
 </p>
 
 <p align="center">
@@ -16,9 +16,7 @@
   <img alt="Windows" src="https://img.shields.io/badge/Windows-.exe-0078D6?logo=windows&logoColor=white">
   <img alt="macOS" src="https://img.shields.io/badge/macOS-Apple%20Silicon%20%2B%20Intel-000000?logo=apple&logoColor=white">
   <img alt="Linux" src="https://img.shields.io/badge/Linux-x86__64-FCC624?logo=linux&logoColor=black">
-  <img alt="Android" src="https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white">
   <img alt="Rust" src="https://img.shields.io/badge/Rust-desktop-B7410E?logo=rust&logoColor=white">
-  <img alt="Python" src="https://img.shields.io/badge/Python-Android-3776AB?logo=python&logoColor=white">
 </p>
 
 ---
@@ -76,18 +74,6 @@ Pick your platform. Fastest path is the prebuilt download; no Python needed.
 
 Installed copies update themselves: when a newer release is out, the game offers the update on launch.
 
-### 🤖 Android
-
-Landscape, touch-first: tap to roll and to press buttons, drag to scroll a list, hardware **Back** closes the
-open panel. Account, cloud saves and the leaderboard work the same as on desktop.
-
-1. Open the [latest release](https://github.com/gomesnun/lucky-verities/releases/latest) on your phone.
-2. Download `Lucky-Verities-Android.apk`.
-3. Android will ask to allow installs from your browser — allow it, then tap **Install**. The APK is
-   debug-signed, so Play Protect shows an "unknown app" warning: **More details → Install anyway**.
-
-Minimum Android 7.0 (API 24), `arm64-v8a` + `armeabi-v7a`.
-
 ---
 
 ## Source layout
@@ -96,7 +82,7 @@ Minimum Android 7.0 (API 24), `arm64-v8a` + `armeabi-v7a`.
 |---|---|
 | `src/`, `Cargo.toml`, `build.rs` | **The game** (Rust). Desktop releases (Windows / macOS / Linux) are built from here. |
 | `icons/`, `sounds/`, `fonts/` | Game files, built into the executable. Shared with `python/` and the website. |
-| `python/` | The original Python + pygame-ce version. Still used for the **Android** APK. |
+| `python/` | The original Python + pygame-ce version, kept as the reference for the parity checks. |
 | `tools/` | Parity checks: the Rust build must match `python/` pixel for pixel. |
 | `website/`, `backend/` | Landing page and the e-mail backend. |
 
@@ -110,7 +96,7 @@ Parity checks: `lucky-verities --shots DIR` against `tools/screens_reference.py 
 `--sim DIR` against `tools/sim_reference.py python DIR`, compared with `tools/compare_png.py`.
 
 Releases: push a tag `vX.Y.Z` (higher than the last one). `.github/workflows/build.yml` builds the desktop
-files and `android.yml` the APK; the release files keep the old names, so every installed copy (including the
+files; the release files keep the old names, so every installed copy (including the
 older Python builds) updates itself.
 
 ---
