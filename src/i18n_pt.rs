@@ -787,6 +787,7 @@ pub const PT: &[(&str, &str)] = &[
     ("Email codes and the shared leaderboard use new, working links.", "Os códigos por email e a leaderboard partilhada usam links novos que funcionam."),
     ("The Bag page was redone: Equipped / Inventory / Potions tabs, Equip Best on the right, the Inventory filters in one row, the equipped cards in the middle (click an empty slot to equip one), and clicking outside closes it.", "A página do Bag foi refeita: separadores Equipados / Inventário / Poções, o Equip Best à direita, os filtros do Inventário numa só linha, os cards equipados ao centro (clica num espaço vazio para equipar um), e clicar fora fecha-a."),
     ("The Auto Roller, Golden Roll and Auto Equip Best unlocks no longer reset on Rebirth (like the Auto Upgrader). Their levels (Auto Speed, Short Cycle...) still do.", "Os desbloqueios do Auto Roll, do Roll Dourado e do Auto Equip Best já não são resetados no Renascimento (como o Auto Upgrader). Os níveis deles (Auto Speed, Short Cycle...) continuam a ser."),
+    ("A reset (new season or an admin reset) no longer takes away your playtime.", "Um reset (nova season ou reset de admin) já não te tira o tempo de jogo."),
     ("Dice show up in the Shop about half as often.", "Os dados aparecem na Loja cerca de metade das vezes."),
     ("Every upgrade and upgrade category has an icon.", "Cada melhoria e categoria de melhorias tem um ícone."),
     ("Unlock Golden Roll", "Desbloquear Roll Dourado"),

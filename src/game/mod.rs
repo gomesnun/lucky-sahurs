@@ -1403,12 +1403,14 @@ mod prefs_tests {
         st.total_rolls = 5000;
         st.coins = 1e9;
         st.rebirths = 7;
+        st.playtime = 3600.0;
         let mut p = serde_json::Map::new();
         p.insert("animations".into(), serde_json::json!(false));
         st.prefs = Some(p.clone());
         g.replace_state(st);
         assert_eq!((g.state.total_rolls, g.state.coins, g.state.rebirths, g.state.season), (0, 0.0, 0, 1));
         assert_eq!((g.state.slot, g.state.prefs.clone()), (Some(1), Some(p)));
+        assert_eq!(g.state.playtime, 3600.0); // the playtime stays
         // progress made after the reset is never touched
         let mut st = GameState::new();
         st.slot = Some(2);

@@ -2,7 +2,7 @@
 //! number in /public/season and empties the leaderboard. Every game checks the number at start and every couple of
 //! minutes; a save from an older season (the one being played, the other slots on this PC, the account's cloud
 //! slots) starts again from 0. Saves already in the new season are never touched, so a new PC is safe.
-//! Accounts, friends and settings stay.
+//! Accounts, friends, settings and the playtime stay.
 //! An admin can also reset ONE player (admin menu > Resets > search): /resets/{uid} goes up by 1 and that player's
 //! game wipes their account's saves the same way (the save keeps the number it was made with: `player_reset`).
 
@@ -141,6 +141,7 @@ impl Game {
         fresh.season = n;
         fresh.player_reset = r;
         fresh.prefs = self.state.prefs.clone();
+        fresh.playtime = self.state.playtime; // v3.0.4: the time played belongs to the account, a reset keeps it
         fresh.cloud_uid = self.state.cloud_uid.clone();
         fresh.cloud_base_time = self.state.cloud_base_time.clone();
         fresh.save_seq = self.state.save_seq + 1;

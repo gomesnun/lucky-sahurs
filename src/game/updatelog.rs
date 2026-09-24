@@ -12,6 +12,7 @@ use std::rc::Rc;
 
 pub const UPDATE_LOG: &[(&str, &str, &[&str])] = &[
     ("v3.0.4", "2026-09-24", &[
+        "A reset (new season or an admin reset) no longer takes away your playtime.",
         "The Auto Roller, Golden Roll and Auto Equip Best unlocks no longer reset on Rebirth (like the Auto Upgrader). Their levels (Auto Speed, Short Cycle...) still do.",
         "The Bag page was redone: Equipped / Inventory / Potions tabs, Equip Best on the right, the Inventory filters in one row, the equipped cards in the middle (click an empty slot to equip one), and clicking outside closes it.",
     ]),
