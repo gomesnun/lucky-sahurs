@@ -779,6 +779,7 @@ pub const PT: &[(&str, &str)] = &[
     ("Reach Prestige %d.", "Chega ao Prestígio %d."),
     ("Done", "Feito"),
     ("Ready!", "Pronto!"),
+    ("No more sparkle cloud over the card when rolling is \"too fast to show\".", "Já não aparece a nuvem de brilhos por cima do cartão quando os rolls são \"rápidos demais\"."),
     ("Turn off %s cutscenes", "Desligar cutscenes %s"),
     ("%s cutscenes turned off. Turn them back on in Options > Game.", "Cutscenes %s desligadas. Volta a ligá-las em Opções > Jogo."),
     ("Every cutscene has a \"Turn off ... cutscenes\" button: one click and that rarity's cutscenes stop (turn them back on in Options > Game).", "Cada cutscene tem um botão \"Desligar cutscenes ...\": um clique e as cutscenes dessa raridade param (voltas a ligá-las em Opções > Jogo)."),

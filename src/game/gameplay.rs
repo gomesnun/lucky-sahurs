@@ -79,6 +79,7 @@ impl Game {
             let now = now_ts();
             if now > self.too_fast_until {
                 self.too_fast_best = None;
+                self.particles.clear(); // the sparkles from before it got this fast
             }
             self.too_fast_until = now + 0.6;
             if best_r >= 0 && self.too_fast_best.is_none_or(|b| pet_rank(best_r as usize) > pet_rank(b.0)) {
@@ -200,7 +201,8 @@ impl Game {
 
     pub fn spawn_roll_particles(&mut self, rarity_index: usize) {
         let r = &rarities()[rarity_index];
-        if !self.animations() || r.tier < 4 {
+        // no burst while rolling is "too fast to show": one burst per frame piled up into a cloud over the card
+        if !self.animations() || r.tier < 4 || now_ts() < self.too_fast_until {
             return;
         }
         // the "bright" colour (the dark rarities glow too)
