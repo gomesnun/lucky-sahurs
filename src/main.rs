@@ -575,12 +575,70 @@ fn statetest(seed: u64, n: usize) {
             log.push(format!("rebirth {}", s.rebirths));
         }
         if i % 50 == 0 {
-            let (g, d) = s.mutation_chances();
-            log.push(format!("w {} {} {} ({}, {})", r(s.luck_multiplier(20, 1.0)), r(s.money_multiplier()), r(s.auto_rolls_per_second()), r(g), r(d)));
+            let (g, d, rb) = s.mutation_chances();
+            log.push(format!("w {} {} {} ({}, {}, {})", r(s.luck_multiplier(20)), r(s.money_multiplier()), r(s.auto_rolls_per_second()), r(g), r(d), r(rb)));
         }
     }
     for k in 0..3 {
         log.push(format!("claim {}", s.claim_daily_mission(k)));
+    }
+    // v2.7-v2.9: end-game upgrades, the Shop, potions, selling and bulk rolls
+    let pyb = |b: bool| if b { "True" } else { "False" };
+    s.coins = 1e30;
+    s.rebirths = s.rebirths.max(12);
+    for u in upgrade_defs() {
+        let got = s.buy_upgrade_bulk(u.key, 0);
+        if got > 0 {
+            log.push(format!("buy {} {} {}", u.key, got, r(s.coins)));
+        }
+    }
+    let now = 1800000000.0 + seed as f64 * 600.0;
+    for d in core::shop::DICE.iter() {
+        let ok = s.buy_dice(d.key, now);
+        log.push(format!("dice {} {}", d.key, pyb(ok)));
+    }
+    for p in core::shop::POTION_TYPES.iter() {
+        for lvl in 1..=5 {
+            let ok = s.buy_potion(p.key, lvl, now);
+            log.push(format!("potion {} {} {} {}", p.key, lvl, pyb(ok), r(s.coins)));
+        }
+    }
+    *s.shop.potions.entry("luck_1".into()).or_insert(0) += 11;
+    let (c1, c2) = (s.combine_potions("luck", 1), s.combine_potions("luck", 1));
+    log.push(format!("combine {} {}", pyb(c1), pyb(c2)));
+    let (u1, u2, u3) = (s.use_potion("luck", 2), s.use_potion("luck", 1), s.use_potion("money", 1));
+    log.push(format!("use {} {} {}", pyb(u1), pyb(u2), pyb(u3)));
+    s.equip_dice("iron");
+    let (g, d, rb) = s.mutation_chances();
+    log.push(format!("x {} {} ({}, {}, {}) {}", r(s.flat_luck(1.0)), r(s.money_multiplier()), r(g), r(d), r(rb), r(s.luck_multiplier(40))));
+    let probs = s.pet_probs(1.0, None);
+    log.push(format!("p {}", probs[probs.len() - 12..].iter().map(|x| r(*x)).collect::<Vec<_>>().join(" ")));
+    for _ in 0..400 {
+        let (a, b, c, d) = s.roll();
+        log.push(format!("{} {} {} {}", a, b, c as i32, d as i32));
+    }
+    let (best, ch) = s.roll_bulk(10_000_000);
+    log.push(match best {
+        Some((i, m)) => format!("bulk ({}, '{}', {})", i, m, ch),
+        None => format!("bulk (None, None, {})", ch),
+    });
+    s.trait_charges += 2_000_000;
+    for n in [1_000_000i64, 300] {
+        let res = s.roll_traits_bulk(n);
+        let mut kv: Vec<(usize, i64)> = res.into_iter().collect();
+        kv.sort();
+        log.push(format!("tb {} {}", kv.iter().map(|(k, v)| format!("{}:{}", k, v)).collect::<Vec<_>>().join(" "), s.trait_charges));
+    }
+    let (s1, g1) = s.sell_pets(0, "normal", 5);
+    let (s2, g2) = s.sell_pets(1, "golden", 1_000_000_000);
+    log.push(format!("sell ({}, {}) ({}, {})", s1, r(g1), s2, r(g2)));
+    s.tick_potions(700.0);
+    s.coins = 1e20;
+    s.do_rebirth();
+    let bought = s.auto_upgrade_step();
+    log.push(format!("auto {} {}", bought, r(s.coins)));
+    for m in s.check_milestones() {
+        log.push(format!("ms {} {}", m.0, m.1));
     }
     println!("{}", log.join("\n"));
     let d = s.to_dict();

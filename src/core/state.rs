@@ -31,6 +31,43 @@ pub fn rand_random() -> f64 {
 pub fn rand_uniform(a: f64, b: f64) -> f64 {
     RNG.with(|r| r.borrow_mut().uniform(a, b))
 }
+pub fn rand_gauss(mu: f64, sigma: f64) -> f64 {
+    RNG.with(|r| r.borrow_mut().gauss(mu, sigma))
+}
+
+/// A random number from a Poisson distribution (for the bulk rolls).
+pub fn poisson(lam: f64) -> i64 {
+    if lam <= 0.0 {
+        return 0;
+    }
+    if lam < 30.0 {
+        let limit = (-lam).exp();
+        let (mut k, mut p) = (0i64, 1.0f64);
+        loop {
+            p *= rand_random();
+            if p <= limit {
+                return k;
+            }
+            k += 1;
+        }
+    }
+    let v = crate::core::formatting::py_round(rand_gauss(lam, lam.sqrt()));
+    if v <= 0.0 { 0 } else if v >= 9.0e18 { i64::MAX / 4 } else { v as i64 }
+}
+
+/// Python's RARITY_COUNTER: which lifetime counter each top rarity bumps.
+fn rarity_counter<'a>(st: &'a mut GameState, rkey: &str) -> Option<&'a mut i64> {
+    Some(match rkey {
+        "secreto" => &mut st.total_secret_rolled,
+        "divino" => &mut st.total_divine_rolled,
+        "cosmico" => &mut st.total_cosmic_rolled,
+        "transcendente" => &mut st.total_transcendent_rolled,
+        "etereo" => &mut st.total_ethereal_rolled,
+        "celestial" => &mut st.total_celestial_rolled,
+        "absoluto" => &mut st.total_absolute_rolled,
+        _ => return None,
+    })
+}
 
 pub struct GameState {
     /// identity of this object (Python keeps references to a state inside network callbacks)
@@ -38,6 +75,8 @@ pub struct GameState {
     pub slot: Option<i64>,
     pub coins: f64,
     pub owned: IndexMap<String, i64>,
+    /// "{rarity_index}_{mutation}" ever rolled (for the Index; never shrinks)
+    pub seen_pets: BTreeSet<String>,
     pub equipped: Vec<Pet>,
     pub avatar: Option<Pet>,
     /// levels in UPGRADE_DEFS order
@@ -61,6 +100,10 @@ pub struct GameState {
     pub total_divine_rolled: i64,
     pub total_cosmic_rolled: i64,
     pub total_transcendent_rolled: i64,
+    pub total_rainbow_rolled: i64,
+    pub total_ethereal_rolled: i64,
+    pub total_celestial_rolled: i64,
+    pub total_absolute_rolled: i64,
     pub milestones_claimed: HashSet<String>,
     ms_bonus: HashMap<&'static str, f64>,
 
@@ -73,10 +116,17 @@ pub struct GameState {
     pub cycle_paused: IndexMap<&'static str, bool>,
 
     pub auto_equip_best_on: bool,
+    pub auto_upgrade_on: bool,
+    /// dice, potions and what was bought this period (core/shop.rs)
+    pub shop: crate::core::shop::ShopState,
+    /// with no bonus roll, the chances are the same for every roll of a frame: the Auto Roller keeps them here
+    pub probs_cache: Option<Vec<f64>>,
 
     pub cloud_uid: Option<String>,
     pub cloud_base_time: Option<String>,
     pub dirty: bool,
+    /// never saved: what still has to go to /users/{uid}/wallet/pets (see tick_wallet in game/trades.rs)
+    pub wallet_pending: IndexMap<String, i64>,
     pub sync_conflict: bool,
     pub save_seq: i64,
 
@@ -156,6 +206,7 @@ impl GameState {
             slot: None,
             coins: 0.0,
             owned: IndexMap::new(),
+            seen_pets: BTreeSet::new(),
             equipped: Vec::new(),
             avatar: None,
             upgrades: vec![0; upgrade_defs().len()],
@@ -176,6 +227,10 @@ impl GameState {
             total_divine_rolled: 0,
             total_cosmic_rolled: 0,
             total_transcendent_rolled: 0,
+            total_rainbow_rolled: 0,
+            total_ethereal_rolled: 0,
+            total_celestial_rolled: 0,
+            total_absolute_rolled: 0,
             milestones_claimed: HashSet::new(),
             ms_bonus: HashMap::new(),
             cyclic_roll_count: 0,
@@ -186,9 +241,13 @@ impl GameState {
             rainbow_bonus_ready: false,
             cycle_paused: cp,
             auto_equip_best_on: true,
+            auto_upgrade_on: true,
+            shop: Default::default(),
+            probs_cache: None,
             cloud_uid: None,
             cloud_base_time: None,
             dirty: false,
+            wallet_pending: IndexMap::new(),
             sync_conflict: false,
             save_seq: 0,
             rebirths: 0,
@@ -228,13 +287,15 @@ impl GameState {
 
     pub fn money_multiplier(&self) -> f64 {
         let base = (1.0 + MONEY_PER_LEVEL * self.upgrade_level("money") as f64)
-            * (1.0 + MONEY_PRISM_PER_LEVEL * self.upgrade_level("money_prism") as f64);
+            * (1.0 + MONEY_PRISM_PER_LEVEL * self.upgrade_level("money_prism") as f64)
+            * (1.0 + MONEY_ULTRA_PER_LEVEL * self.upgrade_level("money_ultra") as f64);
         base * (1.0 + self.trait_buff("money"))
             * (1.0 + self.milestone_bonus("money"))
             * self.rebirth_money_mult()
             * (1.0 + self.rebirth_bonus("money"))
             * INCOME_SCALE
             * event_mult("money")
+            * self.potion_mult("money")
     }
 
     pub fn auto_unlocked(&self) -> bool {
@@ -251,6 +312,7 @@ impl GameState {
             * (1.0 + self.milestone_bonus("auto_speed"))
             * (1.0 + self.rebirth_bonus("auto_speed"))
             * event_mult("speed")
+            * self.potion_mult("speed")
     }
 
     pub fn pet_income(&self, rarity_index: usize, mutation_key: &str) -> f64 {
@@ -281,7 +343,13 @@ impl GameState {
         if d.cost_mult == 1.0 {
             return d.base_cost as i128;
         }
-        let v = d.base_cost * d.cost_mult.powf(lvl as f64);
+        // up to half the levels it grows as always; from there on slower (see UPGRADE_SOFT_*)
+        let soft_from = (d.max_level as f64 * UPGRADE_SOFT_START) as i64;
+        let v = if lvl <= soft_from {
+            d.base_cost * d.cost_mult.powf(lvl as f64)
+        } else {
+            d.base_cost * d.cost_mult.powf(soft_from as f64) * d.cost_mult.powf(UPGRADE_SOFT_EXP).powf((lvl - soft_from) as f64)
+        };
         v.trunc() as i128
     }
 
@@ -424,6 +492,37 @@ impl GameState {
         self.upgrade_level("auto_equip_unlock") >= 1
     }
 
+    // ---------------- auto upgrader ----------------
+    pub fn auto_upgrade_unlocked(&self) -> bool {
+        self.upgrade_level("auto_upgrade_unlock") >= 1
+    }
+
+    /// Buys, one level at a time, the cheapest upgrade it can pay for (up to AUTO_UPGRADE_MAX_BUYS).
+    /// Returns how many levels it bought.
+    pub fn auto_upgrade_step(&mut self) -> i64 {
+        if !(self.auto_upgrade_unlocked() && self.auto_upgrade_on) {
+            return 0;
+        }
+        let mut bought = 0;
+        while bought < AUTO_UPGRADE_MAX_BUYS {
+            let mut best: Option<(&'static str, i128)> = None;
+            for key in upgrade_order() {
+                if key == "auto_upgrade_unlock" || !self.upgrade_available(key) {
+                    continue;
+                }
+                let cost = self.upgrade_cost(key);
+                if py_ge(self.coins, cost) && best.map(|b| cost < b.1).unwrap_or(true) {
+                    best = Some((key, cost));
+                }
+            }
+            match best {
+                Some((key, _)) if self.buy_upgrade_bulk(key, 1) > 0 => bought += 1,
+                _ => break,
+            }
+        }
+        bought
+    }
+
     // ================================================================ pets
     pub fn equip_best(&mut self) {
         let mut options: Vec<(f64, usize, &'static str, i64)> = Vec::new();
@@ -451,7 +550,7 @@ impl GameState {
         self.equipped = new_eq;
     }
 
-    pub fn luck_multiplier(&self, rarity_index: usize, bonus_mult: f64) -> f64 {
+    pub fn luck_multiplier(&self, rarity_index: usize) -> f64 {
         let tier = rarities()[rarity_index].tier;
         if tier < 2 {
             return 1.0;
@@ -473,6 +572,20 @@ impl GameState {
         if tier >= TIER_DIVINE {
             m *= 1.0 + LUCK_DIVINE_PER_LEVEL * self.upgrade_level("luck_divine") as f64;
         }
+        // ---- v2.7: end-game luck ----
+        m *= 1.0 + LUCK_2_PER_LEVEL * self.upgrade_level("luck_2") as f64;
+        m *= 1.0 + LUCK_ULTRA_PER_LEVEL * self.upgrade_level("luck_ultra") as f64;
+        let prism2 = 1.0 + LUCK_PRISM_2_PER_LEVEL * self.upgrade_level("luck_prism_2") as f64;
+        for start in [TIER_DIVINE, TIER_COSMIC, TIER_TRANSCENDENT, TIER_ETHEREAL] {
+            if tier >= start {
+                m *= prism2;
+            }
+        }
+        for (key, per_level) in LUCK_TIER_PER_LEVEL {
+            if tier >= tier_index(key) {
+                m *= 1.0 + per_level * self.upgrade_level(&format!("luck_tier_{}", key)) as f64;
+            }
+        }
         m *= 1.0 + self.trait_buff("luck");
         if tier >= TIER_SECRET {
             m *= 1.0 + self.trait_buff("secret_luck");
@@ -491,26 +604,105 @@ impl GameState {
         if tier >= TIER_TRANSCENDENT {
             m *= 1.0 + self.milestone_bonus("transcendent_luck");
         }
+        if tier >= TIER_ETHEREAL {
+            m *= 1.0 + self.milestone_bonus("ethereal_luck");
+        }
+        if tier >= TIER_CELESTIAL {
+            m *= 1.0 + self.milestone_bonus("celestial_luck");
+        }
+        if tier >= TIER_ABSOLUTE {
+            m *= 1.0 + self.milestone_bonus("absolute_luck");
+        }
         m *= self.rebirth_luck_mult();
-        m *= event_mult("luck");
         m *= 1.0 + self.rebirth_bonus("luck");
         if tier >= TIER_SECRET {
             m *= 1.0 + self.rebirth_bonus("secret_luck");
         }
-        if bonus_mult != 1.0 {
-            m *= bonus_mult;
-        }
-        m
+        // v2.9: a bit less (see LUCK_BONUS_SCALE). The global event, the die, the luck potion and the
+        // Golden/Diamond/Rainbow Rolls are NOT here: they are "flat" luck (see flat_luck / pet_probs)
+        1.0 + (m - 1.0) * LUCK_BONUS_SCALE
     }
 
-    pub fn roll_weights(&self, with_luck: bool, bonus_mult: f64) -> Vec<f64> {
+    /// "Flat" luck (like Sol's RNG): admin event x equipped die x luck potion x the Golden/Diamond/Rainbow Roll
+    /// bonus. Divides each rarity's "1 in N" - x1M really turns a 1 in 500 B into 1 in 500 K.
+    pub fn flat_luck(&self, bonus_mult: f64) -> f64 {
+        (event_mult("luck") * self.dice_luck_mult() * self.potion_mult("luck") * bonus_mult).max(1.0)
+    }
+
+    /// Chance of each pet on a roll (sums to 1).
+    /// 1) The normal luck (luck_multiplier) gives the base distribution, by weights.
+    /// 2) The flat luck F (flat_luck) looks at the rarities from the RAREST to the most common (Rare or better
+    ///    only): each one comes out with min(1, F x its base chance); if none does, it falls to Common/Uncommon.
+    pub fn pet_probs(&self, bonus_mult: f64, weights: Option<&[f64]>) -> Vec<f64> {
+        let owned_w;
+        let weights = match weights {
+            Some(w) => w,
+            None => {
+                owned_w = self.roll_weights(true);
+                &owned_w
+            }
+        };
+        let mut total: f64 = weights.iter().sum();
+        if total == 0.0 {
+            total = 1.0;
+        }
+        let base: Vec<f64> = weights.iter().map(|w| w / total).collect();
+        let flat = self.flat_luck(bonus_mult);
+        if flat <= 1.0 {
+            return base;
+        }
+        let r = rarities();
+        let n_tiers = RARITY_TIERS.len();
+        let mut tier_p = vec![0.0f64; n_tiers];
+        let mut tier_has = vec![false; n_tiers];
+        for (i, p) in base.iter().enumerate() {
+            tier_p[r[i].tier] += p;
+            tier_has[r[i].tier] = true;
+        }
+        let mut out = vec![0.0f64; base.len()];
+        let mut remaining = 1.0;
+        for t in (0..n_tiers).rev() {
+            if !tier_has[t] || t < 2 || remaining <= 0.0 || tier_p[t] <= 0.0 {
+                continue;
+            }
+            let take = remaining * (flat * tier_p[t]).min(1.0);
+            for i in 0..base.len() {
+                if r[i].tier == t {
+                    out[i] = take * base[i] / tier_p[t];
+                }
+            }
+            remaining -= take;
+        }
+        let low: f64 = (0..n_tiers).filter(|&t| t < 2 && tier_has[t]).map(|t| tier_p[t]).sum();
+        if remaining > 0.0 && low > 0.0 {
+            for i in 0..base.len() {
+                if r[i].tier < 2 {
+                    out[i] = remaining * base[i] / low;
+                }
+            }
+        }
+        out
+    }
+
+    /// Weights of the NORMAL luck (without the flat luck: see pet_probs).
+    pub fn roll_weights(&self, with_luck: bool) -> Vec<f64> {
+        // luck only depends on the RARITY: computed once per rarity, not per pet
+        let mut tier_mult: Vec<Option<f64>> = vec![None; RARITY_TIERS.len()];
         rarities()
             .iter()
             .enumerate()
             .map(|(i, r)| {
                 let mut w = r.share / r.one_in;
                 if with_luck {
-                    w *= self.luck_multiplier(i, bonus_mult);
+                    let m = match tier_mult[r.tier] {
+                        Some(m) => m,
+                        None => {
+                            let m = self.luck_multiplier(i);
+                            tier_mult[r.tier] = Some(m);
+                            m
+                        }
+                    };
+                    w *= m;
                 }
                 w
             })
@@ -518,14 +710,16 @@ impl GameState {
     }
 
     pub fn roll_chance(&self, rarity_index: usize, with_luck: bool) -> f64 {
-        let w = self.roll_weights(with_luck, 1.0);
+        let w = self.roll_weights(with_luck);
         let total: f64 = w.iter().sum();
         if total != 0.0 { w[rarity_index] / total } else { 0.0 }
     }
 
-    pub fn mutation_chances(&self) -> (f64, f64) {
+    /// (Golden, Diamond, Rainbow): the REAL chance of each mutation per roll.
+    pub fn mutation_chances(&self) -> (f64, f64, f64) {
         let mut g = 0.0;
         let mut d = 0.0;
+        let mut r = 0.0;
         let base_mult = 1.0 + self.trait_buff("mutation");
         let golden_mult = base_mult * (1.0 + self.milestone_bonus("golden_luck")) * (1.0 + self.rebirth_bonus("golden_luck"));
         let diamond_mult = base_mult * (1.0 + self.milestone_bonus("diamond_luck")) * (1.0 + self.rebirth_bonus("diamond_luck"));
@@ -541,27 +735,30 @@ impl GameState {
                 + DIAMOND_STEP_2 * self.upgrade_level("diamond_chance_2") as f64)
                 * diamond_mult;
         }
-        (cap_chance(g, GOLDEN_MAX_CHANCE), cap_chance(d, DIAMOND_MAX_CHANCE))
+        if self.upgrade_level("rainbow_unlock") >= 1 {
+            let rainbow_mult = base_mult * (1.0 + self.milestone_bonus("rainbow_luck"));
+            r = (RAINBOW_BASE
+                + RAINBOW_STEP_1 * self.upgrade_level("rainbow_chance") as f64
+                + RAINBOW_STEP_2 * self.upgrade_level("rainbow_chance_2") as f64)
+                * rainbow_mult;
+        }
+        (cap_chance(g, GOLDEN_MAX_CHANCE), cap_chance(d, DIAMOND_MAX_CHANCE), cap_chance(r, RAINBOW_MAX_CHANCE))
     }
 
-    pub fn combined_chance(&self, rarity_index: usize, mutation_key: &str, weights: Option<&[f64]>) -> f64 {
-        let owned_w;
-        let w = match weights {
-            Some(w) => w,
+    /// REAL chance of this pet coming out WITH this mutation, per roll, with your current luck (upgrades + trait +
+    /// milestones + event/die/potion) and mutation chances. Doesn't count the temporary Golden / Diamond /
+    /// Rainbow Roll bonus. Callers in a loop (Index) pass probs and muts already computed.
+    pub fn combined_chance(&self, rarity_index: usize, mutation_key: &str, probs: Option<&[f64]>, muts: Option<(f64, f64, f64)>) -> f64 {
+        let owned_p;
+        let probs = match probs {
+            Some(p) => p,
             None => {
-                owned_w = self.roll_weights(true, 1.0);
-                &owned_w
+                owned_p = self.pet_probs(1.0, None);
+                &owned_p
             }
         };
-        let total: f64 = w.iter().sum();
-        let rarity_chance = if total != 0.0 { w[rarity_index] / total } else { 0.0 };
-        let (g, d) = self.mutation_chances();
-        let f = match mutation_key {
-            "diamond" => d,
-            "golden" => (1.0 - d) * g,
-            _ => (1.0 - d) * (1.0 - g),
-        };
-        rarity_chance * f
+        let (g, d, r) = muts.unwrap_or_else(|| self.mutation_chances());
+        probs[rarity_index] * mutation_factor(mutation_key, g, d, r)
     }
 
     /// Returns (rarity_index, mutation, gained_charge, bonus_active)
@@ -586,48 +783,41 @@ impl GameState {
         }
         let bonus_mult: f64 = if mults.is_empty() { 1.0 } else { mults.iter().sum() };
 
-        let weights = self.roll_weights(true, bonus_mult);
-        let total: f64 = weights.iter().sum();
-        let roll_val = rand_random() * total;
+        // with no bonus the chances are the same for every roll of the frame: the Auto Roller keeps them
+        // (probs_cache) instead of computing them 50 times
+        let computed;
+        let probs: &[f64] = match (&self.probs_cache, bonus_mult == 1.0) {
+            (Some(c), true) => c,
+            _ => {
+                computed = self.pet_probs(bonus_mult, None);
+                &computed
+            }
+        };
+        let roll_val = rand_random();
         let mut cum = 0.0;
         let mut rarity_index = rarities().len() - 1;
-        for (i, w) in weights.iter().enumerate() {
-            cum += w;
+        for (i, p) in probs.iter().enumerate() {
+            cum += p;
             if roll_val <= cum {
                 rarity_index = i;
                 break;
             }
         }
 
-        let (g, d) = self.mutation_chances();
+        let (g, d, r) = self.mutation_chances();
         let mut m = "normal";
-        if d > 0.0 && rand_random() < d {
+        if r > 0.0 && rand_random() < r {
+            m = "rainbow";
+        } else if d > 0.0 && rand_random() < d {
             m = "diamond";
         } else if g > 0.0 && rand_random() < g {
             m = "golden";
         }
 
-        let key = format!("{}_{}", rarity_index, m);
-        *self.owned.entry(key).or_insert(0) += 1;
+        self.record_pets(rarity_index, m, 1);
         self.last_roll = Some((rarity_index, m));
         self.total_rolls += 1;
         self.daily_add_progress("rolls", 1);
-        let rkey = rarities()[rarity_index].key;
-        self.daily_add_progress(&format!("rarity_{}", rkey), 1);
-        if m == "golden" {
-            self.total_golden_rolled += 1;
-            self.daily_add_progress("golden", 1);
-        } else if m == "diamond" {
-            self.total_diamond_rolled += 1;
-            self.daily_add_progress("diamond", 1);
-        }
-        match rkey {
-            "secreto" => self.total_secret_rolled += 1,
-            "divino" => self.total_divine_rolled += 1,
-            "cosmico" => self.total_cosmic_rolled += 1,
-            "transcendente" => self.total_transcendent_rolled += 1,
-            _ => {}
-        }
 
         if golden_active {
             self.cyclic_bonus_ready = false;
@@ -672,6 +862,97 @@ impl GameState {
         (rarity_index, m, gained, bonus_active)
     }
 
+    /// Adds 'count' pets of this kind to the collection and updates the counters (milestones, missions, wallet).
+    fn record_pets(&mut self, rarity_index: usize, m: &'static str, count: i64) {
+        let key = format!("{}_{}", rarity_index, m);
+        *self.owned.entry(key.clone()).or_insert(0) += count;
+        *self.wallet_pending.entry(key.clone()).or_insert(0) += count; // for the online wallet (trades)
+        self.seen_pets.insert(key); // stays in the Index forever, even if owned drops to 0 (trade/sale)
+        let rkey = rarities()[rarity_index].key;
+        self.daily_add_progress(&format!("rarity_{}", rkey), count);
+        match m {
+            "golden" => {
+                self.total_golden_rolled += count;
+                self.daily_add_progress("golden", count);
+            }
+            "diamond" => {
+                self.total_diamond_rolled += count;
+                self.daily_add_progress("diamond", count);
+            }
+            "rainbow" => {
+                self.total_rainbow_rolled += count;
+                self.daily_add_progress("diamond", count); // a Rainbow also counts for the "Diamond" mission
+            }
+            _ => {}
+        }
+        if let Some(c) = rarity_counter(self, rkey) {
+            *c += count;
+        }
+    }
+
+    /// n rolls at once, by statistics (for a very fast Auto Roller - e.g. a x1M speed event - where rolling one
+    /// by one is impossible). Each pet+mutation comes out a Poisson-drawn number of times with the right chance.
+    /// Doesn't use the Golden/Diamond/Rainbow Roll bonuses, but the cycles advance.
+    /// Returns (best pet, mutation, trait charges).
+    pub fn roll_bulk(&mut self, n: i64) -> (Option<Pet>, i64) {
+        if n <= 0 {
+            return (None, 0);
+        }
+        let probs = self.pet_probs(1.0, None);
+        let (g, d, r) = self.mutation_chances();
+        let order = pet_order();
+        let mut best: Option<((usize, usize), usize, &'static str)> = None;
+        for (i, p) in probs.iter().enumerate() {
+            if *p <= 0.0 {
+                continue;
+            }
+            for (mi, m) in MUT_ORDER.iter().enumerate() {
+                let k = poisson(n as f64 * p * mutation_factor(m, g, d, r));
+                if k > 0 {
+                    self.record_pets(i, m, k);
+                    let rank = order.iter().position(|&x| x == i).unwrap_or(0);
+                    let score = (rank, mi);
+                    if best.map(|b| score > b.0).unwrap_or(true) {
+                        best = Some((score, i, m));
+                    }
+                }
+            }
+        }
+        self.total_rolls += n;
+        self.daily_add_progress("rolls", n);
+        // cycles: they advance n rolls (the bonus gets ready, and waits for the next normal roll)
+        let golden_every = self.golden_roll_every();
+        let diamond_every = self.diamond_roll_every();
+        let rainbow_every = self.rainbow_roll_every();
+        let diamond_on = self.diamond_roll_unlocked();
+        let rainbow_on = self.rainbow_roll_unlocked();
+        let paused = (self.is_cycle_paused("golden"), self.is_cycle_paused("diamond"), self.is_cycle_paused("rainbow"));
+        let adv = |unlocked: bool, is_paused: bool, count: &mut i64, ready: &mut bool, every: i64| {
+            if !unlocked || is_paused || *ready {
+                return;
+            }
+            let total = *count + n;
+            if total >= every {
+                *ready = true;
+                *count = 0;
+            } else {
+                *count = total;
+            }
+        };
+        adv(true, paused.0, &mut self.cyclic_roll_count, &mut self.cyclic_bonus_ready, golden_every);
+        adv(diamond_on, paused.1, &mut self.diamond_roll_count, &mut self.diamond_bonus_ready, diamond_every);
+        adv(rainbow_on, paused.2, &mut self.rainbow_roll_count, &mut self.rainbow_bonus_ready, rainbow_every);
+        let charges = poisson(n as f64 * self.trait_charge_chance());
+        self.trait_charges += charges;
+        match best {
+            Some((_, i, m)) => {
+                self.last_roll = Some((i, m));
+                (Some((i, m)), charges)
+            }
+            None => (None, charges),
+        }
+    }
+
     pub fn owned_of_rarity(&self, rarity_key: &str) -> i64 {
         let r = rarities();
         let mut total = 0;
@@ -688,18 +969,15 @@ impl GameState {
         total
     }
 
+    /// How many DIFFERENT Index cards (pet + mutation) you ever had - even if you have none of them now
+    /// (traded or sold). Repeats don't count.
     pub fn indexed_pets_count(&self) -> i64 {
-        let mut n = 0;
-        for (k, v) in &self.owned {
-            if let Some((idx_s, m)) = k.split_once('_') {
-                if let Ok(i) = idx_s.parse::<i64>() {
-                    if *v > 0 && i >= 0 && (i as usize) < rarities().len() && is_mutation(m) {
-                        n += 1;
-                    }
-                }
-            }
-        }
-        n
+        self.seen_pets.len() as i64
+    }
+
+    /// Whether this pet+mutation ever came out (it stays in the Index forever, even with none left).
+    pub fn is_indexed(&self, rarity_index: usize, m: &str) -> bool {
+        self.seen_pets.contains(&format!("{}_{}", rarity_index, m))
     }
 
     pub fn count_owned(&self, rarity_index: usize, m: &str) -> i64 {
@@ -726,6 +1004,37 @@ impl GameState {
             }
         }
         false
+    }
+
+    // ---------------- selling ----------------
+    /// What ONE pet sells for: a few seconds of its money/sec (see PET_SELL_SECONDS).
+    pub fn sell_price(&self, rarity_index: usize, m: &str) -> f64 {
+        self.pet_income(rarity_index, m) * PET_SELL_SECONDS
+    }
+
+    /// Sells 'amount' pets of this kind (asking for more than you have sells them all). If you end up with fewer
+    /// than you have equipped, the extra ones are unequipped. Returns (how many were sold, money earned).
+    pub fn sell_pets(&mut self, rarity_index: usize, m: &str, amount: i64) -> (i64, f64) {
+        let key = format!("{}_{}", rarity_index, m);
+        let sold = amount.min(self.count_owned(rarity_index, m)).max(0);
+        if sold <= 0 {
+            return (0, 0.0);
+        }
+        let gain = self.sell_price(rarity_index, m) * sold as f64;
+        let left = self.count_owned(rarity_index, m) - sold;
+        if left > 0 {
+            self.owned.insert(key.clone(), left);
+        } else {
+            self.owned.shift_remove(&key); // stays in the Index anyway (seen_pets)
+        }
+        while self.equipped_count(rarity_index, m) > left {
+            self.equip_remove_one(rarity_index, m);
+        }
+        // the online wallet (trades) loses these pets too (see tick_wallet)
+        *self.wallet_pending.entry(key).or_insert(0) -= sold;
+        self.coins += gain;
+        self.total_coins_earned += gain;
+        (sold, gain)
     }
 
     pub fn remove_slot_at(&mut self, index: usize) {
@@ -798,6 +1107,51 @@ impl GameState {
         Some(idx)
     }
 
+    /// Spends n charges at once and returns {trait_index: count}. Up to TRAIT_EXACT_MAX one by one; above that
+    /// (e.g. 600M charges after a speed event) each trait comes out a Poisson-drawn number of times - rolling
+    /// 600M one by one froze the game until it closed.
+    pub fn roll_traits_bulk(&mut self, n: i64) -> IndexMap<usize, i64> {
+        let n = n.min(self.trait_charges);
+        let mut results: IndexMap<usize, i64> = IndexMap::new();
+        if n <= 0 {
+            return results;
+        }
+        if n <= TRAIT_EXACT_MAX {
+            for _ in 0..n {
+                if let Some(idx) = self.roll_trait() {
+                    *results.entry(idx).or_insert(0) += 1;
+                }
+            }
+            return results;
+        }
+        let weights = self.trait_roll_weights();
+        let total: f64 = weights.iter().sum();
+        for i in 1..TRAITS.len() {
+            let k = poisson(n as f64 * weights[i] / total);
+            if k > 0 {
+                results.insert(i, k);
+            }
+        }
+        // the 1st trait (the most common) takes the rest, so the sum is exactly n
+        let rest = n - results.values().sum::<i64>();
+        if rest > 0 {
+            results.insert(0, rest);
+        } else if rest < 0 {
+            let v = results.get(&0).copied().unwrap_or(0) + rest;
+            if v <= 0 {
+                results.shift_remove(&0);
+            } else {
+                results.insert(0, v);
+            }
+        }
+        self.trait_charges -= n;
+        self.total_traits_rolled += n;
+        self.daily_add_progress("traits", n);
+        self.owned_traits.extend(results.keys().copied());
+        self.last_trait_roll = results.keys().copied().max(); // the rarest one that came out
+        results
+    }
+
     pub fn equip_trait(&mut self, idx: usize) -> bool {
         if !self.owned_traits.contains(&idx) {
             return false;
@@ -814,6 +1168,10 @@ impl GameState {
             "divine_rolled" => self.total_divine_rolled as f64,
             "cosmic_rolled" => self.total_cosmic_rolled as f64,
             "transcendent_rolled" => self.total_transcendent_rolled as f64,
+            "rainbow_rolled" => self.total_rainbow_rolled as f64,
+            "ethereal_rolled" => self.total_ethereal_rolled as f64,
+            "celestial_rolled" => self.total_celestial_rolled as f64,
+            "absolute_rolled" => self.total_absolute_rolled as f64,
             "rolls" => self.total_rolls as f64,
             "traits_rolled" => self.total_traits_rolled as f64,
             "golden_rolled" => self.total_golden_rolled as f64,
@@ -912,8 +1270,11 @@ impl GameState {
         self.rebirths += 1;
         self.coins = 0.0;
         if !keep {
-            for v in self.upgrades.iter_mut() {
-                *v = 0;
+            for (i, u) in upgrade_defs().iter().enumerate() {
+                if !KEEP_ON_REBIRTH.contains(&u.key) {
+                    // the Auto Upgrader always stays
+                    self.upgrades[i] = 0;
+                }
             }
             let ms = self.max_slots().max(0) as usize;
             self.equipped.truncate(ms);
@@ -1019,7 +1380,8 @@ impl GameState {
             return (0.0, 0.0);
         }
         elapsed = elapsed.min(self.offline_max_seconds());
-        let gain = self.income_per_second() * elapsed * self.offline_earn_rate();
+        // the money potion only counts with the game open (its time doesn't run offline)
+        let gain = self.income_per_second() / self.potion_mult("money") * elapsed * self.offline_earn_rate();
         if gain > 0.0 {
             self.coins += gain;
             self.total_coins_earned += gain;
@@ -1033,6 +1395,7 @@ impl GameState {
         d.insert("coins".into(), pyjson::float(self.coins));
         let owned: Map<String, Value> = self.owned.iter().map(|(k, v)| (k.clone(), json!(v))).collect();
         d.insert("owned".into(), Value::Object(owned));
+        d.insert("seen_pets".into(), Value::Array(self.seen_pets.iter().map(|k| json!(k)).collect()));
         d.insert("equipped".into(), Value::Array(self.equipped.iter().map(|(i, m)| json!([i, m])).collect()));
         d.insert("avatar".into(), match self.avatar {
             Some((i, m)) => json!([i, m]),
@@ -1041,9 +1404,11 @@ impl GameState {
         let ups: Map<String, Value> = upgrade_defs().iter().enumerate().map(|(i, u)| (u.key.to_string(), json!(self.upgrades[i]))).collect();
         d.insert("upgrades".into(), Value::Object(ups));
         d.insert("total_rolls".into(), json!(self.total_rolls));
+        d.insert("shop".into(), self.shop.to_dict());
         let mut st = Map::new();
         st.insert("auto_on".into(), json!(self.auto_on));
         st.insert("auto_equip_best_on".into(), json!(self.auto_equip_best_on));
+        st.insert("auto_upgrade_on".into(), json!(self.auto_upgrade_on));
         d.insert("settings".into(), Value::Object(st));
         let mut tr = Map::new();
         tr.insert("charges".into(), json!(self.trait_charges));
@@ -1062,6 +1427,10 @@ impl GameState {
         d.insert("total_divine_rolled".into(), json!(self.total_divine_rolled));
         d.insert("total_cosmic_rolled".into(), json!(self.total_cosmic_rolled));
         d.insert("total_transcendent_rolled".into(), json!(self.total_transcendent_rolled));
+        d.insert("total_rainbow_rolled".into(), json!(self.total_rainbow_rolled));
+        d.insert("total_ethereal_rolled".into(), json!(self.total_ethereal_rolled));
+        d.insert("total_celestial_rolled".into(), json!(self.total_celestial_rolled));
+        d.insert("total_absolute_rolled".into(), json!(self.total_absolute_rolled));
         let mut claimed: Vec<&String> = self.milestones_claimed.iter().collect();
         claimed.sort();
         d.insert("milestones_claimed".into(), Value::Array(claimed.into_iter().map(|s| json!(s)).collect()));
@@ -1134,6 +1503,32 @@ impl GameState {
             Some(_) => return Err(()),
         }
         self.owned = owned;
+        let valid_key = |k: &str| -> bool {
+            match k.split_once('_') {
+                Some((idx_s, m)) => idx_s.trim().parse::<i64>().map(|i| i >= 0 && (i as usize) < rarities().len()).unwrap_or(false) && is_mutation(m),
+                None => false,
+            }
+        };
+        self.seen_pets = BTreeSet::new();
+        if d.contains_key("seen_pets") {
+            for k in &py_iter(d.get("seen_pets"))? {
+                let k = match k {
+                    Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+                if valid_key(&k) {
+                    self.seen_pets.insert(k);
+                }
+            }
+        } else {
+            // a save from before this feature: everything you had counts as "seen", so nobody loses Index
+            // progress because of this update
+            for (k, v) in &self.owned {
+                if *v > 0 && valid_key(k) {
+                    self.seen_pets.insert(k.clone());
+                }
+            }
+        }
         self.equipped = Vec::new();
         {
             for p in &py_iter(d.get("equipped"))? {
@@ -1186,6 +1581,7 @@ impl GameState {
         };
         self.auto_on = st.get("auto_on").map(value_truthy).unwrap_or(true);
         self.auto_equip_best_on = st.get("auto_equip_best_on").map(value_truthy).unwrap_or(true);
+        self.auto_upgrade_on = st.get("auto_upgrade_on").map(value_truthy).unwrap_or(true);
         let ms = self.max_slots().max(0) as usize;
         self.equipped.truncate(ms);
 
@@ -1230,6 +1626,10 @@ impl GameState {
         self.total_divine_rolled = get_i("total_divine_rolled", self.owned_of_rarity("divino"))?.max(0);
         self.total_cosmic_rolled = get_i("total_cosmic_rolled", self.owned_of_rarity("cosmico"))?.max(0);
         self.total_transcendent_rolled = get_i("total_transcendent_rolled", self.owned_of_rarity("transcendente"))?.max(0);
+        self.total_rainbow_rolled = get_i("total_rainbow_rolled", 0)?.max(0);
+        self.total_ethereal_rolled = get_i("total_ethereal_rolled", self.owned_of_rarity("etereo"))?.max(0);
+        self.total_celestial_rolled = get_i("total_celestial_rolled", self.owned_of_rarity("celestial"))?.max(0);
+        self.total_absolute_rolled = get_i("total_absolute_rolled", self.owned_of_rarity("absoluto"))?.max(0);
         let mut claimed = HashSet::new();
         {
             for k in &py_iter(d.get("milestones_claimed"))? {
@@ -1268,6 +1668,7 @@ impl GameState {
             Some(Value::Bool(b)) => Some(if *b { 1.0 } else { 0.0 }),
             _ => None,
         };
+        self.shop = crate::core::shop::ShopState::load_dict(d.get("shop"));
 
         let daily = match d.get("daily") {
             Some(Value::Object(o)) => o.clone(),

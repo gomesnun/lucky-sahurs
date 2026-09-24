@@ -59,7 +59,8 @@ impl Game {
         let cols = 2;
         let gap = 12;
         let card = (rect.w - pad * 2 - gap - 6) / cols;
-        let live = self.state.roll_weights(true, 1.0);
+        let live = self.state.pet_probs(1.0, None);
+        let muts = self.state.mutation_chances();
         for (pos, &i) in pet_order().iter().enumerate() {
             let pos = pos as i32;
             let rarity = &rarities()[i];
@@ -69,7 +70,7 @@ impl Game {
                 continue;
             }
             let owned = self.state.count_owned(i, m);
-            let real = self.state.combined_chance(i, m, Some(&live));
+            let real = self.state.combined_chance(i, m, Some(&live), Some(muts));
             let base_line = format!("({})", format_one_in(base_pet_chance(i, m)));
             let income_line = tr!("+%s/sec", format_number(self.state.pet_income(i, m)));
             let plates = vec![vec![cell(tr("Income"), income_line)], vec![cell3(tr("Chance"), format_one_in(real), base_line)]];

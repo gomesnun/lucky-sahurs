@@ -247,7 +247,7 @@ impl Game {
         if let Some((r_idx, m)) = self.state.last_roll {
             let rarity = &rarities()[r_idx];
             let income = self.state.pet_income(r_idx, m);
-            let chance = self.state.combined_chance(r_idx, m, None);
+            let chance = self.state.combined_chance(r_idx, m, None, None);
             let plates = vec![vec![cell(tr("Income"), tr!("+%s/sec", format_number(income)))], vec![cell(tr("Roll Chance"), format_one_in(chance))]];
             let card = render_pet_card(rarity, m, card_w, card_h, &plates, 0, false);
             let c = rarity.color;
