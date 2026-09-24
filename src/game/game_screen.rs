@@ -20,6 +20,7 @@ use crate::ui::icons::{load_icon, load_pet_phase_image};
 use std::rc::Rc;
 
 const HINT_H: i32 = 0;
+const SIDE_SIZE: i32 = 62;
 
 impl Game {
     pub fn open_stats(&mut self) {
@@ -48,6 +49,32 @@ impl Game {
         let left = if self.left_panel.visible() { self.left_panel.shown_width(self.left_w) } else { 0 };
         let right = self.vw - if self.right_panel.visible() { self.right_panel.shown_width(self.right_w) } else { 0 };
         (left + right).div_euclid(2)
+    }
+
+    /// Where the 8 side buttons sit: Index, Upgrades, Milestones, Quests (right column), then Bag, Rebirth, Traits,
+    /// Shop (left column). The tutorial points at them too.
+    pub fn side_button_rects(&self) -> [Rect; 8] {
+        let size = SIDE_SIZE;
+        let step = size + 38;
+        let label_h = 26;
+        let top = VIRTUAL_H / 2 - (3 * step + size + label_h) / 2; // both columns have 4 buttons
+        let shown_r = if self.right_panel.visible() { self.right_panel.shown_width(self.right_w) } else { 0 };
+        let shown_l = if self.left_panel.visible() { self.left_panel.shown_width(self.left_w) } else { 0 };
+        let (rx, lx) = (self.vw - shown_r - size - 18, shown_l + 18);
+        std::array::from_fn(|i| {
+            let x = if i < 4 { rx } else { lx };
+            Rect::new(x, top + (i as i32 % 4) * step, size, size)
+        })
+    }
+
+    /// Friends, Stats and Options in the top bar.
+    pub fn topbar_button_rects(&self) -> [Rect; 3] {
+        [Rect::new(self.vw - 472, 15, 146, 40), Rect::new(self.vw - 320, 15, 146, 40), Rect::new(self.vw - 168, 15, 146, 40)]
+    }
+
+    pub fn roll_button_rect(&self) -> Rect {
+        let card = self.main_card_rect();
+        Rect::new(self.main_center_x() - 130, card.bottom() + 24, 260, 60)
     }
 
     pub fn draw_game_screen(&mut self, mouse_pos: (f64, f64)) {
@@ -122,16 +149,14 @@ impl Game {
 
         self.nav_mode = true;
         let med = self.f.med.clone();
-        let friends_rect = Rect::new(self.vw - 472, 15, 146, 40);
+        let [friends_rect, stats_rect, opt_rect] = self.topbar_button_rects();
         self.button(friends_rect, &tr("Friends"), &med, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.toggle_friends()), Bo::default().icon("friends"));
         // red dot: unanswered friend requests + conversations with unread messages
         let pedidos = self.friends_pending_count() + self.chat_unread_count() as i64;
         if pedidos > 0 {
             self.draw_friends_badge(friends_rect.topright(), pedidos);
         }
-        let stats_rect = Rect::new(self.vw - 320, 15, 146, 40);
         self.button(stats_rect, &tr("Stats"), &med, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.toggle_stats()), Bo::default().icon("stats"));
-        let opt_rect = Rect::new(self.vw - 168, 15, 146, 40);
         self.button(opt_rect, &tr("Options"), &med, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.toggle_options()), Bo::default().icon("options"));
         self.nav_mode = false;
         self.draw_event_banner();
@@ -194,41 +219,33 @@ impl Game {
     }
 
     pub fn draw_side_buttons(&mut self, mouse_pos: (f64, f64)) {
-        let size = 62;
-        let step = size + 38;
+        let size = SIDE_SIZE;
+        let rects = self.side_button_rects();
         let labels = [tr("INDEX"), tr("UPGRADES"), tr("MILESTONES"), tr("QUESTS"), tr("BAG"), tr("REBIRTH"), tr("TRAITS"), tr("SHOP")];
         let mut lf = self.f.small_b.clone();
         if labels.iter().map(|t| lf.render(t, WHITE).w).max().unwrap_or(0) > size + 24 {
             lf = self.f.tiny_b.clone();
         }
         self.nav_mode = true;
-        let shown_r = if self.right_panel.visible() { self.right_panel.shown_width(self.right_w) } else { 0 };
-        let x = self.vw - shown_r - size - 18;
-        let label_h = 26;
-        let column_top = |n: i32| VIRTUAL_H / 2 - ((n - 1) * step + size + label_h) / 2;
         let rp_open = self.right_panel.is_open();
         let rc = self.right_panel.content;
-        let y = column_top(4);
         let idx_open = self.index_open;
-        self.side_button(Rect::new(x, y, size, size), &labels[0], "index", mouse_pos, idx_open, Rc::new(|g: &mut Game| g.toggle_index_page()), Some(lf.clone()), 0, false);
+        self.side_button(rects[0], &labels[0], "index", mouse_pos, idx_open, Rc::new(|g: &mut Game| g.toggle_index_page()), Some(lf.clone()), 0, false);
         let afford = self.state.affordable_upgrades_count() as i64;
-        self.side_button(Rect::new(x, y + step, size, size), &labels[1], "tree", mouse_pos, rp_open && rc == Some("tree"), Rc::new(|g: &mut Game| g.open_right_panel("tree")), Some(lf.clone()), afford, false);
-        self.side_button(Rect::new(x, y + 2 * step, size, size), &labels[2], "milestones", mouse_pos, rp_open && rc == Some("milestones"), Rc::new(|g: &mut Game| g.open_right_panel("milestones")), Some(lf.clone()), 0, false);
+        self.side_button(rects[1], &labels[1], "tree", mouse_pos, rp_open && rc == Some("tree"), Rc::new(|g: &mut Game| g.open_right_panel("tree")), Some(lf.clone()), afford, false);
+        self.side_button(rects[2], &labels[2], "milestones", mouse_pos, rp_open && rc == Some("milestones"), Rc::new(|g: &mut Game| g.open_right_panel("milestones")), Some(lf.clone()), 0, false);
         let quests_ready = self.quests_claimable();
-        self.side_button(Rect::new(x, y + 3 * step, size, size), &labels[3], "daily", mouse_pos, rp_open && rc == Some("daily"), Rc::new(|g: &mut Game| g.open_right_panel("daily")), Some(lf.clone()), 0, quests_ready);
+        self.side_button(rects[3], &labels[3], "daily", mouse_pos, rp_open && rc == Some("daily"), Rc::new(|g: &mut Game| g.open_right_panel("daily")), Some(lf.clone()), 0, quests_ready);
 
-        let shown_l = if self.left_panel.visible() { self.left_panel.shown_width(self.left_w) } else { 0 };
-        let lx = shown_l + 18;
-        let y = column_top(4); // the left column has 4 buttons (Bag, Rebirth, Traits, Shop)
         let lp_open = self.left_panel.is_open();
-        self.side_button(Rect::new(lx, y, size, size), &labels[4], "bag", mouse_pos, lp_open, Rc::new(|g: &mut Game| g.open_left_panel("bag")), Some(lf.clone()), 0, false);
+        self.side_button(rects[4], &labels[4], "bag", mouse_pos, lp_open, Rc::new(|g: &mut Game| g.open_left_panel("bag")), Some(lf.clone()), 0, false);
         let rb_open = self.rebirth_open;
         let rb_avail = self.state.rebirth_available() || self.state.prestige_available();
-        self.side_button(Rect::new(lx, y + step, size, size), &labels[5], "rebirth", mouse_pos, rb_open, Rc::new(|g: &mut Game| g.toggle_rebirth()), Some(lf.clone()), 0, rb_avail);
+        self.side_button(rects[5], &labels[5], "rebirth", mouse_pos, rb_open, Rc::new(|g: &mut Game| g.toggle_rebirth()), Some(lf.clone()), 0, rb_avail);
         let tr_open = self.traits_open;
-        self.side_button(Rect::new(lx, y + 2 * step, size, size), &labels[6], "trait", mouse_pos, tr_open, Rc::new(|g: &mut Game| g.toggle_traits()), Some(lf.clone()), 0, false);
+        self.side_button(rects[6], &labels[6], "trait", mouse_pos, tr_open, Rc::new(|g: &mut Game| g.toggle_traits()), Some(lf.clone()), 0, false);
         // Shop: locked until Rebirth 1 (the button shows anyway, dimmed)
-        let shop_rect = Rect::new(lx, y + 3 * step, size, size);
+        let shop_rect = rects[7];
         let sh_open = self.shop.open;
         self.side_button(shop_rect, &labels[7], "shop", mouse_pos, sh_open, Rc::new(|g: &mut Game| g.toggle_shop()), Some(lf.clone()), 0, false);
         if !self.state.shop_unlocked() {
@@ -400,7 +417,7 @@ impl Game {
             None
         };
 
-        let roll_rect = Rect::new(center_x - 130, card_rect.bottom() + 24, 260, 60);
+        let roll_rect = self.roll_button_rect();
         if let Some(kind) = bonus_kind {
             let pulse = 0.6 + 0.4 * (now_ts() * 6.0).sin();
             let step = 1.max(8.min(crate::core::formatting::py_round(pulse * 8.0) as i32));

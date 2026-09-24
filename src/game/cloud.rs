@@ -237,6 +237,7 @@ impl Game {
         self.sync_timer = CLOUD_SYNC_INTERVAL - 5.0;
         self.sync_error = None;
         self.screen_mode = "game";
+        self.on_enter_game();
         let text = note.unwrap_or_else(|| tr!("Slot %d loaded", slot));
         if gain > 0.0 {
             self.show_toast(&format!("{}\n{}", text, offline_message(gain, away)), 6.0);

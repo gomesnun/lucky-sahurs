@@ -23,6 +23,7 @@ pub mod rebirth_panel;
 pub mod prestige_panel;
 pub mod sell_panel;
 pub mod evolve_panel;
+pub mod tutorial;
 pub mod shop_panel;
 pub mod title_saves;
 pub mod trades;
@@ -129,6 +130,10 @@ pub struct Game {
     pub stats_open: bool,
     pub credits_open: bool,
     pub update_log_open: bool,
+    /// the first-time tutorial's step (None = not showing)
+    pub tutorial_step: Option<usize>,
+    /// the "What's new" pop-up after an update
+    pub whats_new_open: bool,
     pub update_log_scroll: f64,
     pub update_log_max_scroll: f64,
     pub update_log_list_rect: Rect,
@@ -333,6 +338,8 @@ impl Game {
             stats_open: false,
             credits_open: false,
             update_log_open: false,
+            tutorial_step: None,
+            whats_new_open: false,
             update_log_scroll: 0.0,
             update_log_max_scroll: 0.0,
             update_log_list_rect: Rect::ZERO,
@@ -1024,6 +1031,7 @@ impl Game {
         } else if self.cutscene_active.is_some() && k != Keycode::F11 {
             self.skip_cutscene();
         } else if self.screen_mode == "account" && self.handle_account_key(ev) {
+        } else if self.screen_mode == "game" && (self.handle_tutorial_key(ev) || self.handle_whats_new_key(ev)) {
         } else if self.handle_sell_key(ev)
             || self.handle_evolve_key(ev)
             || self.handle_ban_key(ev)
@@ -1087,6 +1095,8 @@ impl Game {
             || self.adm.ban_open
             || self.sell.target.is_some()
             || self.evolve.target.is_some()
+            || self.tutorial_active()
+            || self.whats_new_open
             || self.screen_mode != "game"
         {
         } else if k == Keycode::U || k == Keycode::T {
@@ -1162,6 +1172,8 @@ impl Game {
             || self.stats_open
             || self.sell.target.is_some()
             || self.evolve.target.is_some()
+            || self.tutorial_active()
+            || self.whats_new_open
             || self.leaderboard_open
             || self.credits_open
             || self.update_modal_active()
@@ -1268,6 +1280,12 @@ impl Game {
         if self.evolve.target.is_some() {
             self.begin_modal();
             self.draw_evolve_page(mouse_pos);
+        }
+        if self.whats_new_open && !self.tutorial_active() {
+            self.draw_whats_new(mouse_pos);
+        }
+        if self.tutorial_active() {
+            self.draw_tutorial(mouse_pos);
         }
         if self.cutscene_active.is_some() {
             self.draw_cutscene(mouse_pos);

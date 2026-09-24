@@ -303,6 +303,9 @@ fn shots(dir: &str) {
         save_png(&g.canvas, &p);
     };
     let m = (-100.0, -100.0);
+    // the tutorial and the "What's new" pop-up get their own shots below; elsewhere they'd cover every screen
+    g.settings.set_str("last_update_seen", game::tutorial::latest_update());
+    g.settings.set_bool("tutorial_done", true);
     g.draw(m);
     save(&g, "title");
     for (name, f) in [
@@ -567,6 +570,30 @@ fn shots(dir: &str) {
         g.draw(m);
         save(&g, "n_evolve_monster");
         g.close_overlays();
+        g.left_panel.close();
+        g.left_panel.update(5.0);
+        // the tutorial (a few of its steps) and the "What's new" pop-up
+        g.start_tutorial();
+        g.left_panel.update(5.0);
+        for step in [0usize, 1, 2, 4, 6, 11, 12] {
+            g.tutorial_step = Some(step);
+            g.draw(m);
+            save(&g, &format!("n_tutorial_{:02}", step));
+        }
+        g.tutorial_step = None;
+        g.settings.set_str("last_update_seen", "v3.0.0");
+        g.whats_new_open = true;
+        g.draw(m);
+        save(&g, "n_whats_new");
+        g.whats_new_open = false;
+        g.settings.set_str("last_update_seen", game::tutorial::latest_update());
+        g.toggle_options();
+        g.options_tab = "game";
+        g.draw(m);
+        save(&g, "n_options_game");
+        g.close_options();
+        g.left_panel.open("bag");
+        g.left_panel.update(5.0);
         g.inv_sort = "money";
         g.state.owned = owned0;
         g.state.phases = phases0;

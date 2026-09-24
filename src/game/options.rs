@@ -259,7 +259,7 @@ impl Game {
         }
         if in_game {
             self.button(
-                Rect::new(x0, y, w, 44),
+                Rect::new(x0, y, half, 44),
                 &tr("Save now"),
                 &med,
                 mouse_pos,
@@ -271,6 +271,20 @@ impl Game {
                     g.show_toast(&tr("Progress saved!"), 1.8);
                 }),
                 Bo::r(10).icon("saves"),
+            );
+            self.button(
+                Rect::new(x0 + half + 10, y, w - half - 10, 44),
+                &tr("Replay tutorial"),
+                &med,
+                mouse_pos,
+                panel_light(),
+                panel_lighter(),
+                WHITE,
+                cb(|g| {
+                    g.close_options();
+                    g.start_tutorial();
+                }),
+                Bo::r(10),
             );
             y += 54;
             self.button(Rect::new(x0, y, half, 44), &tr("Main Menu"), &med, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.go_to_menu()), Bo::r(10));

@@ -81,6 +81,7 @@ impl Game {
         self.stats_open = false;
         self.autosave_timer = 0.0;
         self.screen_mode = "game";
+        self.on_enter_game();
         if gain > 0.0 {
             let t = format!("{}\n{}", tr!("Slot %d loaded", slot), offline_message(gain, away));
             self.show_toast(&t, 6.0);
