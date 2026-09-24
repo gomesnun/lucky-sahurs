@@ -400,10 +400,6 @@ impl GameState {
     pub fn upgrade_level(&self, key: &str) -> i64 {
         self.upgrades[upgrade_index(key)]
     }
-    pub fn set_upgrade_level(&mut self, key: &str, v: i64) {
-        let i = upgrade_index(key);
-        self.upgrades[i] = v;
-    }
 
     /// Cost of going from level `lvl` to `lvl + 1` (Python int(base * mult ** lvl)).
     pub fn upgrade_cost_at(&self, key: &str, lvl: i64) -> i128 {
@@ -776,12 +772,6 @@ impl GameState {
                 w
             })
             .collect()
-    }
-
-    pub fn roll_chance(&self, rarity_index: usize, with_luck: bool) -> f64 {
-        let w = self.roll_weights(with_luck);
-        let total: f64 = w.iter().sum();
-        if total != 0.0 { w[rarity_index] / total } else { 0.0 }
     }
 
     /// (Golden, Diamond, Rainbow): the REAL chance of each mutation per roll.

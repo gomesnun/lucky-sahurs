@@ -4,7 +4,6 @@ use super::title_saves::{SlotInfo, offline_message};
 use super::{Account, Game};
 use crate::config::SAVE_SLOTS;
 use crate::core::state::{GameState, now_ts, rand_uniform};
-use crate::gfx::Color;
 use crate::i18n::tr;
 use crate::online::cloud_cache::{
     CacheEntry, backup_state, clear_session, delete_cache, lb_publish_period, load_session, peek_cache, pick_save, read_cache, store_session, write_cache,
@@ -13,7 +12,6 @@ use crate::online::firebase::{
     CLOUD_SYNC_INTERVAL, CloudDoc, LEADERBOARD_MIN_GAP, LEADERBOARD_PERIOD, LEADERBOARD_PUBLISH_JITTER, OnlineError, SESSION_HEARTBEAT, online_error_text, save_summary,
 };
 use crate::storage::save_slot_path;
-use crate::theme::{BAD, GOOD, grey};
 use crate::tr;
 use serde_json::Value;
 
@@ -414,29 +412,6 @@ impl Game {
         }
         self.session_held = false;
         let _ = client.write_session(&self.install_id, false);
-    }
-
-    pub fn sync_status(&self) -> (String, Color) {
-        let e = self.sync_error.as_deref();
-        if self.state.sync_conflict || e == Some("conflict") {
-            return (tr("Cloud: conflict!"), BAD);
-        }
-        if e == Some("auth") {
-            return (tr("Cloud: log in again"), BAD);
-        }
-        if e == Some("denied") {
-            return (tr("Cloud: access denied"), BAD);
-        }
-        if e == Some("offline") {
-            return (tr("Cloud: offline (saved on this PC)"), grey());
-        }
-        if self.upload_inflight {
-            return (tr("Cloud: syncing..."), grey());
-        }
-        if self.sync_last_ok.is_none() {
-            return (tr("Cloud: not synced yet"), grey());
-        }
-        (tr("Cloud: synced"), GOOD)
     }
 
     pub fn tick_online(&mut self, dt: f64) {

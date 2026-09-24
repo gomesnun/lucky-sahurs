@@ -162,6 +162,7 @@ pub struct Rarity {
     pub name: &'static str,
     pub color: Color,
     pub color2: Option<Color>,
+    #[allow(dead_code)]
     pub text: Color,
     pub one_in: f64,
     pub income: f64,
@@ -480,6 +481,7 @@ pub const RAINBOW_ROLL_MULT_STEP: f64 = 25.0;
 pub struct Trait {
     pub name: &'static str,
     pub color: Color,
+    #[allow(dead_code)]
     pub text: Color,
     pub one_in: f64,
     /// (buff key, value) in the order Python's dict holds them (already scaled)

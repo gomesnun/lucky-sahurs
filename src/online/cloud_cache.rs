@@ -209,6 +209,7 @@ pub struct CachePeek {
     pub coins: f64,
     pub total_rolls: i64,
     pub playtime: f64,
+    #[allow(dead_code)]
     pub rebirths: i64,
 }
 

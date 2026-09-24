@@ -24,24 +24,12 @@ impl Color {
         Color { r, g, b, a }
     }
     #[inline]
-    pub fn with_alpha(self, a: u8) -> Color {
-        Color { a, ..self }
-    }
-    #[inline]
-    pub fn rgb_tuple(self) -> (u8, u8, u8) {
-        (self.r, self.g, self.b)
-    }
-    #[inline]
     pub fn argb(self) -> u32 {
         ((self.a as u32) << 24) | ((self.r as u32) << 16) | ((self.g as u32) << 8) | self.b as u32
     }
     #[inline]
     pub fn from_argb(p: u32) -> Color {
         Color { a: (p >> 24) as u8, r: (p >> 16) as u8, g: (p >> 8) as u8, b: p as u8 }
-    }
-    /// Colour from a tuple of ints (clamped the way pygame would reject/accept them).
-    pub fn from_i32(r: i32, g: i32, b: i32) -> Color {
-        Color::rgb(r.clamp(0, 255) as u8, g.clamp(0, 255) as u8, b.clamp(0, 255) as u8)
     }
 }
 
@@ -152,14 +140,6 @@ impl Surface {
         }
     }
     #[inline]
-    pub fn get_width(&self) -> i32 {
-        self.w
-    }
-    #[inline]
-    pub fn get_height(&self) -> i32 {
-        self.h
-    }
-    #[inline]
     pub fn get_size(&self) -> (i32, i32) {
         (self.w, self.h)
     }
@@ -170,15 +150,6 @@ impl Surface {
     #[inline]
     pub fn map(&self, c: Color) -> u32 {
         if self.alpha { c.argb() } else { c.argb() | 0xFF00_0000 }
-    }
-    #[inline]
-    pub fn get_at(&self, x: i32, y: i32) -> Color {
-        Color::from_argb(self.px[(y * self.w + x) as usize])
-    }
-    #[inline]
-    pub fn set_at_raw(&mut self, x: i32, y: i32, p: u32) {
-        let i = (y * self.w + x) as usize;
-        self.px[i] = p;
     }
 
     pub fn set_clip(&mut self, r: Option<Rect>) {

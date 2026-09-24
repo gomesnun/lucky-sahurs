@@ -1,13 +1,13 @@
 //! Base UI pieces: buttons, clipping, scrollbar, icons, toasts (ui/base.py).
 
-use super::{Button, Cb, Game, cb};
+use super::{Button, Cb, Game};
 use crate::config::TOPBAR_H;
 use crate::gfx::{Color, Rect, Surface, draw, ti};
 use crate::theme::*;
 use crate::ui::drawing::{draw_panel, draw_state_border, rounded_box};
 use crate::ui::fonts::{Font, fit_text};
 use crate::ui::icons::load_icon;
-use crate::ui::widgets::{TextField, char_slice};
+use crate::ui::widgets::TextField;
 use std::rc::Rc;
 
 /// Which text field a widget edits.
@@ -76,18 +76,6 @@ pub fn blit_midtop(canvas: &mut Surface, s: &Surface, c: (i32, i32)) -> Rect {
 
 pub fn blit_midleft(canvas: &mut Surface, s: &Surface, c: (i32, i32)) -> Rect {
     let r = Rect::with_midleft(s.w, s.h, c);
-    canvas.blit(s, r.x, r.y);
-    r
-}
-
-pub fn blit_midright(canvas: &mut Surface, s: &Surface, c: (i32, i32)) -> Rect {
-    let r = Rect::with_midright(s.w, s.h, c);
-    canvas.blit(s, r.x, r.y);
-    r
-}
-
-pub fn blit_topright(canvas: &mut Surface, s: &Surface, c: (i32, i32)) -> Rect {
-    let r = Rect::with_topright(s.w, s.h, c);
     canvas.blit(s, r.x, r.y);
     r
 }
@@ -644,9 +632,4 @@ impl Game {
             self.draw_alert_mark(rect);
         }
     }
-}
-
-/// A callback that ignores the game (lambda: None).
-pub fn noop() -> Option<Cb> {
-    cb(|_| {})
 }

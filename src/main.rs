@@ -162,7 +162,7 @@ fn bench() {
     RNG.with(|r| *r.borrow_mut() = pyrand::PyRandom::from_int(7));
     let mut g = game::Game::headless(1422, 800);
     let m = (-100.0, -100.0);
-    let mut run = |g: &mut game::Game, name: &str| {
+    let run = |g: &mut game::Game, name: &str| {
         for _ in 0..5 {
             g.draw(m);
         }

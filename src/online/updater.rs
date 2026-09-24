@@ -92,6 +92,7 @@ pub fn asset_name() -> &'static str {
 #[derive(Debug, Clone)]
 pub struct ReleaseInfo {
     pub tag: String,
+    #[allow(dead_code)]
     pub name: String,
     pub url: String,
     pub size: u64,

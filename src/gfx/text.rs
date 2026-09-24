@@ -25,8 +25,6 @@ unsafe extern "C" {
     fn TTF_OpenFontRW(src: *mut sdl2::sys::SDL_RWops, freesrc: c_int, ptsize: c_int) -> *mut TTF_Font;
     fn TTF_SizeUTF8(font: *mut TTF_Font, text: *const c_char, w: *mut c_int, h: *mut c_int) -> c_int;
     fn TTF_FontHeight(font: *const TTF_Font) -> c_int;
-    fn TTF_FontLineSkip(font: *const TTF_Font) -> c_int;
-    fn TTF_FontAscent(font: *const TTF_Font) -> c_int;
     fn TTF_RenderUTF8_Blended_Wrapped(
         font: *mut TTF_Font,
         text: *const c_char,
@@ -108,12 +106,6 @@ impl RawFont {
 
     pub fn get_height(&self) -> i32 {
         unsafe { TTF_FontHeight(self.ptr) }
-    }
-    pub fn get_linesize(&self) -> i32 {
-        unsafe { TTF_FontLineSkip(self.ptr) }
-    }
-    pub fn get_ascent(&self) -> i32 {
-        unsafe { TTF_FontAscent(self.ptr) }
     }
 
     /// font.render(text, True, color)

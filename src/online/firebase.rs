@@ -525,6 +525,7 @@ pub struct Person {
     pub username: String,
     pub avatar_pet: Option<i64>,
     pub avatar_mut: String,
+    #[allow(dead_code)]
     pub time: Option<f64>,
     /// the server time of their last "I'm playing" (None = never published / an old version)
     pub last_seen: Option<f64>,
@@ -580,6 +581,7 @@ fn ban_from_doc(doc: &Value) -> Ban {
 pub struct Trade {
     pub id: String,
     pub from_uid: String,
+    #[allow(dead_code)]
     pub to_uid: String,
     pub offer: Vec<(String, i64)>,
     pub request: Vec<(String, i64)>,
@@ -689,6 +691,7 @@ pub struct SessionLock {
 
 #[derive(Clone, Debug)]
 pub struct PublicStats {
+    #[allow(dead_code)]
     pub username: String,
     pub coins: f64,
     pub playtime: f64,
@@ -699,6 +702,7 @@ pub struct PublicStats {
 
 #[derive(Clone, Debug)]
 pub struct Message {
+    #[allow(dead_code)]
     pub id: String,
     pub from_uid: String,
     pub text: String,
@@ -732,6 +736,7 @@ struct Tokens {
 /// Minimal Firebase Auth + Firestore client (REST). Safe to use from threads.
 pub struct FirebaseClient {
     pub api_key: String,
+    #[allow(dead_code)]
     pub project_id: String,
     identity_base: String,
     token_base: String,
@@ -1810,10 +1815,6 @@ impl<C: 'static> Worker<C> {
             };
             let _ = tx.send((id, payload));
         });
-    }
-
-    pub fn inflight(&self) -> usize {
-        self.pending.len()
     }
 
     /// The finished jobs' callbacks, to be called with the context by the owner.

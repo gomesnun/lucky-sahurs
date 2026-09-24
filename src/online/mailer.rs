@@ -23,10 +23,6 @@ fn local_brevo_key() -> String {
     String::new()
 }
 
-pub fn mailer_ready() -> bool {
-    !GAS_ENDPOINT.trim().is_empty() || !local_brevo_key().is_empty()
-}
-
 fn agent() -> ureq::Agent {
     ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs_f64(MAIL_TIMEOUT))).http_status_as_error(false).build().into()
 }

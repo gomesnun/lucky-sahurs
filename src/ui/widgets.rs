@@ -110,11 +110,6 @@ impl TextField {
     }
 }
 
-/// Substring by character indexes (Python text[a:b]).
-pub fn char_slice(s: &str, a: usize, b: usize) -> String {
-    s.chars().skip(a).take(b.saturating_sub(a)).collect()
-}
-
 thread_local! {
     static STAR_CACHE: std::cell::RefCell<HashMap<(u32, i32), std::rc::Rc<Surface>>> = std::cell::RefCell::new(HashMap::new());
 }
@@ -223,6 +218,7 @@ impl Particle {
 
 /// Panel that slides in from a side.
 pub struct SlidePanel {
+    #[allow(dead_code)]
     pub side: &'static str,
     pub content: Option<&'static str>,
     pub pending: Option<&'static str>,
