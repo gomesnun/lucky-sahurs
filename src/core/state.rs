@@ -147,6 +147,10 @@ pub struct GameState {
     pub daily_claimed: BTreeSet<usize>,
     /// v3.0: your settings (all but fullscreen), saved with the save so they follow your account to other PCs
     pub prefs: Option<Map<String, Value>>,
+    /// v3.0.1: the season this save belongs to (a reset of everyone's progress starts a new one)
+    pub season: i64,
+    /// v3.0.1: this account's reset number when the save was made (an admin can reset one player)
+    pub player_reset: i64,
     /// v3.0 weekly quests (reset Monday 00:00, Lisbon)
     pub weekly_week: Option<String>,
     pub weekly_missions: Vec<DailyMission>,
@@ -322,6 +326,8 @@ impl GameState {
             daily_counts: IndexMap::new(),
             daily_claimed: BTreeSet::new(),
             prefs: None,
+            season: 0,
+            player_reset: 0,
             weekly_week: None,
             weekly_missions: Vec::new(),
             weekly_counts: IndexMap::new(),
@@ -1692,6 +1698,12 @@ impl GameState {
         if let Some(p) = &self.prefs {
             d.insert("prefs".into(), Value::Object(p.clone()));
         }
+        if self.season > 0 {
+            d.insert("season".into(), json!(self.season));
+        }
+        if self.player_reset > 0 {
+            d.insert("player_reset".into(), json!(self.player_reset));
+        }
         Value::Object(d)
     }
 
@@ -1958,6 +1970,8 @@ impl GameState {
             .map(|a| a.iter().filter_map(value_i64).filter(|i| *i >= 0 && (*i as usize) < self.weekly_missions.len()).map(|i| i as usize).collect())
             .unwrap_or_default();
         self.ensure_weekly_missions();
+        self.season = d.get("season").and_then(value_i64).unwrap_or(0).max(0);
+        self.player_reset = d.get("player_reset").and_then(value_i64).unwrap_or(0).max(0);
         self.prefs = match d.get("prefs") {
             Some(Value::Object(p)) => Some(p.clone()),
             _ => None,

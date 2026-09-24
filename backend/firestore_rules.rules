@@ -140,6 +140,27 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // v3.0.1: a temporada. Um admin sobe o número (menu de admin > "Reset everyone") e cada jogo apaga os
+    // saves de temporadas anteriores. Só pode subir de 1 em 1.
+    match /public/season {
+      allow read: if true;
+      allow create: if isAdmin() && request.resource.data.keys().hasOnly(['season'])
+                    && request.resource.data.season == 1;
+      allow update: if isAdmin() && request.resource.data.keys().hasOnly(['season'])
+                    && request.resource.data.season == resource.data.season + 1;
+      allow delete: if false;
+    }
+
+    // v3.0.1: recomeçar UM jogador. O admin sobe o número em /resets/{uid}; o jogo desse jogador apaga os saves
+    // com um número mais baixo. Só o próprio (e os admins) o leem; só os admins o escrevem, de 1 em 1.
+    match /resets/{uid} {
+      allow read: if (request.auth != null && request.auth.uid == uid) || isAdmin();
+      allow create: if isAdmin() && request.resource.data.keys().hasOnly(['n']) && request.resource.data.n == 1;
+      allow update: if isAdmin() && request.resource.data.keys().hasOnly(['n'])
+                    && request.resource.data.n == resource.data.n + 1;
+      allow delete: if false;
+    }
+
     // Pedidos de amizade. O id é "<uid de destino>__<uid de origem>": assim o mesmo pedido
     // nunca aparece duas vezes e a própria regra confirma quem o está a criar.
     match /friend_requests/{pedido} {

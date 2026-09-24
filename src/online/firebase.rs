@@ -1682,6 +1682,73 @@ impl FirebaseClient {
 
     // ---- shared leaderboard snapshot ----
     /// The shared leaderboard snapshot (/public/leaderboard), or None if it doesn't exist yet. 1 read only.
+    /// v3.0.1: the season number (/public/season). A save from an older season is wiped (a reset of everyone's
+    /// progress, from the admin menu). 0 when there is none, or the rules don't allow reading it yet.
+    pub fn get_season(&self) -> Res<i64> {
+        match self.fs("GET", "/public/season", None, &[]) {
+            Ok(doc) => Ok(fs_fields(&doc).i64_or0("season").max(0)),
+            Err(e) if e.code == "not_found" || e.code == "denied" => Ok(0),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// v3.0.1: this account's own reset number (/resets/{uid}). An admin raises it to reset only this player: a
+    /// save with a lower number starts again from 0. 0 when there is none (or the rules aren't published).
+    pub fn get_my_reset(&self) -> Res<i64> {
+        let uid = self.need_uid()?;
+        match self.fs("GET", &format!("/resets/{}", uid), None, &[]) {
+            Ok(doc) => Ok(fs_fields(&doc).i64_or0("n").max(0)),
+            Err(e) if e.code == "not_found" || e.code == "denied" => Ok(0),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Admins only (rules): resets one player (their number + 1) and takes them off the leaderboard.
+    pub fn reset_player(&self, uid: &str) -> Res<i64> {
+        let n = match self.fs("GET", &format!("/resets/{}", uid), None, &[]) {
+            Ok(doc) => fs_fields(&doc).i64_or0("n").max(0),
+            Err(e) if e.code == "not_found" => 0,
+            Err(e) => return Err(e),
+        } + 1;
+        self.fs("PATCH", &format!("/resets/{}", uid), Some(json!({"fields": {"n": fs_int(n)}})), &[])?;
+        match self.fs("DELETE", &format!("/leaderboard/{}", uid), None, &[]) {
+            Err(e) if e.code != "not_found" => return Err(e),
+            _ => {}
+        }
+        Ok(n)
+    }
+
+    /// Admins only (rules): starts season `n`.
+    pub fn set_season(&self, n: i64) -> Res<()> {
+        self.fs("PATCH", "/public/season", Some(json!({"fields": {"season": fs_int(n)}})), &[]).map(|_| ())
+    }
+
+    /// Admins only (rules): empties the leaderboard (every /leaderboard/{uid}). Returns how many were removed.
+    pub fn clear_leaderboard(&self) -> Res<usize> {
+        let mut removed = 0;
+        loop {
+            let params = vec![("pageSize".to_string(), "300".to_string()), ("mask.fieldPaths".to_string(), "username".to_string())];
+            let page = self.fs("GET", "/leaderboard", None, &params)?;
+            let docs = page.get("documents").and_then(|d| d.as_array()).cloned().unwrap_or_default();
+            if docs.is_empty() {
+                return Ok(removed);
+            }
+            let before = removed;
+            for d in docs {
+                let Some(name) = d.get("name").and_then(|n| n.as_str()) else { continue };
+                let Some(uid) = name.rsplit('/').next() else { continue };
+                match self.fs("DELETE", &format!("/leaderboard/{}", uid), None, &[]) {
+                    Ok(_) => removed += 1,
+                    Err(e) if e.code == "not_found" => {}
+                    Err(e) => return Err(e),
+                }
+            }
+            if removed == before {
+                return Ok(removed); // nothing more could go: don't loop forever
+            }
+        }
+    }
+
     pub fn get_leaderboard_snapshot(&self) -> Res<Option<Value>> {
         let doc = match self.fs("GET", "/public/leaderboard", None, &[]) {
             Ok(d) => d,

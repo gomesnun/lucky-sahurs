@@ -685,6 +685,15 @@ fn shots(dir: &str) {
     g.toggle_admin_menu();
     g.draw(m);
     save(&g, "o_admin_menu");
+    // v3.0.1: the Resets page
+    g.open_reset_admin();
+    g.adm.search.set_text("friend");
+    g.adm.msg = Some((i18n::tr("No player with that name."), theme::BAD));
+    g.draw(m);
+    save(&g, "v3_resets");
+    g.adm.msg = None;
+    g.adm.search.set_text("");
+    g.adm.page = "ban";
     g.adm.menu_open = false;
     g.adm.ban_open = true;
     g.adm.list_loaded = true;
