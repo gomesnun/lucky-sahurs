@@ -180,6 +180,19 @@ fn bench() {
     }
     g.state.equip_best();
     run(&mut g, "game");
+    // v3.0 effects: the verity rain running (update + draw each frame, like the real loop)
+    for _ in 0..3000 {
+        g.update_verity_fx(1.0 / 60.0);
+    }
+    {
+        let n = 300;
+        let s = std::time::Instant::now();
+        for _ in 0..n {
+            g.update_verity_fx(1.0 / 60.0);
+            g.draw(m);
+        }
+        println!("{:<14} {:.3} ms  ({} verities falling)", "game+rain", s.elapsed().as_secs_f64() * 1000.0 / n as f64, g.vfx_drop_count());
+    }
     g.right_panel.open("index");
     g.right_panel.update(5.0);
     run(&mut g, "index");

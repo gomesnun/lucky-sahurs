@@ -11,6 +11,9 @@ use crate::ui::fonts::wrap_text;
 use std::rc::Rc;
 
 pub const UPDATE_LOG: &[(&str, &str, &[&str])] = &[
+    ("v3.0.1", "2026-09-24", &[
+        "Your settings (animations, cutscenes, sounds, language...) now follow your save: open it on another PC and they come with it. Fullscreen stays per PC.",
+    ]),
     ("v3.0.0", "2026-09-24", &[
         "New effects: buttons glow when you point at them and ripple when you click, a subtle glare sweeps across buttons and your pet card, your verities rain down behind the roll screen (more the more you earn) and every ROLL pops the verity you got up from your click, the coins count up smoothly and the title screen shows the verities.",
         "Titles: pick one from the new Title button on the Friends page and every player sees it next to your name. Owner for the admins, Top 1/2/3 for the leaderboard's best, and many more from Milestones.",

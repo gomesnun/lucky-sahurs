@@ -101,6 +101,10 @@ impl Game {
         pets
     }
 
+    pub fn vfx_drop_count(&self) -> usize {
+        self.vfx.drops.len()
+    }
+
     pub fn update_verity_fx(&mut self, dt: f64) {
         if !self.animations() || self.screen_mode != "game" {
             self.vfx.drops.clear();

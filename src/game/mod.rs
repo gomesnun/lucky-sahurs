@@ -179,6 +179,7 @@ pub struct Game {
     pub particles: Vec<Particle>,
     pub auto_accum: f64,
     pub auto_upgrade_timer: f64,
+    pub prefs_timer: f64,
     pub auto_trait_timer: f64,
     /// the Auto Roller rolls faster than the card can show until this time (see draw_too_fast_card)
     pub too_fast_until: f64,
@@ -376,6 +377,7 @@ impl Game {
             particles: Vec::new(),
             auto_accum: 0.0,
             auto_upgrade_timer: 0.0,
+            prefs_timer: 0.0,
             auto_trait_timer: 0.0,
             too_fast_until: 0.0,
             too_fast_best: None,
@@ -535,6 +537,38 @@ impl Game {
         let old = std::mem::replace(&mut self.state, st);
         if self.upload_inflight {
             self.orphan_states.insert(old.obj_id, old);
+        }
+        self.apply_save_prefs();
+    }
+
+    /// v3.0: the settings kept in the save (from any PC) become this PC's settings. Fullscreen stays per PC.
+    pub fn apply_save_prefs(&mut self) {
+        let Some(prefs) = self.state.prefs.clone() else { return };
+        let mut changed = false;
+        for (k, v) in prefs {
+            if k == "fullscreen" || !self.settings.map.contains_key(&k) {
+                continue;
+            }
+            if self.settings.map.get(&k) != Some(&v) {
+                self.settings.map.insert(k, v);
+                changed = true;
+            }
+        }
+        if changed {
+            save_settings(&self.settings);
+            set_language(&self.settings.get_str("language", "en"));
+            theme::set_dark(theme::resolve_dark(&self.settings.get_str("theme_mode", theme::DEFAULT_THEME_MODE)));
+            self.apply_music_volume();
+        }
+    }
+
+    /// The other way: this PC's settings go into the save (and so to the cloud) when they change.
+    pub fn store_save_prefs(&mut self) {
+        let mut prefs = self.settings.map.clone();
+        prefs.remove("fullscreen");
+        if self.state.prefs.as_ref() != Some(&prefs) {
+            self.state.prefs = Some(prefs);
+            self.state.dirty = true;
         }
     }
 
@@ -826,6 +860,11 @@ impl Game {
             self.right_panel.update(dt);
             self.left_panel.update(dt);
             self.autosave_timer += dt;
+            self.prefs_timer += dt;
+            if self.prefs_timer >= 1.0 {
+                self.prefs_timer = 0.0;
+                self.store_save_prefs();
+            }
             if self.autosave_timer >= AUTOSAVE_INTERVAL {
                 self.autosave_timer = 0.0;
                 self.state.save();
@@ -1327,4 +1366,33 @@ impl Game {
 
 pub fn color_dim(c: Color, d: i32) -> Color {
     Color::rgb((c.r as i32 - d).max(0) as u8, (c.g as i32 - d).max(0) as u8, (c.b as i32 - d).max(0) as u8)
+}
+
+#[cfg(test)]
+mod prefs_tests {
+    use super::*;
+
+    #[test]
+    fn settings_follow_the_save_to_another_pc() {
+        let dir = std::env::temp_dir().join(format!("lv-prefs-test-{}", std::process::id()));
+        // SAFETY: set before anything reads the save folder (this is the only test that touches it)
+        unsafe { std::env::set_var("LUCKY_VERITIES_SAVE_DIR", &dir) };
+        // PC 1: turns animations and Secret cutscenes off; the settings go into the save
+        let mut pc1 = Game::headless(1422, 800);
+        pc1.settings.set_bool("animations", false);
+        pc1.settings.set_bool("cutscenes_secreto", false);
+        pc1.settings.set_bool("fullscreen", false);
+        pc1.store_save_prefs();
+        let save = pc1.state.to_dict();
+        // PC 2: default settings, loads that save (as if from the cloud)
+        let mut pc2 = Game::headless(1422, 800);
+        pc2.settings = Settings::defaults();
+        let mut st = GameState::new();
+        st.load_dict(&save).unwrap();
+        pc2.replace_state(st);
+        assert!(!pc2.settings.get_bool("animations", true));
+        assert!(!pc2.settings.get_bool("cutscenes_secreto", true));
+        assert!(pc2.settings.get_bool("fullscreen", false)); // fullscreen stays per PC
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
