@@ -4,7 +4,7 @@ use crate::config::save_dir;
 use serde_json::{Value, json};
 use std::time::Duration;
 
-pub const GAS_ENDPOINT: &str = "https://script.google.com/macros/s/AKfycbzD5j4-jICeHFBeydG_wARjSKq7P9xokN_mfbGFmJ0HCqbHF5i3GldBWoXaf5t5-g9EGQ/exec";
+pub const GAS_ENDPOINT: &str = "https://script.google.com/macros/s/AKfycbwi1MfcFdY2k5D_KN6W2fs-8t87iypr04QkHBevQVgsWz6FeNL2T3Km2HDeH7xFuG8f/exec";
 const BREVO_ENDPOINT: &str = "https://api.brevo.com/v3/smtp/email";
 const MAIL_TIMEOUT: f64 = 12.0;
 
