@@ -34,7 +34,8 @@ pub const AUTO_SPEED_PER_LEVEL: f64 = 0.22;
 pub const AUTO_TURBO_PER_LEVEL: f64 = 0.28;
 pub const GOLDEN_ROLL_EVERY: i64 = 14;
 pub const GOLDEN_ROLL_MIN: i64 = 10;
-pub const GOLDEN_ROLL_MULT: f64 = 4.0;
+/// v3.0.1: x10 (was x4)
+pub const GOLDEN_ROLL_MULT: f64 = 10.0;
 pub const TRAIT_CHARGE_ONE_IN: f64 = 250.0;
 /// "Use All Charges": one by one up to here; above that by statistics (roll_traits_bulk)
 pub const TRAIT_EXACT_MAX: i64 = 5000;
@@ -369,7 +370,8 @@ pub fn upgrade_defs() -> &'static [UpgradeDef] {
             u("trait_charge_luck_2", "Trait Charge Luck II", p("+10% extra (relative) chance of getting 1 trait charge per roll, per level."), 15, 1000000000.0, 1.887, Some("trait_charge_luck"), 18, 0),
             u("trait_rarity_luck", "Trait Luck", p("+9% weight to traits from Instinctive (the 3rd) upward when you roll a trait, per level."), 20, 20000.0, 1.836, None, 1, 0),
             u("trait_rarity_luck_2", "Trait Luck II", p("+15% weight to traits from Instinctive upward when you roll a trait, per level."), 15, 8000000000.0, 1.938, Some("trait_rarity_luck"), 20, 0),
-            u("cyclic_every", "Short Cycle", l("-1 roll in the Golden Roll cycle per level (minimum %d rolls).", a![10i64]), 4, 50000000.0, 5.1, None, 1, 0),
+            u("golden_roll_unlock", "Unlock Golden Roll", p("Unlocks the Golden Roll cycle: every so many rolls, the next roll gets x10 luck."), 1, 25000.0, 1.0, None, 1, 0),
+            u("cyclic_every", "Short Cycle", l("-1 roll in the Golden Roll cycle per level (minimum %d rolls).", a![10i64]), 4, 50000000.0, 5.1, Some("golden_roll_unlock"), 1, 0),
             u("cyclic_power", "Strong Golden Roll", p("+1 to the Golden Roll multiplier per level."), 10, 1000000000.0, 2.448, Some("cyclic_every"), 3, 0),
             u("diamond_roll_unlock", "Unlock Diamond Roll", p("Unlocks the Diamond Roll cycle: every so many rolls, the next roll gets a massive luck boost."), 1, 20000000000.0, 1.0, Some("cyclic_power"), 5, 0),
             u("diamond_roll_every", "Diamond Short Cycle", p("-3 rolls in the Diamond Roll cycle per level (minimum 70 rolls)."), 10, 40000000000.0, 2.652, Some("diamond_roll_unlock"), 1, 0),
@@ -407,7 +409,7 @@ pub const UPGRADE_CATEGORIES: [UpgradeCategory; 8] = [
     UpgradeCategory { key: "mutations", label: "Mutation Chance", desc: "Golden, Diamond and Rainbow pets", upgrades: &["golden_unlock", "golden_chance", "golden_chance_2", "diamond_unlock", "diamond_chance", "diamond_chance_2", "rainbow_unlock", "rainbow_chance", "rainbow_chance_2"] },
     UpgradeCategory { key: "money", label: "Money", desc: "Earn more money per second", upgrades: &["money", "money_prism", "money_ultra"] },
     UpgradeCategory { key: "traits", label: "Traits", desc: "Trait charges and trait rarity", upgrades: &["auto_trait_unlock", "trait_charge_luck", "trait_charge_luck_2", "trait_rarity_luck", "trait_rarity_luck_2"] },
-    UpgradeCategory { key: "bonus_rolls", label: "Bonus Rolls", desc: "Golden, Diamond and Rainbow Roll", upgrades: &["cyclic_every", "cyclic_power", "diamond_roll_unlock", "diamond_roll_every", "diamond_roll_power", "rainbow_roll_unlock", "rainbow_roll_every", "rainbow_roll_power"] },
+    UpgradeCategory { key: "bonus_rolls", label: "Bonus Rolls", desc: "Golden, Diamond and Rainbow Roll", upgrades: &["golden_roll_unlock", "cyclic_every", "cyclic_power", "diamond_roll_unlock", "diamond_roll_every", "diamond_roll_power", "rainbow_roll_unlock", "rainbow_roll_every", "rainbow_roll_power"] },
     UpgradeCategory { key: "auto", label: "Auto Roller", desc: "Rolls by itself, faster", upgrades: &["auto_unlock", "auto_speed", "auto_turbo"] },
     UpgradeCategory { key: "offline", label: "Offline", desc: "Earn more while the game is closed", upgrades: &["offline_rate", "offline_rate_2", "offline_time", "offline_time_2"] },
     UpgradeCategory { key: "misc", label: "Misc", desc: "Auto Upgrader, Equip Slots and Auto Equip Best", upgrades: &["auto_upgrade_unlock", "slots", "slots_plus", "auto_equip_unlock"] },

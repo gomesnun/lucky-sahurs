@@ -11,6 +11,7 @@ use crate::theme::*;
 use crate::tr;
 use crate::ui::drawing::{draw_panel, draw_state_border};
 use crate::ui::fonts::{fit_text, wrap_text};
+use crate::ui::icons::load_icon;
 use serde_json::{Value, json};
 use std::rc::Rc;
 
@@ -25,6 +26,38 @@ fn mode_of(v: Option<&Value>) -> i64 {
             _ => 1,
         },
         _ => 1,
+    }
+}
+
+/// v3.0.1: the icon of each upgrade (so they're easier to tell apart).
+pub fn upgrade_icon(key: &str) -> &'static str {
+    match key {
+        k if k.starts_with("luck") => "shop/potion_luck",
+        k if k.starts_with("money") => "cash",
+        "slots" | "slots_plus" | "auto_equip_unlock" => "bag",
+        k if k.starts_with("auto_") && k != "auto_upgrade_unlock" && k != "auto_trait_unlock" => "shop/potion_speed",
+        "golden_unlock" | "golden_chance" | "golden_chance_2" => "shop/dice_gold",
+        "diamond_unlock" | "diamond_chance" | "diamond_chance_2" => "shop/dice_sapphire",
+        "rainbow_unlock" | "rainbow_chance" | "rainbow_chance_2" => "shop/dice_prism",
+        "golden_roll_unlock" | "cyclic_every" | "cyclic_power" => "shop/dice_gold",
+        k if k.starts_with("diamond_roll") => "shop/dice_sapphire",
+        k if k.starts_with("rainbow_roll") => "shop/dice_prism",
+        k if k.starts_with("trait") || k == "auto_trait_unlock" => "trait",
+        k if k.starts_with("offline") => "clock",
+        _ => "tree",
+    }
+}
+
+fn category_icon(key: &str) -> &'static str {
+    match key {
+        "luck" => "shop/potion_luck",
+        "mutations" => "shop/dice_gold",
+        "money" => "cash",
+        "traits" => "trait",
+        "bonus_rolls" => "shop/dice_prism",
+        "auto" => "shop/potion_speed",
+        "offline" => "clock",
+        _ => "tree",
     }
 }
 
@@ -184,18 +217,22 @@ impl Game {
                 } else if row_rect.collidepoint(mouse_pos) && content_rect.collidepoint(mouse_pos) {
                     draw_state_border(&mut self.canvas, row_rect, accent(), 12, 2);
                 }
+                if let Some(icon) = load_icon(category_icon(cat.key), 40) {
+                    self.canvas.blit(&icon, row_rect.x + 12, row_rect.y + 8);
+                }
+                let tx = row_rect.x + 62;
                 let name_txt = med.render(&tr(cat.label), WHITE);
-                self.canvas.blit(&name_txt, row_rect.x + 16, row_rect.y + 10);
+                self.canvas.blit(&name_txt, tx, row_rect.y + 10);
                 let count_txt = sb.render(&format!("{}/{}", lvls, mx), if done { GOOD } else { WHITE });
                 self.canvas.blit(&count_txt, row_rect.right() - count_txt.w - 40, row_rect.y + 12);
                 let arrow_txt = med.render(">", grey());
                 self.canvas.blit(&arrow_txt, row_rect.right() - 26, row_rect.centery() - 12);
 
                 let ready_txt = if ready > 0 { Some(tiny.render(&tr!("%d ready to buy", ready), GOOD)) } else { None };
-                let max_desc_w = row_rect.w - 32 - ready_txt.as_ref().map(|t| t.w + 38).unwrap_or(0);
+                let max_desc_w = row_rect.right() - 16 - tx - ready_txt.as_ref().map(|t| t.w + 38).unwrap_or(0);
                 let desc = fit_text(&tiny, &tr(cat.desc), max_desc_w);
                 let d = tiny.render(&desc, grey());
-                self.canvas.blit(&d, row_rect.x + 16, row_rect.y + 36);
+                self.canvas.blit(&d, tx, row_rect.y + 36);
                 if let Some(rt) = &ready_txt {
                     self.canvas.blit(rt, row_rect.right() - rt.w - 40, row_rect.y + 36);
                 }
@@ -241,8 +278,13 @@ impl Game {
                     draw_state_border(&mut self.canvas, row_rect, Color::rgb(80, 150, 100), 10, 2);
                 }
                 let dim = locked_by.is_some() || need_rebirths != 0;
-                let name_txt = med.render(&tr(d.name), if !dim { WHITE } else { grey() });
-                self.canvas.blit(&name_txt, row_rect.x + 14, row_rect.y + 9);
+                let mut nx = row_rect.x + 14;
+                if let Some(icon) = load_icon(upgrade_icon(key), 26) {
+                    self.canvas.blit_with_alpha(&icon, nx, row_rect.y + 6, if dim { 120 } else { 255 });
+                    nx += 32;
+                }
+                let name_txt = med.render(&fit_text(&med, &tr(d.name), row_rect.right() - 90 - nx), if !dim { WHITE } else { grey() });
+                self.canvas.blit(&name_txt, nx, row_rect.y + 9);
                 let lvl_txt = small.render(&tr!("Lv %d/%d", lvl, d.max_level), if maxed { GOOD } else { grey() });
                 self.canvas.blit(&lvl_txt, row_rect.right() - lvl_txt.w - 14, row_rect.y + 13);
 

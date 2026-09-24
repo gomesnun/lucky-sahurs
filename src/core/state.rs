@@ -505,6 +505,10 @@ impl GameState {
         n
     }
 
+    /// v3.0.1: the Golden Roll is an upgrade now (like the Diamond and Rainbow ones)
+    pub fn golden_roll_unlocked(&self) -> bool {
+        self.upgrade_level("golden_roll_unlock") >= 1
+    }
     pub fn golden_roll_every(&self) -> i64 {
         GOLDEN_ROLL_MIN.max(GOLDEN_ROLL_EVERY - self.upgrade_level("cyclic_every"))
     }
@@ -834,7 +838,7 @@ impl GameState {
         let golden_paused = self.is_cycle_paused("golden");
         let diamond_paused = self.is_cycle_paused("diamond");
         let rainbow_paused = self.is_cycle_paused("rainbow");
-        let golden_active = self.cyclic_bonus_ready && !golden_paused;
+        let golden_active = self.cyclic_bonus_ready && self.golden_roll_unlocked() && !golden_paused;
         let diamond_active = self.diamond_bonus_ready && self.diamond_roll_unlocked() && !diamond_paused;
         let rainbow_active = self.rainbow_bonus_ready && self.rainbow_roll_unlocked() && !rainbow_paused;
         let bonus_active = golden_active || diamond_active || rainbow_active;
@@ -890,7 +894,7 @@ impl GameState {
         if golden_active {
             self.cyclic_bonus_ready = false;
             self.cyclic_roll_count = 0;
-        } else if !golden_paused {
+        } else if !golden_paused && self.golden_roll_unlocked() {
             self.cyclic_roll_count += 1;
             if self.cyclic_roll_count >= self.golden_roll_every() {
                 self.cyclic_roll_count = 0;
@@ -1008,7 +1012,8 @@ impl GameState {
                 *count = total;
             }
         };
-        adv(true, paused.0, &mut self.cyclic_roll_count, &mut self.cyclic_bonus_ready, golden_every);
+        let golden_on = self.golden_roll_unlocked();
+        adv(golden_on, paused.0, &mut self.cyclic_roll_count, &mut self.cyclic_bonus_ready, golden_every);
         adv(diamond_on, paused.1, &mut self.diamond_roll_count, &mut self.diamond_bonus_ready, diamond_every);
         adv(rainbow_on, paused.2, &mut self.rainbow_roll_count, &mut self.rainbow_bonus_ready, rainbow_every);
         let charges = poisson(n as f64 * self.trait_charge_chance());
@@ -1808,6 +1813,10 @@ impl GameState {
             };
             self.upgrades[i] = lvl.min(u.max_level).max(0);
         }
+        // v3.0.1: saves from before the Golden Roll needed unlocking keep it if they already upgraded it
+        if self.upgrade_level("cyclic_every") > 0 || self.upgrade_level("cyclic_power") > 0 {
+            self.upgrades[upgrade_index("golden_roll_unlock")] = 1;
+        }
         self.total_rolls = get_i("total_rolls", 0)?;
         let st = match d.get("settings") {
             Some(Value::Object(o)) => o.clone(),
@@ -2118,6 +2127,27 @@ mod prestige_tests {
         s.prestige = 5;
         s.rebirths = 400;
         assert!(!s.rebirth_locked()); // after Prestige V: no limit
+    }
+
+    #[test]
+    fn golden_roll_needs_its_unlock() {
+        let mut s = GameState::new();
+        for _ in 0..50 {
+            s.roll();
+        }
+        assert!(!s.cyclic_bonus_ready && s.cyclic_roll_count == 0); // locked: the cycle doesn't run
+        s.upgrades[upgrade_index("golden_roll_unlock")] = 1;
+        for _ in 0..GOLDEN_ROLL_EVERY {
+            s.roll();
+        }
+        assert!(s.cyclic_bonus_ready);
+        assert_eq!(s.golden_roll_mult(), 10.0);
+        // a save from before the unlock existed, with Golden Roll upgrades: it stays unlocked
+        let mut old = GameState::new();
+        old.upgrades[upgrade_index("cyclic_every")] = 2;
+        let mut t = GameState::new();
+        t.load_dict(&old.to_dict()).unwrap();
+        assert!(t.golden_roll_unlocked());
     }
 
     #[test]

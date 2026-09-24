@@ -248,7 +248,7 @@ impl Game {
         let st = &self.state;
         let (mut total, mut top) = (0.0, None);
         for (key, unlocked, ready, mult) in [
-            ("golden", true, st.cyclic_bonus_ready, st.golden_roll_mult()),
+            ("golden", st.golden_roll_unlocked(), st.cyclic_bonus_ready, st.golden_roll_mult()),
             ("diamond", st.diamond_roll_unlocked(), st.diamond_bonus_ready, st.diamond_roll_mult()),
             ("rainbow", st.rainbow_roll_unlocked(), st.rainbow_bonus_ready, st.rainbow_roll_mult()),
         ] {
@@ -480,8 +480,10 @@ impl Game {
 
         let mut y = roll_rect.bottom() + 16;
         let st = &self.state;
-        let golden = (st.cyclic_bonus_ready, st.golden_roll_mult(), st.rolls_until_golden_roll(), st.golden_roll_every());
-        y = self.draw_cycle_line("golden", y, golden.0, "Golden Roll", golden.1, golden.2, golden.3, GOLD_BORDER, center_x, mouse_pos);
+        if st.golden_roll_unlocked() {
+            let golden = (st.cyclic_bonus_ready, st.golden_roll_mult(), st.rolls_until_golden_roll(), st.golden_roll_every());
+            y = self.draw_cycle_line("golden", y, golden.0, "Golden Roll", golden.1, golden.2, golden.3, GOLD_BORDER, center_x, mouse_pos);
+        }
         if self.state.diamond_roll_unlocked() {
             let st = &self.state;
             let d = (st.diamond_bonus_ready, st.diamond_roll_mult(), st.rolls_until_diamond_roll().unwrap_or(0), st.diamond_roll_every());

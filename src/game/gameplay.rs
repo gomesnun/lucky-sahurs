@@ -140,9 +140,15 @@ impl Game {
         self.state.last_trait_batch = Some(results);
         self.state.dirty = true;
         // only a trait you didn't have yet is worth a message
-        if let Some(&best) = self.state.owned_traits.difference(&before).max() {
+        let new: Vec<usize> = self.state.owned_traits.difference(&before).copied().collect();
+        if let Some(&best) = new.iter().max() {
             self.play("trait_roll", 0.0);
-            self.show_toast(&tr!("Auto Trait Roller: new trait \"%s\"!", tr(TRAITS[best].name)), 2.2);
+            let msg = if new.len() == 1 {
+                tr!("Auto Trait Roller: new trait \"%s\"!", tr(TRAITS[best].name))
+            } else {
+                tr!("Auto Trait Roller: %d new traits! The best: \"%s\"", new.len() as i64, tr(TRAITS[best].name))
+            };
+            self.show_toast(&msg, 3.5);
         }
     }
 
