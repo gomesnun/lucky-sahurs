@@ -528,6 +528,8 @@ pub struct Person {
     pub time: Option<f64>,
     /// the server time of their last "I'm playing" (None = never published / an old version)
     pub last_seen: Option<f64>,
+    /// their equipped title (core/titles.rs), None = none / not loaded
+    pub title: Option<String>,
 }
 
 fn profile_from_doc(doc: &Value) -> Person {
@@ -546,6 +548,7 @@ fn profile_from_doc(doc: &Value) -> Person {
         avatar_mut: f.str_or("avatar_mut", "normal"),
         time: None,
         last_seen: parse_timestamp(f.get("last_seen")),
+        title: None,
     }
 }
 
@@ -1177,7 +1180,7 @@ impl FirebaseClient {
         if uid.is_empty() {
             return None;
         }
-        Some(Person { uid, username: username.into(), avatar_pet: None, avatar_mut: "normal".into(), time: None, last_seen: None })
+        Some(Person { uid, username: username.into(), avatar_pet: None, avatar_mut: "normal".into(), time: None, last_seen: None, title: None })
     }
 
     pub fn get_public_profile(&self, uid: &str) -> Res<Option<Person>> {
@@ -1245,6 +1248,7 @@ impl FirebaseClient {
                 avatar_mut: "normal".into(),
                 time: parse_timestamp(f.get("created_at")),
                 last_seen: None,
+                title: None,
             });
         }
         Ok(out)
@@ -1303,6 +1307,7 @@ impl FirebaseClient {
                     avatar_mut: "normal".into(),
                     time: parse_timestamp(f.get("since")),
                     last_seen: None,
+                    title: None,
                 });
             }
         }
@@ -1637,6 +1642,29 @@ impl FirebaseClient {
             {"delete": format!("{}/users/{}/incoming/{}", self.docs_root, uid, receipt.id)},
         ]});
         self.fs("POST", ":commit", Some(body), &[]).map(|_| ())
+    }
+
+    // ---- titles (/titles/{uid}: a separate document, so nothing else breaks if its rule isn't published) ----
+    /// Someone's equipped title, or None.
+    pub fn get_title(&self, uid: &str) -> Res<Option<String>> {
+        match self.fs("GET", &format!("/titles/{}", uid), None, &[]) {
+            Ok(d) => Ok(fs_fields(&d).opt_str("title")),
+            Err(e) if e.code == "not_found" => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Publishes (or, with None, removes) this account's title.
+    pub fn set_title(&self, title: Option<&str>) -> Res<()> {
+        let uid = self.need_uid()?;
+        let path = format!("/titles/{}", uid);
+        match title {
+            Some(t) => self.fs("PATCH", &path, Some(json!({"fields": {"title": fs_str(t)}})), &[]).map(|_| ()),
+            None => match self.fs("DELETE", &path, None, &[]) {
+                Err(e) if e.code != "not_found" => Err(e),
+                _ => Ok(()),
+            },
+        }
     }
 
     // ---- shared leaderboard snapshot ----

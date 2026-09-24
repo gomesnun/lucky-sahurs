@@ -3,3 +3,4 @@ pub mod event;
 pub mod formatting;
 pub mod shop;
 pub mod state;
+pub mod titles;

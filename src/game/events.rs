@@ -73,6 +73,8 @@ pub struct EventsUi {
     pub loading: bool,
     pub is_admin: bool,
     pub admin_checked: bool,
+    /// the /admins check is on its way (is_admin isn't known yet)
+    pub loading_admin: bool,
     pub admin_open: bool,
     pub admin_mult: i64,
     pub admin_seconds: i64,
@@ -93,6 +95,7 @@ impl EventsUi {
             loading: false,
             is_admin: false,
             admin_checked: false,
+            loading_admin: false,
             admin_open: false,
             admin_mult: 10,
             admin_seconds: 300,
@@ -155,8 +158,16 @@ impl Game {
             return;
         }
         self.ev.admin_checked = true;
+        self.ev.loading_admin = true;
         let client = self.client.clone().unwrap();
-        self.run_job(move || client.is_admin(), |g, v: bool| g.ev.is_admin = v, |_, _| {});
+        self.run_job(
+            move || client.is_admin(),
+            |g, v: bool| {
+                g.ev.is_admin = v;
+                g.ev.loading_admin = false;
+            },
+            |g, _| g.ev.loading_admin = false,
+        );
     }
 
     pub fn tick_events(&mut self, _now: f64) {

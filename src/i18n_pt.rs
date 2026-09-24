@@ -1,4 +1,4 @@
-//! Generated from i18n_pt.py (Portuguese catalogue). Do not edit by hand.
+//! Generated from i18n_pt.py (Portuguese catalogue), plus the Rust-only strings at the end of PT (titles).
 
 pub const PT: &[(&str, &str)] = &[
     ("Roll pets, equip them and fill your pockets", "Rola pets, equipa-os e enche os bolsos"),
@@ -705,6 +705,36 @@ pub const PT: &[(&str, &str)] = &[
     ("TOO FAST", "RÁPIDO"),
     ("TO SHOW!", "DEMAIS!"),
     ("Best so far:", "O melhor até agora:"),
+    // ---- Rust only: titles ----
+    ("Title", "Título"),
+    ("Choose a title", "Escolhe um título"),
+    ("Every player sees your title next to your name. Unlock more with Milestones and the leaderboards.", "Todos os jogadores veem o teu título ao lado do teu nome. Desbloqueia mais com as Metas e o ranking."),
+    ("No title", "Sem título"),
+    ("Locked", "Bloqueado"),
+    ("You no longer hold the title \"%s\".", "Já não tens o título \"%s\"."),
+    ("Only for the game's admins.", "Só para os admins do jogo."),
+    ("Be #1 on any leaderboard.", "Fica em 1.º em qualquer ranking."),
+    ("Be in the top %d of any leaderboard.", "Fica no top %d de qualquer ranking."),
+    ("Claim %d milestones.", "Consegue %d metas."),
+    ("Claim every milestone.", "Consegue todas as metas."),
+    ("Complete every \"%s\" milestone.", "Completa todas as metas de \"%s\"."),
+    ("Owner", "Dono"),
+    ("Top 1", "Top 1"),
+    ("Top 2", "Top 2"),
+    ("Top 3", "Top 3"),
+    ("Completionist", "Completista"),
+    ("Master", "Mestre"),
+    ("Veteran", "Veterano"),
+    ("Collector", "Colecionador"),
+    ("Rookie", "Novato"),
+    ("Rarity Hunter", "Caçador de Raridades"),
+    ("Rainbow Chaser", "Caçador de Arco-íris"),
+    ("Diamond Hands", "Mãos de Diamante"),
+    ("Golden Touch", "Toque de Ouro"),
+    ("Trait Master", "Mestre das Traits"),
+    ("Index Master", "Mestre do Index"),
+    ("Tycoon", "Magnata"),
+    ("Roll Addict", "Viciado em Rolls"),
 ];
 
 pub const PT_SHORT: &[(&str, &str)] = &[

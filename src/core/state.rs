@@ -79,6 +79,8 @@ pub struct GameState {
     pub seen_pets: BTreeSet<String>,
     pub equipped: Vec<Pet>,
     pub avatar: Option<Pet>,
+    /// the equipped title (core/titles.rs), shown to other players; None = no title
+    pub title: Option<&'static str>,
     /// levels in UPGRADE_DEFS order
     pub upgrades: Vec<i64>,
     pub last_roll: Option<Pet>,
@@ -209,6 +211,7 @@ impl GameState {
             seen_pets: BTreeSet::new(),
             equipped: Vec::new(),
             avatar: None,
+            title: None,
             upgrades: vec![0; upgrade_defs().len()],
             last_roll: None,
             total_rolls: 0,
@@ -1403,6 +1406,10 @@ impl GameState {
         });
         let ups: Map<String, Value> = upgrade_defs().iter().enumerate().map(|(i, u)| (u.key.to_string(), json!(self.upgrades[i]))).collect();
         d.insert("upgrades".into(), Value::Object(ups));
+        if let Some(t) = self.title {
+            // only written when there is one, so a save without a title is exactly what the Python game writes
+            d.insert("title".into(), json!(t));
+        }
         d.insert("total_rolls".into(), json!(self.total_rolls));
         d.insert("shop".into(), self.shop.to_dict());
         let mut st = Map::new();
@@ -1558,6 +1565,7 @@ impl GameState {
                 }
             }
         }
+        self.title = d.get("title").and_then(|v| v.as_str()).and_then(crate::core::titles::title_key);
         self.rebirths = get_i("rebirths", 0)?.max(0);
         *self.rb_cache.borrow_mut() = None;
         let empty = Map::new();

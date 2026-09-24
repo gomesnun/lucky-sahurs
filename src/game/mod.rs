@@ -24,6 +24,7 @@ pub mod sell_panel;
 pub mod shop_panel;
 pub mod title_saves;
 pub mod trades;
+pub mod titles_panel;
 pub mod traits_panel;
 pub mod update_panel;
 pub mod updatelog;
@@ -255,6 +256,7 @@ pub struct Game {
     pub trades: trades::TradesUi,
     pub shop: shop_panel::ShopUi,
     pub sell: sell_panel::SellUi,
+    pub titles: titles_panel::TitlesUi,
     pub text_input_on: bool,
 }
 
@@ -427,6 +429,7 @@ impl Game {
             trades: trades::TradesUi::new(),
             shop: shop_panel::ShopUi::new(),
             sell: sell_panel::SellUi::new(),
+            titles: titles_panel::TitlesUi::new(),
             text_input_on: true,
         };
         if let Some(sdl) = sdl {
@@ -796,6 +799,7 @@ impl Game {
                 self.state.save();
             }
             self.tick_online(dt);
+            self.tick_titles(dt);
         } else {
             self.rate_prev = None;
             self.roll_rate = 0.0;
@@ -1099,7 +1103,7 @@ impl Game {
                 }
                 return false;
             }
-            if self.fr.list_rect.collidepoint(pos) || self.fr.avatar_picker || self.trades.target.is_some() {
+            if self.fr.list_rect.collidepoint(pos) || self.fr.avatar_picker || self.titles.picker || self.trades.target.is_some() {
                 self.fr.scroll = clamp(self.fr.scroll + step, self.fr.max_scroll);
                 return true;
             }
