@@ -10,6 +10,7 @@ const M: usize = 397;
 pub struct PyRandom {
     mt: [u32; N],
     mti: usize,
+    gauss_next: Option<f64>,
 }
 
 impl PyRandom {
@@ -57,7 +58,7 @@ impl PyRandom {
     }
 
     fn from_key(key: &[u32]) -> PyRandom {
-        let mut r = PyRandom { mt: [0; N], mti: N + 1 };
+        let mut r = PyRandom { mt: [0; N], mti: N + 1, gauss_next: None };
         r.init_by_array(if key.is_empty() { &[0] } else { key });
         r
     }
@@ -179,6 +180,20 @@ impl PyRandom {
     }
 
     /// random.uniform(a, b)
+    /// random.gauss (Box-Muller, keeping the second value for the next call like CPython).
+    pub fn gauss(&mut self, mu: f64, sigma: f64) -> f64 {
+        let z = match self.gauss_next.take() {
+            Some(z) => z,
+            None => {
+                let x2pi = self.random() * std::f64::consts::TAU;
+                let g2rad = (-2.0 * (1.0 - self.random()).ln()).sqrt();
+                self.gauss_next = Some(x2pi.sin() * g2rad);
+                x2pi.cos() * g2rad
+            }
+        };
+        mu + z * sigma
+    }
+
     pub fn uniform(&mut self, a: f64, b: f64) -> f64 {
         a + (b - a) * self.random()
     }

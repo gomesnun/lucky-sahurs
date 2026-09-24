@@ -7,7 +7,7 @@ use crate::config::VIRTUAL_H;
 use crate::core::data::{RARITY_TIERS, rarities, tier_index};
 use crate::core::formatting::py_round;
 use crate::gfx::{Color, Rect, draw};
-use crate::i18n::{get_language, language_name, next_language, set_language, tr};
+use crate::i18n::{get_language, language_name, next_language, set_language, tr, tr_short};
 use crate::storage::{CUTSCENE_RARITIES, SFX_CATEGORIES, save_settings};
 use crate::theme::*;
 use crate::tr;
@@ -205,9 +205,11 @@ impl Game {
         self.canvas.blit(&header, x0, y);
         y += 22;
 
-        let col_w = (w - 8) / 2;
+        // with the v2.7+ rarities there are 9: 3 per row
+        let cols = if CUTSCENE_RARITIES.len() > 4 { 3 } else { 2 };
+        let col_w = (w - 8 * (cols - 1)) / cols;
         for (i, key) in CUTSCENE_RARITIES.iter().enumerate() {
-            let (col, row) = (i as i32 % 2, i as i32 / 2);
+            let (col, row) = (i as i32 % cols, i as i32 / cols);
             let r = Rect::new(x0 + col * (col_w + 8), y + row * ROW_H, col_w, 40);
             let on = self.settings.get_bool(&format!("cutscenes_{}", key), true);
             let rarity_name = tr(RARITY_TIERS[tier_index(key)].name);
@@ -252,7 +254,7 @@ impl Game {
         self.button(Rect::new(x0, y, w, 44), &tr("Leaderboard"), &med, mouse_pos, panel_light(), panel_lighter(), accent(), cb(|g| g.open_leaderboard()), Bo::r(10).icon("leaderboard"));
         y += 54;
         if self.ev.is_admin {
-            self.button(Rect::new(x0, y, w, 44), &tr("Global event"), &med, mouse_pos, panel_light(), panel_lighter(), accent(), cb(|g| g.toggle_event_admin()), Bo::r(10));
+            self.button(Rect::new(x0, y, w, 44), &tr("Admin commands"), &med, mouse_pos, panel_light(), panel_lighter(), accent(), cb(|g| g.toggle_admin_menu()), Bo::r(10).icon("admin_event"));
             y += 54;
         }
         if in_game {
@@ -306,7 +308,7 @@ impl Game {
             let tab_rect = Rect::new(tx, tab_y, tab_w, TAB_H);
             self.button(
                 tab_rect,
-                &tr(label),
+                &tr_short(label),
                 &sb,
                 mouse_pos,
                 if active { panel_lighter() } else { panel_light() },

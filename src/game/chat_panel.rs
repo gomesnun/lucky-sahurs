@@ -16,7 +16,7 @@ use sdl2::keyboard::Keycode;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub const CHAT_POLL: f64 = 5.0;
+pub const CHAT_POLL: f64 = 10.0;
 pub const CHAT_LIMIT: usize = 50;
 const CHAT_MIN_LEN: usize = 1;
 
@@ -56,7 +56,8 @@ impl ChatUi {
             field: TextField::new("text"),
             focus: false,
             sending: false,
-            seen: HashMap::new(),
+            // saved on disk, otherwise the red "unread" dot came back every time the game reopened
+            seen: crate::storage::load_chat_seen(),
             last: HashMap::new(),
         }
     }
@@ -110,6 +111,11 @@ impl Game {
         }
     }
 
+    /// How many conversations have unread messages (for the dot on the top bar's Friends button).
+    pub fn chat_unread_count(&self) -> usize {
+        self.chat.last.keys().filter(|uid| self.chat_unread(uid)).count()
+    }
+
     pub fn chat_unread(&self, uid: &str) -> bool {
         match self.chat.last.get(uid) {
             Some(&last) if last != 0.0 => last > self.chat.seen.get(uid).copied().unwrap_or(0.0) + 0.5,
@@ -154,6 +160,7 @@ impl Game {
                     let seen = messages.iter().map(|m| m.sent_at.unwrap_or(0.0)).fold(f64::NEG_INFINITY, f64::max);
                     g.chat.seen.insert(uid_ok.clone(), seen);
                     g.chat.last.insert(uid_ok.clone(), seen);
+                    crate::storage::save_chat_seen(&g.chat.seen);
                 }
                 g.chat.messages = messages;
                 if at_end {
@@ -291,7 +298,9 @@ impl Game {
             if y + *h as f64 >= (rect.top() - 4) as f64 && y <= (rect.bottom() + 4) as f64 {
                 let mine = me.as_deref() == Some(msg.from_uid.as_str());
                 let widest = lines.iter().map(|l| sb.size(l).0).max().unwrap_or(0);
-                let w = 60.max(widest + 2 * BUBBLE_PAD);
+                let when = chat_when(msg.sent_at);
+                let when_w = if when.is_empty() { 0 } else { tiny.size(&when).0 };
+                let w = 60.max(widest.max(when_w) + 2 * BUBBLE_PAD);
                 let x = if mine { rect.right() - 16 - w } else { rect.x };
                 let bx = Rect::new(x, y as i32, w, *h);
                 draw::rect(&mut self.canvas, if mine { accent() } else { panel_light() }, bx, 0, 12);
@@ -304,7 +313,6 @@ impl Game {
                     self.canvas.blit(&t, bx.x + BUBBLE_PAD, ty);
                     ty += line_h;
                 }
-                let when = chat_when(msg.sent_at);
                 if !when.is_empty() {
                     let t = tiny.render(&when, if mine { Color::rgb(40, 40, 40) } else { grey_dim() });
                     self.canvas.blit(&t, bx.right() - t.w - BUBBLE_PAD, bx.bottom() - BUBBLE_PAD - t.h + 2);

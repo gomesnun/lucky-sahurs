@@ -8,7 +8,7 @@ use crate::core::state::now_ts;
 use crate::gfx::{Color, Rect, draw, ti};
 use crate::i18n::{tr, tr_short};
 use crate::online::cloud_cache::{fetch_leaderboards, lb_data_complete, lb_fetch_period, lb_next_update, store_lb_cache};
-use crate::online::firebase::{LEADERBOARD_PERIOD, LEADERBOARD_SIZE, online_error_text};
+use crate::online::firebase::{LEADERBOARD_SIZE, LEADERBOARD_SNAPSHOT_PERIOD, online_error_text};
 use crate::storage::value_f64;
 use crate::theme::*;
 use crate::tr;
@@ -157,7 +157,7 @@ impl Game {
         let close_rect = Rect::new(rect.right() - 48, rect.y + 18, 30, 30);
         self.button(close_rect, "X", &sb, mouse_pos, panel_light(), BAD, WHITE, cb(|g| g.close_leaderboard()), Bo::r(8));
         let sub_y = rect.y + 16 + title.h + 2;
-        let sub = fit_text(&small, &tr!("Top %d players - updates every %d minutes.", LEADERBOARD_SIZE as i64, (LEADERBOARD_PERIOD / 60.0).floor() as i64), panel_w - 52 - 60);
+        let sub = fit_text(&small, &tr!("Top %d players - updates every %d minutes.", LEADERBOARD_SIZE as i64, (LEADERBOARD_SNAPSHOT_PERIOD / 60.0).floor() as i64), panel_w - 52 - 60);
         let s = small.render(&sub, grey());
         self.canvas.blit(&s, rect.x + 26, sub_y);
 

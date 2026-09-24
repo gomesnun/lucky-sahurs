@@ -2,6 +2,7 @@
 //! (main.py). Each former Python mixin is an `impl Game` block in its own file.
 
 pub mod account;
+pub mod admin;
 pub mod audio;
 pub mod base;
 pub mod chat_panel;
@@ -19,7 +20,10 @@ pub mod milestones_panel;
 pub mod options;
 pub mod pets_panel;
 pub mod rebirth_panel;
+pub mod sell_panel;
+pub mod shop_panel;
 pub mod title_saves;
+pub mod trades;
 pub mod traits_panel;
 pub mod update_panel;
 pub mod updatelog;
@@ -121,6 +125,9 @@ pub struct Game {
     pub stats_open: bool,
     pub credits_open: bool,
     pub update_log_open: bool,
+    pub update_log_scroll: f64,
+    pub update_log_max_scroll: f64,
+    pub update_log_list_rect: Rect,
     pub dragging_slider: Option<&'static str>,
     pub slider_bars: HashMap<&'static str, Rect>,
     pub slider_hits: IndexMap<&'static str, Rect>,
@@ -142,6 +149,10 @@ pub struct Game {
     pub inv_mut: &'static str,
     pub inv_tier: Option<usize>,
     pub traits_open: bool,
+    pub index_open: bool,
+    pub index_scroll: f64,
+    pub index_max_scroll: f64,
+    pub index_list_rect: Rect,
     pub traits_scroll: f64,
     pub traits_max_scroll: f64,
     pub traits_list_rect: Rect,
@@ -152,10 +163,16 @@ pub struct Game {
     pub rebirth_max_scroll: f64,
     pub rebirth_list_rect: Rect,
     pub milestones_selected_category: Option<&'static str>,
+    pub milestones_selected_group: Option<&'static str>,
     pub tree_selected_category: Option<&'static str>,
     pub roll_anim_start: f64,
     pub particles: Vec<Particle>,
     pub auto_accum: f64,
+    pub auto_upgrade_timer: f64,
+    /// the Auto Roller rolls faster than the card can show until this time (see draw_too_fast_card)
+    pub too_fast_until: f64,
+    /// the best pet since it got that fast
+    pub too_fast_best: Option<crate::core::state::Pet>,
     pub right_rect: Rect,
     pub left_rect: Rect,
 
@@ -234,6 +251,10 @@ pub struct Game {
     pub fb: feedback::FeedbackUi,
     pub chat: chat_panel::ChatUi,
     pub ev: events::EventsUi,
+    pub adm: admin::AdminUi,
+    pub trades: trades::TradesUi,
+    pub shop: shop_panel::ShopUi,
+    pub sell: sell_panel::SellUi,
     pub text_input_on: bool,
 }
 
@@ -289,6 +310,9 @@ impl Game {
             stats_open: false,
             credits_open: false,
             update_log_open: false,
+            update_log_scroll: 0.0,
+            update_log_max_scroll: 0.0,
+            update_log_list_rect: Rect::ZERO,
             dragging_slider: None,
             slider_bars: HashMap::new(),
             slider_hits: IndexMap::new(),
@@ -307,6 +331,10 @@ impl Game {
             inv_mut: "all",
             inv_tier: None,
             traits_open: false,
+            index_open: false,
+            index_scroll: 0.0,
+            index_max_scroll: 0.0,
+            index_list_rect: Rect::ZERO,
             traits_scroll: 0.0,
             traits_max_scroll: 0.0,
             traits_list_rect: Rect::ZERO,
@@ -317,10 +345,14 @@ impl Game {
             rebirth_max_scroll: 0.0,
             rebirth_list_rect: Rect::ZERO,
             milestones_selected_category: None,
+            milestones_selected_group: None,
             tree_selected_category: None,
             roll_anim_start: 0.0,
             particles: Vec::new(),
             auto_accum: 0.0,
+            auto_upgrade_timer: 0.0,
+            too_fast_until: 0.0,
+            too_fast_best: None,
             right_rect: Rect::ZERO,
             left_rect: Rect::ZERO,
             toast_text: None,
@@ -391,6 +423,10 @@ impl Game {
             fb: feedback::FeedbackUi::new(),
             chat: chat_panel::ChatUi::new(),
             ev: events::EventsUi::new(),
+            adm: admin::AdminUi::new(),
+            trades: trades::TradesUi::new(),
+            shop: shop_panel::ShopUi::new(),
+            sell: sell_panel::SellUi::new(),
             text_input_on: true,
         };
         if let Some(sdl) = sdl {
@@ -436,6 +472,10 @@ impl Game {
         self.inv_mut = "all";
         self.inv_tier = None;
         self.traits_open = false;
+        self.index_open = false;
+        self.index_scroll = 0.0;
+        self.index_max_scroll = 0.0;
+        self.index_list_rect = Rect::ZERO;
         self.traits_scroll = 0.0;
         self.traits_max_scroll = 0.0;
         self.traits_list_rect = Rect::ZERO;
@@ -446,10 +486,12 @@ impl Game {
         self.rebirth_max_scroll = 0.0;
         self.rebirth_list_rect = Rect::ZERO;
         self.milestones_selected_category = None;
+        self.milestones_selected_group = None;
         self.tree_selected_category = None;
         self.roll_anim_start = 0.0;
         self.particles = Vec::new();
         self.auto_accum = 0.0;
+        self.auto_upgrade_timer = 0.0;
         self.right_rect = Rect::ZERO;
         self.left_rect = Rect::ZERO;
     }
@@ -637,11 +679,14 @@ impl Game {
         match key {
             "right" => self.right_panel.set_scroll_abs(value),
             "left" => self.left_panel.set_scroll_abs(value),
+            "shop" => self.shop.scroll = clamp(value, self.shop.max_scroll),
+            "index" => self.index_scroll = clamp(value, self.index_max_scroll),
             "traits" => self.traits_scroll = clamp(value, self.traits_max_scroll),
             "rebirth" => self.rebirth_scroll = clamp(value, self.rebirth_max_scroll),
             "leaderboard" => self.lb_scroll = clamp(value, self.lb_max_scroll),
             "friends" => self.fr.scroll = clamp(value, self.fr.max_scroll),
             "feedback" => self.fb.scroll = clamp(value, self.fb.max_scroll),
+            "update_log" => self.update_log_scroll = clamp(value, self.update_log_max_scroll),
             "chat" => self.chat.scroll = clamp(self.chat.max_scroll - value, self.chat.max_scroll),
             _ => {}
         }
@@ -660,6 +705,13 @@ impl Game {
     }
 
     pub fn close_overlays(&mut self) {
+        if self.sell.target.is_some() {
+            self.close_sell();
+        }
+        self.adm.menu_open = false;
+        if self.adm.ban_open {
+            self.close_ban_admin();
+        }
         if self.options_open {
             self.close_options();
         }
@@ -669,8 +721,12 @@ impl Game {
         if self.fb.open {
             self.close_feedback();
         }
-        self.ev.admin_open = false;
+        if self.ev.admin_open {
+            self.close_event_admin();
+        }
         self.traits_open = false;
+        self.index_open = false;
+        self.shop.open = false;
         self.rebirth_open = false;
         self.rebirth_confirm = false;
         self.leaderboard_open = false;
@@ -680,7 +736,13 @@ impl Game {
     }
 
     pub fn close_overlay_on_outside_click(&mut self) {
-        if self.ev.admin_open {
+        if self.sell.target.is_some() {
+            self.close_sell();
+        } else if self.adm.menu_open {
+            self.close_admin_menu();
+        } else if self.adm.ban_open {
+            self.close_ban_admin();
+        } else if self.ev.admin_open {
             self.close_event_admin();
         } else if self.fr.open {
             self.close_friends();
@@ -698,6 +760,10 @@ impl Game {
             self.close_update_log();
         } else if self.traits_open && self.screen_mode == "game" {
             self.close_traits();
+        } else if self.index_open && self.screen_mode == "game" {
+            self.close_index_page();
+        } else if self.shop.open && self.screen_mode == "game" {
+            self.close_shop();
         } else if self.rebirth_open && self.screen_mode == "game" {
             self.close_rebirth();
         } else {
@@ -716,6 +782,8 @@ impl Game {
             self.state.playtime += dt;
             self.state.last_seen = Some(now_ts());
             self.update_auto(dt);
+            self.update_auto_upgrade(dt);
+            self.state.tick_potions(dt); // active potions only use up time with the game open
             self.update_cutscenes(dt);
             self.update_roll_rate(dt);
             self.check_milestones();
@@ -738,6 +806,7 @@ impl Game {
                 self.delete_confirm_slot = None;
             }
         }
+        self.tick_sell(dt);
         if self.rebirth_confirm {
             self.rebirth_confirm_timer -= dt;
             if self.rebirth_confirm_timer <= 0.0 {
@@ -769,6 +838,7 @@ impl Game {
             last = now;
             self.poll_worker();
             self.tick_updater(); // now and then checks GitHub for a new version
+            self.tick_ban(now_ts()); // was this account banned? (see admin.rs)
             self.tick_theme(dt);
             running = self.handle_events(&mut pump);
             if self.quit_requested {
@@ -880,12 +950,23 @@ impl Game {
     }
 
     pub fn on_text(&mut self, text: &str) {
-        if self.fr.open && self.fr.focus && !self.update_modal_active() {
+        if self.ban_screen_active() {
+        } else if self.adm.ban_open && self.adm.focus.is_some() && !self.update_modal_active() {
+            self.ban_type(text);
+        } else if self.sell.target.is_some() && self.sell.focus && !self.update_modal_active() {
+            self.sell_type(text);
+        } else if self.fr.open && self.fr.focus && !self.update_modal_active() {
             self.fr.search.add(text);
         } else if self.chat.uid.is_some() && self.chat.focus && !self.update_modal_active() {
             self.chat.field.add(text);
         } else if self.fb.open && self.fb.focus && !self.update_modal_active() {
             self.fb.field.add(text);
+        } else if self.ev.admin_open && self.ev.admin_focus.is_some() && !self.update_modal_active() {
+            if self.ev.admin_focus == Some("mult") {
+                self.ev.mult_field.add(text);
+            } else {
+                self.ev.seconds_field.add(text);
+            }
         } else if self.screen_mode == "account" && !self.update_modal_active() {
             if let Some(f) = self.acc.focus {
                 if let Some(fl) = self.acc.fields.get_mut(f) {
@@ -897,16 +978,24 @@ impl Game {
 
     pub fn on_key(&mut self, ev: KeyEv) {
         let k = ev.key;
-        if self.update_modal_active() && k != Keycode::F11 {
+        if (self.update_modal_active() || self.ban_screen_active()) && k != Keycode::F11 {
         } else if self.cutscene_active.is_some() && k != Keycode::F11 {
             self.skip_cutscene();
         } else if self.screen_mode == "account" && self.handle_account_key(ev) {
-        } else if self.handle_chat_key(ev) || self.handle_friends_key(ev) || self.handle_feedback_key(ev) {
+        } else if self.handle_sell_key(ev)
+            || self.handle_ban_key(ev)
+            || self.handle_chat_key(ev)
+            || self.handle_friends_key(ev)
+            || self.handle_feedback_key(ev)
+            || self.handle_event_admin_key(ev)
+        {
         } else if k == Keycode::F11 || (k == Keycode::F && ev.ctrl) {
             self.toggle_fullscreen();
         } else if k == Keycode::Escape || k == Keycode::AcBack {
             if self.screen_mode == "account" {
                 self.close_account();
+            } else if self.adm.menu_open {
+                self.close_admin_menu();
             } else if self.ev.admin_open {
                 self.close_event_admin();
             } else if self.fr.open {
@@ -928,6 +1017,10 @@ impl Game {
             } else if self.screen_mode == "title" {
             } else if self.traits_open {
                 self.traits_open = false;
+            } else if self.index_open {
+                self.close_index_page();
+            } else if self.shop.open {
+                self.close_shop();
             } else if self.rebirth_open {
                 self.close_rebirth();
             } else if self.right_panel.is_open() {
@@ -938,6 +1031,8 @@ impl Game {
         } else if self.options_open
             || self.stats_open
             || self.traits_open
+            || self.index_open
+            || self.shop.open
             || self.rebirth_open
             || self.leaderboard_open
             || self.credits_open
@@ -945,12 +1040,15 @@ impl Game {
             || self.fr.open
             || self.fb.open
             || self.ev.admin_open
+            || self.adm.menu_open
+            || self.adm.ban_open
+            || self.sell.target.is_some()
             || self.screen_mode != "game"
         {
         } else if k == Keycode::U || k == Keycode::T {
             self.open_right_panel("tree");
         } else if k == Keycode::I {
-            self.open_right_panel("index");
+            self.toggle_index_page();
         } else if k == Keycode::B {
             self.open_left_panel("bag");
         } else if k == Keycode::M {
@@ -976,6 +1074,16 @@ impl Game {
 
     pub fn scroll_at(&mut self, pos: (f64, f64), step: f64) -> bool {
         let clamp = |v: f64, m: f64| v.min(m).max(0.0);
+        if self.ban_screen_active() || self.adm.menu_open {
+            return false;
+        }
+        if self.adm.ban_open {
+            if self.adm.list_rect.collidepoint(pos) {
+                self.adm.scroll = clamp(self.adm.scroll + step, self.adm.max_scroll);
+                return true;
+            }
+            return false;
+        }
         if self.fb.open {
             if self.fb.list_rect.collidepoint(pos) {
                 self.fb.scroll = clamp(self.fb.scroll + step, self.fb.max_scroll);
@@ -991,8 +1099,15 @@ impl Game {
                 }
                 return false;
             }
-            if self.fr.list_rect.collidepoint(pos) || self.fr.avatar_picker {
+            if self.fr.list_rect.collidepoint(pos) || self.fr.avatar_picker || self.trades.target.is_some() {
                 self.fr.scroll = clamp(self.fr.scroll + step, self.fr.max_scroll);
+                return true;
+            }
+            return false;
+        }
+        if self.update_log_open {
+            if self.update_log_list_rect.collidepoint(pos) {
+                self.update_log_scroll = clamp(self.update_log_scroll + step, self.update_log_max_scroll);
                 return true;
             }
             return false;
@@ -1000,12 +1115,26 @@ impl Game {
         if self.screen_mode != "game"
             || self.options_open
             || self.stats_open
+            || self.sell.target.is_some()
             || self.leaderboard_open
             || self.credits_open
-            || self.update_log_open
             || self.update_modal_active()
             || self.cutscene_active.is_some()
         {
+            return false;
+        }
+        if self.shop.open {
+            if self.shop.list_rect.collidepoint(pos) {
+                self.shop.scroll = clamp(self.shop.scroll + step, self.shop.max_scroll);
+                return true;
+            }
+            return false;
+        }
+        if self.index_open {
+            if self.index_list_rect.collidepoint(pos) {
+                self.index_scroll = clamp(self.index_scroll + step, self.index_max_scroll);
+                return true;
+            }
             return false;
         }
         if self.traits_open && self.traits_list_rect.collidepoint(pos) {
@@ -1078,8 +1207,24 @@ impl Game {
             self.begin_modal();
             self.draw_event_admin(mouse_pos);
         }
+        if self.adm.menu_open {
+            self.begin_modal();
+            self.draw_admin_menu(mouse_pos);
+        }
+        if self.adm.ban_open {
+            self.begin_modal();
+            self.draw_ban_admin(mouse_pos);
+        }
+        if self.sell.target.is_some() {
+            self.begin_modal();
+            self.draw_sell_page(mouse_pos);
+        }
         if self.cutscene_active.is_some() {
             self.draw_cutscene(mouse_pos);
+        }
+        if self.ban_screen_active() && !self.update_modal_active() {
+            // banned account: on top of everything, it can only log out or quit
+            self.draw_ban_screen(mouse_pos);
         }
         if self.update_modal_active() {
             // "New version available": on top of EVERYTHING, blocks the rest

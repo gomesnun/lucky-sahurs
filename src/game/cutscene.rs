@@ -8,7 +8,7 @@ use crate::gfx::{Color, Rect, Surface, draw, ti, transform};
 use crate::i18n::tr;
 use crate::tr;
 use crate::ui::cards::{cell, rarity_glow_color, render_pet_card};
-use crate::ui::drawing::{draw_rainbow_border, ease_out_cubic, rarity_glow};
+use crate::ui::drawing::{draw_rainbow_border, draw_shockwave, ease_out_back, ease_out_cubic, rarity_glow};
 use crate::ui::widgets::Particle;
 use std::f64::consts::PI;
 use std::rc::Rc;
@@ -27,6 +27,11 @@ pub fn cutscene_style(key: &str) -> CutsceneStyle {
         "secreto" => CutsceneStyle { duration: 1.8, rays: 8, ambient: 10.0, burst: 26, shake: 0.0, label: "SECRET PET!" },
         "divino" => CutsceneStyle { duration: 2.2, rays: 12, ambient: 16.0, burst: 38, shake: 0.0, label: "DIVINE PET!" },
         "cosmico" => CutsceneStyle { duration: 2.6, rays: 16, ambient: 24.0, burst: 54, shake: 3.0, label: "COSMIC PET!" },
+        "etereo" => CutsceneStyle { duration: 3.6, rays: 26, ambient: 40.0, burst: 90, shake: 4.0, label: "ETHEREAL PET!" },
+        "celestial" => CutsceneStyle { duration: 4.0, rays: 30, ambient: 48.0, burst: 110, shake: 7.0, label: "CELESTIAL PET!" },
+        "absoluto" => CutsceneStyle { duration: 4.8, rays: 36, ambient: 60.0, burst: 140, shake: 10.0, label: "ABSOLUTE PET!" },
+        "primordial" => CutsceneStyle { duration: 5.4, rays: 40, ambient: 70.0, burst: 170, shake: 13.0, label: "PRIMORDIAL PET!" },
+        "paradoxo" => CutsceneStyle { duration: 6.0, rays: 48, ambient: 80.0, burst: 200, shake: 16.0, label: "PARADOX PET!" },
         _ => CutsceneStyle { duration: 3.2, rays: 22, ambient: 34.0, burst: 76, shake: 6.0, label: "TRANSCENDENT PET!" },
     }
 }
@@ -55,6 +60,17 @@ impl Game {
         self.cutscene_elapsed = 0.0;
         self.cutscene_particles.clear();
         self.cutscene_ambient_accum = 0.0;
+        if self.animations() {
+            let rarity = &rarities()[rarity_index];
+            let style = cutscene_style(rarity.key);
+            let (cx, cy) = (self.vw / 2, VIRTUAL_H / 2);
+            let col = rarity_glow_color(rarity.key);
+            let speed = 1.6 + 0.15 * (rarity.tier as f64 - TIER_SECRET as f64);
+            for k in 0..style.burst {
+                let c = if k % 3 != 0 { col } else { Color::rgb(255, 255, 255) };
+                self.cutscene_particles.push(Particle::with_speed(cx as f64, cy as f64, c, speed));
+            }
+        }
         self.play_roll_sfx(rarity_index, mutation, true, false);
     }
 
@@ -124,7 +140,11 @@ impl Game {
         }
         let cx = self.vw as f64 / 2.0 + shake_x;
         let cy = VIRTUAL_H as f64 / 2.0 + shake_y;
-        let color = Color::rgb(rarity.color.r, rarity.color.g, rarity.color.b);
+        let mut color = Color::rgb(rarity.color.r, rarity.color.g, rarity.color.b);
+        if (color.r as i32 + color.g as i32 + color.b as i32) < 120 {
+            // dark rarities (Secret, Absolute): the rays use the bright colour
+            color = rarity_glow_color(rarity.key);
+        }
 
         // dark backdrop + spinning light rays
         let mut overlay = Surface::new_alpha(self.vw, VIRTUAL_H);
@@ -156,27 +176,50 @@ impl Game {
             }
         }
 
-        // the pet card, popping in
-        let pop_t = ease_out_cubic((elapsed / 0.4).min(1.0));
+        // shockwaves from the card (more rings the better the rarity)
+        if anim {
+            let n_waves = 2 + (rarity.tier as i32 - TIER_SECRET as i32).max(0) / 2;
+            let wave_col = rarity_glow_color(rarity.key);
+            for k in 0..n_waves {
+                let t = (elapsed - k as f64 * 0.18) / 0.9;
+                if (0.0..=1.0).contains(&t) {
+                    let c = if k % 2 == 0 { wave_col } else { Color::rgb(255, 255, 255) };
+                    let r = 60.0 + t * self.vw.min(VIRTUAL_H) as f64 * 0.55;
+                    draw_shockwave(&mut self.canvas, (ti(cx), ti(cy)), r, c, 200.0 * (1.0 - t) * alpha_mul, 8.0 * (1.0 - t) + 2.0);
+                }
+            }
+        }
+
+        // the pet card: an elastic "pop" spinning into place
+        let pop_t = if anim { ease_out_back((elapsed / 0.55).min(1.0)) } else { 1.0 };
         let scale = 0.35 + 0.65 * pop_t;
+        let spin_deg = if anim { (1.0 - ease_out_cubic((elapsed / 0.55).min(1.0))) * -14.0 } else { 0.0 };
         let base = 220.max(380.min((self.vw.min(VIRTUAL_H) as f64 * 0.46) as i32));
         let income = self.state.pet_income(r_idx, mutation_key);
         let plates = vec![vec![cell(tr("Income"), tr!("+%s/sec", format_number(income)))]];
         let mut card_surf = render_pet_card(rarity, mutation_key, base, base, &plates, 0, false);
-        if scale < 0.995 {
+        if (scale - 1.0).abs() > 0.005 {
             let s = 1.max((base as f64 * scale) as i32);
             card_surf = Rc::new(transform::smoothscale(&card_surf, s, s));
         }
-        let card_rect = Rect::with_center(card_surf.w, card_surf.h, (ti(cx), ti(cy)));
+        if spin_deg.abs() > 0.3 {
+            card_surf = Rc::new(transform::rotozoom(&card_surf, spin_deg, 1.0));
+        }
+        let mut card_rect = Rect::with_center(card_surf.w, card_surf.h, (ti(cx), ti(cy)));
         if alpha_mul < 0.999 {
             self.canvas.blit_with_alpha(&card_surf, card_rect.x, card_rect.y, (255.0 * alpha_mul) as i32);
         } else {
             self.canvas.blit(&card_surf, card_rect.x, card_rect.y);
         }
+        if spin_deg.abs() > 0.3 {
+            // the borders on top (rainbow / mutation) use the upright card's size
+            let s = (base as f64 * scale) as i32;
+            card_rect = Rect::with_center(s, s, (ti(cx), ti(cy)));
+        }
         if rarity.key == "transcendente" && anim {
             draw_rainbow_border(&mut self.canvas, card_rect.inflate(-9, -9), 14, 3);
         }
-        if let Some(border) = mutation(mutation_key).and_then(|m| m.border) {
+        if let Some(border) = mutation(mutation_key).and_then(|m| m.border).filter(|_| mutation_key != "rainbow") {
             draw::rect(&mut self.canvas, border, card_rect.inflate(2, 2), 2, 14);
         }
 
@@ -194,6 +237,14 @@ impl Game {
             self.canvas.blit_with_alpha(&title, tr_rect.x, tr_rect.y, (255.0 * alpha_mul) as i32);
         } else {
             self.canvas.blit(&title, tr_rect.x, tr_rect.y);
+        }
+
+        // a white flash on opening (stronger on the better rarities)
+        if anim && elapsed < 0.3 {
+            let mut flash = Surface::new_alpha(self.vw, VIRTUAL_H);
+            let strength = 230.min(120 + 18 * (rarity.tier as i32 - TIER_SECRET as i32)) as f64;
+            flash.fill(Color::rgba(255, 255, 255, (strength * (1.0 - elapsed / 0.3)) as i32 as u8), None);
+            self.canvas.blit(&flash, 0, 0);
         }
 
         // skip hint

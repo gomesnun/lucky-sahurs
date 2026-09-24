@@ -572,10 +572,10 @@ impl Game {
         let f = &self.acc.fields[key];
         let display = if f.kind == "password" && !self.acc.show_pw { "*".repeat(f.len()) } else { f.text.clone() };
         let placeholder = match key {
-            "username" => tr("your username"),
-            "password" => tr("your password"),
-            "confirm" => tr("repeat the password"),
-            "email" => tr("your email"),
+            "username" => tr("Your username"),
+            "password" => tr("Your password"),
+            "confirm" => tr("Repeat the password"),
+            "email" => tr("Your email"),
             _ => tr("6-digit code"),
         };
         let focused = self.acc.focus == Some(key);
@@ -815,7 +815,16 @@ impl Game {
     }
 
     fn draw_reauth_stage(&mut self, mouse_pos: (f64, f64), cx: i32, x0: i32, card_w: i32) {
-        let rect = Rect::new(x0, 118, card_w, 372);
+        // the card's height follows the text (the description + an error/notice can take more than one line),
+        // otherwise "Confirm" and "Back" end up outside the card
+        let small = self.f.small.clone();
+        let desc_lines = crate::ui::fonts::wrap_text(&tr("Your email was confirmed, but your session is a bit old. Enter your password once more to finish."), &small, card_w - 56).len() as i32;
+        let msg_lines = match &self.acc.msg {
+            Some((m, _)) => crate::ui::fonts::wrap_text(m, &small, card_w - 48).len().min(3) as i32,
+            None => 0,
+        };
+        let card_h = 66 + desc_lines * 20 + 12 + 24 + 46 + 12 + msg_lines * 20 + 20 + 50;
+        let rect = Rect::new(x0, 118, card_w, card_h);
         draw_panel(&mut self.canvas, rect, Some(panel()), 16, true, None);
         self.blit_title(&tr("Confirm your password"), WHITE, (cx, rect.y + 34));
         let mut y = self.blit_centered_lines(&tr("Your email was confirmed, but your session is a bit old. Enter your password once more to finish."), cx, rect.y + 66, card_w - 56, 20);

@@ -21,6 +21,19 @@ pub const LEADERBOARD_PUBLISH_JITTER: f64 = 30.0;
 pub const LEADERBOARD_FETCH_DELAY: f64 = 60.0;
 pub const LEADERBOARD_MIN_GAP: f64 = 360.0;
 pub const LEADERBOARD_SIZE: usize = 50;
+/// Reading the leaderboard is a shared "snapshot", taken at most once per period for everyone (see
+/// backend/apps_script/Leaderboard.gs): the game reads just /public/leaderboard (1 read) instead of running the 4
+/// queries (up to 200 reads) itself. Must equal PERIOD_SECONDS in the script.
+pub const LEADERBOARD_SNAPSHOT_PERIOD: f64 = 30.0 * 60.0;
+/// The Leaderboard.gs Web App URL (NOT secret). Empty = the game runs the queries itself, like before.
+pub const LEADERBOARD_ENDPOINT: &str =
+    "https://script.google.com/macros/s/AKfycbzqd02_fwqe9juk3MLqbkNN4lTBI_F1EuI-Fuwx4LBtCpvL-i85RAfGY_Wwk6bjSm1UTQ/exec";
+/// taking the snapshot (4 queries in the script) can take a few seconds
+pub const LEADERBOARD_ENDPOINT_TIMEOUT: f64 = 30.0;
+/// Friends online: while you play, your /profiles/{uid} gets the server time ("last_seen") every X seconds.
+/// A friend counts as online if that time is less than PRESENCE_ONLINE seconds old.
+pub const PRESENCE_INTERVAL: f64 = 120.0;
+pub const PRESENCE_ONLINE: f64 = 5.0 * 60.0;
 pub const CLOUD_SYNC_INTERVAL: f64 = 90.0;
 pub const SESSION_HEARTBEAT: f64 = 30.0;
 pub const SESSION_STALE: f64 = 90.0;
@@ -232,6 +245,18 @@ fn agent() -> &'static ureq::Agent {
     })
 }
 
+/// The same with a longer timeout (the leaderboard script).
+fn slow_agent() -> &'static ureq::Agent {
+    static A: std::sync::OnceLock<ureq::Agent> = std::sync::OnceLock::new();
+    A.get_or_init(|| {
+        ureq::Agent::config_builder()
+            .timeout_global(Some(Duration::from_secs_f64(LEADERBOARD_ENDPOINT_TIMEOUT)))
+            .http_status_as_error(false)
+            .build()
+            .into()
+    })
+}
+
 pub enum Body {
     None,
     Json(Value),
@@ -239,7 +264,10 @@ pub enum Body {
 }
 
 pub fn http_json(method: &str, url: &str, body: Body, headers: &[(&str, String)]) -> Res<Value> {
-    let a = agent();
+    http_json_with(agent(), method, url, body, headers)
+}
+
+fn http_json_with(a: &ureq::Agent, method: &str, url: &str, body: Body, headers: &[(&str, String)]) -> Res<Value> {
     let mut hdrs: Vec<(String, String)> = vec![("Accept".into(), "application/json".into())];
     let data: Option<Vec<u8>> = match &body {
         Body::None => None,
@@ -463,7 +491,7 @@ pub struct Event {
     pub by: String,
 }
 
-fn event_from_doc(doc: &Value) -> Event {
+fn event_from_doc(doc: &Value, kind: &str) -> Event {
     let f = fs_fields(doc);
     let ends = match f.get("ends_at") {
         Some(FsVal::Str(_)) => parse_timestamp(f.get("ends_at")),
@@ -474,7 +502,7 @@ fn event_from_doc(doc: &Value) -> Event {
         Some(v) if v.truthy() => v.to_f64(),
         _ => 1.0,
     };
-    Event { kind: f.str_or("kind", "luck"), mult, ends_at: ends.filter(|e| *e != 0.0).unwrap_or(0.0), by: f.str_or("by", "") }
+    Event { kind: kind.to_string(), mult, ends_at: ends.filter(|e| *e != 0.0).unwrap_or(0.0), by: f.str_or("by", "") }
 }
 
 #[derive(Clone, Debug)]
@@ -498,6 +526,8 @@ pub struct Person {
     pub avatar_pet: Option<i64>,
     pub avatar_mut: String,
     pub time: Option<f64>,
+    /// the server time of their last "I'm playing" (None = never published / an old version)
+    pub last_seen: Option<f64>,
 }
 
 fn profile_from_doc(doc: &Value) -> Person {
@@ -515,6 +545,95 @@ fn profile_from_doc(doc: &Value) -> Person {
         avatar_pet: if pet < 0 { None } else { Some(pet) },
         avatar_mut: f.str_or("avatar_mut", "normal"),
         time: None,
+        last_seen: parse_timestamp(f.get("last_seen")),
+    }
+}
+
+/// Path of a pet's field in the wallet ("owned.<key>"). Pet keys start with a digit ("3_golden") and Firestore
+/// only accepts that in a field path between backticks: `3_golden`. Without them the server refused EVERY wallet
+/// increment (accepting trades, adding rolls, applying receipts).
+pub fn wallet_field_path(key: &str) -> String {
+    let simple = key.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    if simple { format!("owned.{}", key) } else { format!("owned.`{}`", key.replace('\\', "\\\\").replace('`', "\\`")) }
+}
+
+#[derive(Clone, Debug)]
+pub struct Ban {
+    pub uid: String,
+    pub username: String,
+    pub reason: String,
+    pub by: String,
+    pub at: Option<f64>,
+}
+
+fn ban_from_doc(doc: &Value) -> Ban {
+    let f = fs_fields(doc);
+    Ban { uid: doc_id(doc), username: f.str_or("username", "?"), reason: f.str_or("reason", ""), by: f.str_or("by", ""), at: parse_timestamp(f.get("at")) }
+}
+
+/// A pet trade between friends (only exists while it's pending).
+#[derive(Clone, Debug, Default)]
+pub struct Trade {
+    pub id: String,
+    pub from_uid: String,
+    pub to_uid: String,
+    pub offer: Vec<(String, i64)>,
+    pub request: Vec<(String, i64)>,
+}
+
+/// A receipt left in /users/{uid}/incoming by whoever accepted my trade: what I get and what I lose.
+#[derive(Clone, Debug)]
+pub struct Receipt {
+    pub id: String,
+    pub give: Vec<(String, i64)>,
+    pub take: Vec<(String, i64)>,
+}
+
+pub const MAX_TRADE_ITEMS: usize = 3;
+
+fn trade_item_fields(fields: &mut Map<String, Value>, prefix: &str, items: &[(String, i64)]) {
+    for i in 0..MAX_TRADE_ITEMS {
+        let (key, qty) = items.get(i).cloned().unwrap_or_default();
+        fields.insert(format!("{}_key{}", prefix, i + 1), fs_str(&key));
+        fields.insert(format!("{}_qty{}", prefix, i + 1), fs_int(qty));
+    }
+}
+
+fn trade_items_from_fields(f: &Fields, prefix: &str) -> Vec<(String, i64)> {
+    let mut out = Vec::new();
+    for i in 0..MAX_TRADE_ITEMS {
+        let key = f.str_or(&format!("{}_key{}", prefix, i + 1), "");
+        let qty = f.i64_or0(&format!("{}_qty{}", prefix, i + 1));
+        if !key.is_empty() && qty > 0 {
+            out.push((key, qty));
+        }
+    }
+    out
+}
+
+/// {"idx_mut": count} of a mapValue field (the wallet's "owned").
+fn int_map(doc: &Value, field: &str) -> HashMap<String, i64> {
+    let mut out = HashMap::new();
+    if let Some(Value::Object(m)) = doc.get("fields").and_then(|f| f.get(field)).and_then(|v| v.get("mapValue")).and_then(|m| m.get("fields")) {
+        for (k, v) in m {
+            if let Some(x) = fs_decode(v) {
+                out.insert(k.clone(), x.to_i64());
+            }
+        }
+    }
+    out
+}
+
+fn increments(delta: &[(String, i64)]) -> Vec<Value> {
+    delta.iter().map(|(k, q)| json!({"fieldPath": wallet_field_path(k), "increment": fs_int(*q)})).collect()
+}
+
+/// Adds up a list of (key, qty) the way Python's dict does (first-seen order).
+fn add_delta(delta: &mut Vec<(String, i64)>, key: &str, q: i64) {
+    match delta.iter_mut().find(|(k, _)| k == key) {
+        Some(e) => e.1 += q,
+        None => delta.push((key.to_string(), q)),
     }
 }
 
@@ -1005,7 +1124,11 @@ impl FirebaseClient {
                 "avatar_pet": fs_int(avatar_pet.unwrap_or(-1)),
                 "avatar_mut": fs_str(m),
             }},
-            "updateTransforms": [{"fieldPath": "updated_at", "setToServerValue": "REQUEST_TIME"}],
+            // last_seen = "I'm playing now" (friends see you online); the time is the server's
+            "updateTransforms": [
+                {"fieldPath": "updated_at", "setToServerValue": "REQUEST_TIME"},
+                {"fieldPath": "last_seen", "setToServerValue": "REQUEST_TIME"},
+            ],
         }]});
         self.fs("POST", ":commit", Some(body), &[]).map(|_| ())
     }
@@ -1054,7 +1177,7 @@ impl FirebaseClient {
         if uid.is_empty() {
             return None;
         }
-        Some(Person { uid, username: username.into(), avatar_pet: None, avatar_mut: "normal".into(), time: None })
+        Some(Person { uid, username: username.into(), avatar_pet: None, avatar_mut: "normal".into(), time: None, last_seen: None })
     }
 
     pub fn get_public_profile(&self, uid: &str) -> Res<Option<Person>> {
@@ -1115,7 +1238,14 @@ impl FirebaseClient {
             let f = fs_fields(&doc);
             let (ou, on) = if incoming { ("from_uid", "from_username") } else { ("to_uid", "to_username") };
             let Some(other_uid) = f.opt_str(ou) else { continue };
-            out.push(Person { uid: other_uid, username: f.str_or(on, "?"), avatar_pet: None, avatar_mut: "normal".into(), time: parse_timestamp(f.get("created_at")) });
+            out.push(Person {
+                uid: other_uid,
+                username: f.str_or(on, "?"),
+                avatar_pet: None,
+                avatar_mut: "normal".into(),
+                time: parse_timestamp(f.get("created_at")),
+                last_seen: None,
+            });
         }
         Ok(out)
     }
@@ -1132,14 +1262,27 @@ impl FirebaseClient {
         let mine = format!("{}/users/{}/friends/{}", self.docs_root, uid, from_uid);
         let theirs = format!("{}/users/{}/friends/{}", self.docs_root, from_uid, uid);
         let fu = if from_username.is_empty() { "?" } else { from_username };
-        let body = json!({"writes": [
-            {"update": {"name": mine, "fields": {"username": fs_str(fu)}},
-             "updateTransforms": [{"fieldPath": "since", "setToServerValue": "REQUEST_TIME"}]},
-            {"update": {"name": theirs, "fields": {"username": fs_str(&self.username().unwrap_or_default())}},
-             "updateTransforms": [{"fieldPath": "since", "setToServerValue": "REQUEST_TIME"}]},
-            {"delete": format!("{}{}", self.docs_root, Self::request_path(&uid, from_uid))},
-        ]});
-        self.fs("POST", ":commit", Some(body), &[]).map(|_| ())
+        let friends = vec![
+            json!({"update": {"name": mine, "fields": {"username": fs_str(fu)}},
+             "updateTransforms": [{"fieldPath": "since", "setToServerValue": "REQUEST_TIME"}]}),
+            json!({"update": {"name": theirs, "fields": {"username": fs_str(&self.username().unwrap_or_default())}},
+             "updateTransforms": [{"fieldPath": "since", "setToServerValue": "REQUEST_TIME"}]}),
+        ];
+        let request = json!({"delete": format!("{}{}", self.docs_root, Self::request_path(&uid, from_uid))});
+        let mut all = friends.clone();
+        all.push(request.clone());
+        match self.fs("POST", ":commit", Some(json!({"writes": all})), &[]) {
+            Ok(_) => Ok(()),
+            Err(e) if e.code != "denied" => Err(e),
+            Err(_) => {
+                // The request no longer exists on the server (cancelled and sent again, or the list was stale):
+                // deleting a missing document is refused by the rules and took the rest with it. Make the
+                // friend lists alone, then try deleting the request separately (no harm if that fails).
+                self.fs("POST", ":commit", Some(json!({"writes": friends})), &[])?;
+                let _ = self.fs("POST", ":commit", Some(json!({"writes": [request]})), &[]);
+                Ok(())
+            }
+        }
     }
 
     pub fn list_friends(&self) -> Res<Vec<Person>> {
@@ -1153,7 +1296,14 @@ impl FirebaseClient {
                     continue;
                 }
                 let f = fs_fields(doc);
-                out.push(Person { uid: fuid, username: f.str_or("username", "?"), avatar_pet: None, avatar_mut: "normal".into(), time: parse_timestamp(f.get("since")) });
+                out.push(Person {
+                    uid: fuid,
+                    username: f.str_or("username", "?"),
+                    avatar_pet: None,
+                    avatar_mut: "normal".into(),
+                    time: parse_timestamp(f.get("since")),
+                    last_seen: None,
+                });
             }
         }
         out.sort_by(|a, b| a.username.cmp(&b.username));
@@ -1229,33 +1379,291 @@ impl FirebaseClient {
         }
     }
 
-    pub fn get_event(&self) -> Res<Option<Event>> {
-        match self.fs("GET", "/events/current", None, &[]) {
-            Ok(d) => Ok(Some(event_from_doc(&d))),
+    /// Every global event running now: {"luck": ..., "money": ..., ...} - only the kinds that really have a
+    /// document (0, 1, 2 or all 3 at once, one per kind - see game/events.rs).
+    pub fn get_events(&self) -> Res<Vec<Event>> {
+        let res = match self.fs("GET", "/events", None, &[]) {
+            Ok(r) => r,
+            Err(e) if e.code == "not_found" => return Ok(Vec::new()),
+            Err(e) => return Err(e),
+        };
+        let mut out = Vec::new();
+        if let Some(Value::Array(docs)) = res.get("documents") {
+            for doc in docs {
+                let kind = doc_id(doc);
+                if !kind.is_empty() {
+                    out.push(event_from_doc(doc, &kind));
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// Starts (or replaces) the global event of THIS kind - it doesn't touch the other two, so all three can run
+    /// at once. Only goes through if the rules let this uid write.
+    pub fn start_event(&self, kind: &str, mult: f64, seconds: f64) -> Res<Event> {
+        let uid = self.need_uid()?;
+        // the SERVER's time, not the PC's: the rules compare ends_at with request.time, and a PC clock a few
+        // seconds off made some durations go through and others be refused
+        let server_ends = server_now() + seconds;
+        let by = self.username().filter(|s| !s.is_empty()).unwrap_or(uid);
+        let mut fields = Map::new();
+        fields.insert("by".into(), fs_str(&by));
+        fields.insert("ends_at".into(), json!({"timestampValue": iso_timestamp(server_ends)}));
+        fields.insert("mult".into(), fs_f64(mult));
+        let params: Vec<(String, String)> = fields.keys().map(|k| ("updateMask.fieldPaths".to_string(), k.clone())).collect();
+        self.fs("PATCH", &format!("/events/{}", kind), Some(json!({"fields": fields})), &params)?;
+        Ok(Event { kind: kind.into(), mult, ends_at: server_ends, by })
+    }
+
+    pub fn stop_event(&self, kind: &str) -> Res<()> {
+        match self.fs("DELETE", &format!("/events/{}", kind), None, &[]) {
+            Err(e) if e.code != "not_found" => Err(e),
+            _ => Ok(()),
+        }
+    }
+
+    // ---- bans (admins only; see /bans/{uid} in the rules) ----
+    /// This account's ban, or None if it isn't banned.
+    pub fn get_my_ban(&self) -> Res<Option<Ban>> {
+        let uid = self.need_uid()?;
+        match self.fs("GET", &format!("/bans/{}", uid), None, &[]) {
+            Ok(d) => Ok(Some(ban_from_doc(&d))),
             Err(e) if e.code == "not_found" => Ok(None),
             Err(e) => Err(e),
         }
     }
 
-    pub fn start_event(&self, kind: &str, mult: f64, seconds: f64) -> Res<Event> {
-        let uid = self.need_uid()?;
-        let ends = now() + seconds;
-        let by = self.username().filter(|s| !s.is_empty()).unwrap_or(uid);
-        let mut fields = Map::new();
-        fields.insert("by".into(), fs_str(&by));
-        fields.insert("ends_at".into(), json!({"timestampValue": iso_timestamp(ends)}));
-        fields.insert("kind".into(), fs_str(kind));
-        fields.insert("mult".into(), fs_f64(mult));
-        let params: Vec<(String, String)> = fields.keys().map(|k| ("updateMask.fieldPaths".to_string(), k.clone())).collect();
-        self.fs("PATCH", "/events/current", Some(json!({"fields": fields})), &params)?;
-        Ok(Event { kind: kind.into(), mult, ends_at: ends, by })
+    pub fn list_bans(&self, limit: usize) -> Res<Vec<Ban>> {
+        let res = self.fs("GET", "/bans", None, &[("pageSize".into(), limit.to_string())])?;
+        let mut out: Vec<Ban> = match res.get("documents") {
+            Some(Value::Array(docs)) => docs.iter().map(ban_from_doc).collect(),
+            _ => Vec::new(),
+        };
+        out.sort_by(|a, b| b.at.unwrap_or(0.0).partial_cmp(&a.at.unwrap_or(0.0)).unwrap_or(std::cmp::Ordering::Equal));
+        Ok(out)
     }
 
-    pub fn stop_event(&self) -> Res<()> {
-        match self.fs("DELETE", "/events/current", None, &[]) {
+    /// Bans the account 'uid' (with the reason) and takes it off the leaderboard.
+    pub fn ban_player(&self, uid: &str, username: &str, reason: &str) -> Res<()> {
+        let reason: String = reason.chars().take(300).collect();
+        let body = json!({"writes": [{
+            "update": {"name": format!("{}/bans/{}", self.docs_root, uid), "fields": {
+                "username": fs_str(username),
+                "reason": fs_str(&reason),
+                "by": fs_str(&self.username().unwrap_or_default()),
+            }},
+            "updateTransforms": [{"fieldPath": "at", "setToServerValue": "REQUEST_TIME"}],
+        }]});
+        self.fs("POST", ":commit", Some(body), &[])?;
+        // old rules (no "delete: if isAdmin()") - the ban counts anyway
+        let _ = self.fs("DELETE", &format!("/leaderboard/{}", uid), None, &[]);
+        Ok(())
+    }
+
+    pub fn unban_player(&self, uid: &str) -> Res<()> {
+        match self.fs("DELETE", &format!("/bans/{}", uid), None, &[]) {
             Err(e) if e.code != "not_found" => Err(e),
             _ => Ok(()),
         }
+    }
+
+    // ---- pet trades (between friends) ----
+    // The "wallet" (/users/{uid}/wallet/pets) is the Firestore copy of how many pets of each kind you have (same
+    // format as the save's "owned"). It is the wallet, not the local save, that trades use to check you really
+    // have what you offer - editing the save by hand doesn't change it. It syncs by itself whenever you roll
+    // (see tick_wallet).
+    //
+    // A trade (/trades/{id}) only exists while pending: accepting creates a "receipt" in
+    // /users/{other}/incoming/{id} with what they get/lose and deletes the trade; declining or cancelling just
+    // deletes it, without touching any wallet.
+    fn wallet_path(&self, uid: &str) -> String {
+        format!("/users/{}/wallet/pets", uid)
+    }
+
+    /// {"3_normal": 2, ...}. An empty/new account = {} (never an error for not existing yet).
+    pub fn get_wallet(&self, uid: Option<&str>) -> Res<HashMap<String, i64>> {
+        let uid = match uid {
+            Some(u) if !u.is_empty() => u.to_string(),
+            _ => self.need_uid()?,
+        };
+        match self.fs("GET", &self.wallet_path(&uid), None, &[]) {
+            Ok(doc) => Ok(int_map(&doc, "owned")),
+            Err(e) if e.code == "not_found" => Ok(HashMap::new()),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Adds (or subtracts, with negative values) 'delta' to the wallet - whenever you roll new pets. Uses
+    /// atomic increments: never loses an addition when two arrive at once.
+    pub fn sync_wallet(&self, delta: &[(String, i64)]) -> Res<()> {
+        if delta.is_empty() {
+            return Ok(());
+        }
+        let uid = self.need_uid()?;
+        let body = json!({"writes": [{
+            "update": {"name": format!("{}{}", self.docs_root, self.wallet_path(&uid)), "fields": {}},
+            "updateMask": {"fieldPaths": []},
+            "updateTransforms": increments(delta),
+        }]});
+        self.fs("POST", ":commit", Some(body), &[]).map(|_| ())
+    }
+
+    /// Replaces the online wallet with the save's CURRENT totals (sets, doesn't add). Covers pets you had before
+    /// the online wallet existed. Called before proposing a trade, so the wallet is never behind the save.
+    pub fn set_wallet_full(&self, owned: &[(String, i64)]) -> Res<()> {
+        let uid = self.need_uid()?;
+        let mut m = Map::new();
+        for (k, q) in owned {
+            if *q > 0 {
+                m.insert(k.clone(), fs_int(*q));
+            }
+        }
+        let fields = json!({"owned": {"mapValue": {"fields": m}}});
+        self.fs("PATCH", &self.wallet_path(&uid), Some(json!({"fields": fields})), &[("updateMask.fieldPaths".into(), "owned".into())]).map(|_| ())
+    }
+
+    /// offer / request: up to 3 (pet_key, qty) pairs. Whether you really have the pets is only enforced on the
+    /// accepting side (see accept_trade).
+    pub fn create_trade(&self, to_uid: &str, offer: &[(String, i64)], request: &[(String, i64)]) -> Res<String> {
+        let uid = self.need_uid()?;
+        let trade_id = new_doc_id();
+        let mut fields = Map::new();
+        fields.insert("from_uid".into(), fs_str(&uid));
+        fields.insert("to_uid".into(), fs_str(to_uid));
+        trade_item_fields(&mut fields, "offer", offer);
+        trade_item_fields(&mut fields, "request", request);
+        let mut keys: Vec<String> = fields.keys().cloned().collect();
+        keys.sort();
+        let mut params: Vec<(String, String)> = keys.into_iter().map(|k| ("updateMask.fieldPaths".to_string(), k)).collect();
+        params.push(("currentDocument.exists".into(), "false".into()));
+        self.fs("PATCH", &format!("/trades/{}", trade_id), Some(json!({"fields": fields})), &params)?;
+        Ok(trade_id)
+    }
+
+    fn list_trades(&self, field: &str, uid: &str) -> Res<Vec<Trade>> {
+        let q = json!({
+            "from": [{"collectionId": "trades"}],
+            "where": {"fieldFilter": {"field": {"fieldPath": field}, "op": "EQUAL", "value": {"stringValue": uid}}},
+            "limit": 100,
+        });
+        Ok(self
+            .run_query(":runQuery", q)?
+            .iter()
+            .filter(|doc| doc.get("name").is_some())
+            .map(|doc| {
+                let f = fs_fields(doc);
+                Trade {
+                    id: doc_id(doc),
+                    from_uid: f.str_or("from_uid", ""),
+                    to_uid: f.str_or("to_uid", ""),
+                    offer: trade_items_from_fields(&f, "offer"),
+                    request: trade_items_from_fields(&f, "request"),
+                }
+            })
+            .collect())
+    }
+
+    pub fn trades_sent(&self) -> Res<Vec<Trade>> {
+        let uid = self.need_uid()?;
+        self.list_trades("from_uid", &uid)
+    }
+
+    pub fn trades_received(&self) -> Res<Vec<Trade>> {
+        let uid = self.need_uid()?;
+        self.list_trades("to_uid", &uid)
+    }
+
+    /// Cancel (the proposer) or decline (the receiver) - the rules only allow deleting to one of the two.
+    pub fn cancel_trade(&self, trade_id: &str) -> Res<()> {
+        match self.fs("DELETE", &format!("/trades/{}", trade_id), None, &[]) {
+            Err(e) if e.code != "not_found" => Err(e),
+            _ => Ok(()),
+        }
+    }
+
+    /// Accept: MY wallet changes now (I give what was asked, I get what was offered); at the same time a receipt
+    /// lands in the proposer's inbox with what THEY still have to apply (only they can touch their wallet), and
+    /// the trade disappears (it can never be accepted again).
+    pub fn accept_trade(&self, trade_id: &str, from_uid: &str, offer: &[(String, i64)], request: &[(String, i64)]) -> Res<()> {
+        let uid = self.need_uid()?;
+        let mut my_delta: Vec<(String, i64)> = Vec::new();
+        for (k, q) in request {
+            add_delta(&mut my_delta, k, -q);
+        }
+        for (k, q) in offer {
+            add_delta(&mut my_delta, k, *q);
+        }
+        let mut receipt = Map::new();
+        trade_item_fields(&mut receipt, "give", offer); // what THEY get
+        trade_item_fields(&mut receipt, "take", request); // what THEY lose
+        let body = json!({"writes": [
+            {"update": {"name": format!("{}{}", self.docs_root, self.wallet_path(&uid)), "fields": {}},
+             "updateMask": {"fieldPaths": []},
+             "updateTransforms": increments(&my_delta)},
+            {"update": {"name": format!("{}/users/{}/incoming/{}", self.docs_root, from_uid, trade_id), "fields": receipt}},
+            {"delete": format!("{}/trades/{}", self.docs_root, trade_id)},
+        ]});
+        self.fs("POST", ":commit", Some(body), &[]).map(|_| ())
+    }
+
+    pub fn list_incoming(&self) -> Res<Vec<Receipt>> {
+        let uid = self.need_uid()?;
+        let res = self.fs("GET", &format!("/users/{}/incoming", uid), None, &[])?;
+        let mut out = Vec::new();
+        if let Some(Value::Array(docs)) = res.get("documents") {
+            for doc in docs {
+                let f = fs_fields(doc);
+                out.push(Receipt { id: doc_id(doc), give: trade_items_from_fields(&f, "give"), take: trade_items_from_fields(&f, "take") });
+            }
+        }
+        Ok(out)
+    }
+
+    /// Applies a receipt (see list_incoming) to my wallet and deletes it - automatic, the player never sees it.
+    pub fn apply_incoming(&self, receipt: &Receipt) -> Res<()> {
+        let uid = self.need_uid()?;
+        let mut delta: Vec<(String, i64)> = Vec::new();
+        for (k, q) in &receipt.give {
+            add_delta(&mut delta, k, *q);
+        }
+        for (k, q) in &receipt.take {
+            add_delta(&mut delta, k, -q);
+        }
+        let body = json!({"writes": [
+            {"update": {"name": format!("{}{}", self.docs_root, self.wallet_path(&uid)), "fields": {}},
+             "updateMask": {"fieldPaths": []},
+             "updateTransforms": increments(&delta)},
+            {"delete": format!("{}/users/{}/incoming/{}", self.docs_root, uid, receipt.id)},
+        ]});
+        self.fs("POST", ":commit", Some(body), &[]).map(|_| ())
+    }
+
+    // ---- shared leaderboard snapshot ----
+    /// The shared leaderboard snapshot (/public/leaderboard), or None if it doesn't exist yet. 1 read only.
+    pub fn get_leaderboard_snapshot(&self) -> Res<Option<Value>> {
+        let doc = match self.fs("GET", "/public/leaderboard", None, &[]) {
+            Ok(d) => d,
+            Err(e) if e.code == "not_found" => return Ok(None),
+            Err(e) => return Err(e),
+        };
+        let text = fs_fields(&doc).str_or("json", "");
+        Ok(serde_json::from_str::<Value>(&text).ok().filter(|v| v.is_object()))
+    }
+
+    /// Asks the script (LEADERBOARD_ENDPOINT) for this period's snapshot: if it doesn't exist yet, the script takes
+    /// it (once for everyone) and returns it. None if the script isn't configured.
+    pub fn request_leaderboard_snapshot() -> Res<Option<Value>> {
+        let url = LEADERBOARD_ENDPOINT.trim();
+        if url.is_empty() {
+            return Ok(None);
+        }
+        let res = http_json_with(slow_agent(), "GET", url, Body::None, &[])?;
+        if res.get("ok").map(|v| v.as_bool() == Some(true)).unwrap_or(false) {
+            return Ok(res.get("snapshot").filter(|s| s.is_object()).cloned());
+        }
+        let err = res.get("error").map(py_str).unwrap_or_else(|| "leaderboard script failed".into());
+        Err(OnlineError::new("server", err))
     }
 
     pub fn publish_feedback(&self, text: &str) -> Res<()> {

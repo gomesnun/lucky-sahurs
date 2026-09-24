@@ -372,6 +372,153 @@ fn paint_transcendent_bg(bg: &mut Surface, w: i32, h: i32) {
     }
 }
 
+fn lerp_line(bg: &mut Surface, a: Color, b: Color, t: f64, y: i32, w: i32) {
+    let l = |x: u8, z: u8| (x as f64 + (z as f64 - x as f64) * t) as i64 as u8;
+    draw::line(bg, Color::rgba(l(a.r, b.r), l(a.g, b.g), l(a.b, b.b), 255), (0, y), (w, y), 1);
+}
+
+/// Frosted glass: ice-blue -> almost white gradient, with diagonal shine bands and specks of light.
+fn paint_ethereal_bg(bg: &mut Surface, c1: Color, c2: Color, w: i32, h: i32) {
+    for y in 0..h {
+        lerp_line(bg, c2, c1, y as f64 / (h - 1).max(1) as f64, y, w);
+    }
+    let mut shine = Surface::new_alpha(w, h);
+    for (off, width, alpha) in [(0.15, 0.10, 90u8), (0.38, 0.05, 70), (0.70, 0.14, 55)] {
+        let x = (off * (w + h) as f64) as i32 - h;
+        let ww = (width * w as f64) as i32;
+        draw::polygon(&mut shine, Color::rgba(255, 255, 255, alpha), &[(x, h), (x + ww, h), (x + ww + h, 0), (x + h, 0)], 0);
+    }
+    bg.blit(&shine, 0, 0);
+    let mut rng = PyRandom::from_int(23);
+    for _ in 0..6.max((w as i64 * h as i64) / 1400) {
+        let x = rng.randrange(w as i64) as i32;
+        let y = rng.randrange(h as i64) as i32;
+        let r = [1, 1, 2][rng.choice_index(3)];
+        draw::circle(bg, Color::rgba(255, 255, 255, 255), (x, y), r, 0);
+    }
+}
+
+/// White-gold with sun rays from the top and constellations (stars joined by thin lines).
+fn paint_celestial_bg(bg: &mut Surface, c1: Color, c2: Color, w: i32, h: i32) {
+    for y in 0..h {
+        lerp_line(bg, c1, c2, y as f64 / (h - 1).max(1) as f64 * 0.55, y, w);
+    }
+    let mut rays = Surface::new_alpha(w, h);
+    let cx = w / 2;
+    let big = (w + h) as f64;
+    for i in 0..9 {
+        let a = std::f64::consts::PI * (0.1 + 0.8 * i as f64 / 8.0);
+        let tip = ((cx as f64 + a.cos() * big) as i32, (a.sin() * big) as i32);
+        let tip2 = ((cx as f64 + (a + 0.07).cos() * big) as i32, ((a + 0.07).sin() * big) as i32);
+        draw::polygon(&mut rays, Color::rgba(255, 255, 255, 60), &[(cx, -4), tip, tip2], 0);
+    }
+    bg.blit(&rays, 0, 0);
+    let mut rng = PyRandom::from_int(31);
+    let line_col = Color::rgba(180, 130, 30, 255);
+    for _ in 0..2.max((w as i64 * h as i64) / 9000) {
+        let mut pts = vec![(rng.randrange(w as i64) as i32, rng.randrange(h as i64) as i32)];
+        for _ in 0..3 {
+            let (px, py) = *pts.last().unwrap();
+            let nx = (px as i64 + rng.randint(-(w as i64) / 5, w as i64 / 5)).clamp(0, w as i64 - 1) as i32;
+            let ny = (py as i64 + rng.randint(-(h as i64) / 6, h as i64 / 6)).clamp(0, h as i64 - 1) as i32;
+            pts.push((nx, ny));
+        }
+        draw::lines(bg, line_col, false, &pts, 1);
+        for &(px, py) in &pts {
+            draw::circle(bg, Color::rgba(255, 255, 255, 255), (px, py), 2, 0);
+            draw::circle(bg, line_col, (px, py), 2, 1);
+        }
+    }
+}
+
+/// Black with golden rays from the centre and a golden ring: the final rarity.
+fn paint_absolute_bg(bg: &mut Surface, c1: Color, c2: Color, w: i32, h: i32) {
+    bg.fill(Color::rgba(c1.r, c1.g, c1.b, 255), None);
+    let (cx, cy) = (w as f64 / 2.0, h as f64 * 0.45);
+    let mut rays = Surface::new_alpha(w, h);
+    for i in 0..16 {
+        let a = std::f64::consts::TAU * i as f64 / 16.0;
+        let r = (w + h) as f64;
+        let p2 = ((cx + (a - 0.06).cos() * r) as i32, (cy + (a - 0.06).sin() * r) as i32);
+        let p3 = ((cx + (a + 0.06).cos() * r) as i32, (cy + (a + 0.06).sin() * r) as i32);
+        draw::polygon(&mut rays, Color::rgba(c2.r, c2.g, c2.b, if i % 2 == 0 { 70 } else { 35 }), &[(cx as i32, cy as i32), p2, p3], 0);
+    }
+    bg.blit(&rays, 0, 0);
+    let ring_r = (w.min(h) as f64 * 0.40) as i32;
+    draw::circle(bg, Color::rgba(c2.r, c2.g, c2.b, 255), (cx as i32, cy as i32), ring_r, 2.max(w / 80));
+    let mut rng = PyRandom::from_int(41);
+    for _ in 0..6.max((w as i64 * h as i64) / 1600) {
+        let x = rng.randrange(w as i64) as i32;
+        let y = rng.randrange(h as i64) as i32;
+        draw::circle(bg, Color::rgba(255, 226, 140, 255), (x, y), 1, 0);
+    }
+}
+
+/// Black rock with lava cracks (glowing orange) and embers.
+fn paint_primordial_bg(bg: &mut Surface, c1: Color, c2: Color, w: i32, h: i32) {
+    bg.fill(Color::rgba(c1.r, c1.g, c1.b, 255), None);
+    let mut glow = Surface::new_alpha(w, h);
+    let mut rng = PyRandom::from_int(53);
+    for _ in 0..4.max((w + h) / 45) {
+        let (mut x, mut y) = (rng.randrange(w as i64), rng.randrange(h as i64));
+        let mut pts = vec![(x as i32, y as i32)];
+        for _ in 0..rng.randint(3, 6) {
+            x += rng.randint(-(w as i64) / 6, w as i64 / 6);
+            y += rng.randint(-(h as i64) / 8, h as i64 / 5);
+            pts.push((x as i32, y as i32));
+        }
+        draw::lines(&mut glow, Color::rgba(c2.r, c2.g, c2.b, 90), false, &pts, 4.max(w / 30));
+        draw::lines(bg, Color::rgba(c2.r, c2.g, c2.b, 255), false, &pts, 1.max(w / 110));
+        draw::lines(bg, Color::rgba(255, 220, 120, 255), false, &pts, 1);
+    }
+    bg.blit(&glow, 0, 0);
+    for _ in 0..6.max((w as i64 * h as i64) / 1800) {
+        let x = rng.randrange(w as i64) as i32;
+        let y = rng.randrange(h as i64) as i32;
+        let g = rng.randint(120, 200) as u8;
+        let r = [1, 1, 2][rng.choice_index(3)];
+        draw::circle(bg, Color::rgba(255, g, 40, 255), (x, y), r, 0);
+    }
+}
+
+/// Half white / half black on the diagonal, with stars of the opposite colour on each side.
+fn paint_paradox_bg(bg: &mut Surface, c1: Color, c2: Color, w: i32, h: i32) {
+    bg.fill(Color::rgba(c1.r, c1.g, c1.b, 255), None);
+    draw::polygon(bg, Color::rgba(c2.r, c2.g, c2.b, 255), &[(w, 0), (w, h), (0, h)], 0);
+    let mut rng = PyRandom::from_int(61);
+    for _ in 0..8.max((w as i64 * h as i64) / 1500) {
+        let x = rng.randrange(w as i64) as i32;
+        let y = rng.randrange(h as i64) as i32;
+        let dark_side = x as i64 * h as i64 + y as i64 * w as i64 > w as i64 * h as i64; // below the diagonal
+        let col = if dark_side { Color::rgba(c1.r, c1.g, c1.b, 255) } else { Color::rgba(c2.r, c2.g, c2.b, 255) };
+        if rng.random() < 0.3 {
+            draw::line(bg, col, (x - 3, y), (x + 3, y), 1);
+            draw::line(bg, col, (x, y - 3), (x, y + 3), 1);
+        } else {
+            draw::circle(bg, col, (x, y), 1, 0);
+        }
+    }
+    draw::line(bg, Color::rgba(150, 100, 255, 255), (w, 0), (0, h), 2.max(w / 70));
+}
+
+/// Grows, overshoots the final size a little and comes back (an elastic "pop").
+pub fn ease_out_back(t: f64) -> f64 {
+    let overshoot = 1.9;
+    let t = t.clamp(0.0, 1.0) - 1.0;
+    1.0 + (overshoot + 1.0) * t.powi(3) + overshoot * t.powi(2)
+}
+
+/// An expanding ring (shockwave) with transparency.
+pub fn draw_shockwave(canvas: &mut Surface, center: (i32, i32), radius: f64, color: Color, alpha: f64, width: f64) {
+    if alpha <= 0.0 || radius <= 1.0 {
+        return;
+    }
+    let r = radius as i32;
+    let mut surf = Surface::new_alpha(r * 2 + 4, r * 2 + 4);
+    draw::circle(&mut surf, Color::rgba(color.r, color.g, color.b, alpha.clamp(0.0, 255.0) as u8), (r + 2, r + 2), r, 1.max(width as i32));
+    canvas.blit(&surf, center.0 - r - 2, center.1 - r - 2);
+}
+
 pub fn draw_rarity_bg(surface: &mut Surface, rect_local: Rect, rarity: &Rarity, radius: i32) {
     let c1 = rarity.color;
     let Some(c2) = rarity.color2 else {
@@ -390,6 +537,11 @@ pub fn draw_rarity_bg(surface: &mut Surface, rect_local: Rect, rarity: &Rarity, 
             match rarity.key {
                 "cosmico" => paint_cosmic_bg(&mut bg, c1, c2, w, h),
                 "transcendente" => paint_transcendent_bg(&mut bg, w, h),
+                "etereo" => paint_ethereal_bg(&mut bg, c1, c2, w, h),
+                "celestial" => paint_celestial_bg(&mut bg, c1, c2, w, h),
+                "absoluto" => paint_absolute_bg(&mut bg, c1, c2, w, h),
+                "primordial" => paint_primordial_bg(&mut bg, c1, c2, w, h),
+                "paradoxo" => paint_paradox_bg(&mut bg, c1, c2, w, h),
                 "secreto" => {
                     let stripe_w = 8.max(w / 14);
                     let mut x = full.left() - full.h;

@@ -4,7 +4,7 @@ use super::base::Bo;
 use super::{Game, cb};
 use crate::config::{TOPBAR_H, VIRTUAL_H};
 use crate::core::data::TRAITS;
-use crate::core::formatting::format_one_in;
+use crate::core::formatting::{format_number, format_one_in};
 use crate::gfx::{Color, Rect, Surf, draw, ti};
 use crate::i18n::tr;
 use crate::pyfmt::format as pyformat;
@@ -13,7 +13,6 @@ use crate::ui::cards::render_trait_card;
 use crate::ui::drawing::{dim_overlay, draw_panel};
 use crate::ui::fonts::{fit_text, wrap_text};
 use crate::{args, tr};
-use indexmap::IndexMap;
 use std::rc::Rc;
 
 const BATCH_ROW_H: i32 = 20;
@@ -134,7 +133,7 @@ impl Game {
         draw_panel(&mut self.canvas, rect, Some(panel_light()), 12, true, None);
         let sb = self.f.small_b.clone();
         let small = self.f.small.clone();
-        let title_txt = fit_text(&sb, &tr!("Batch summary (%d charges used):", total), rect.w - 28);
+        let title_txt = fit_text(&sb, &tr!("Batch summary (%s charges used):", format_number(total as f64)), rect.w - 28);
         let title = sb.render(&title_txt, WHITE);
         self.canvas.blit(&title, rect.x + 14, rect.y + 10);
         let mut ty = rect.y + 36;
@@ -145,7 +144,7 @@ impl Game {
             let count = batch[&idx];
             let swatch = Rect::new(rect.x + 14, ty + 3, 14, 14);
             draw::rect(&mut self.canvas, t.color, swatch, 0, 3);
-            let line = fit_text(&small, &pyformat("x%d  %s", &args![count, tr(t.name)]), rect.right() - 14 - (swatch.right() + 10));
+            let line = fit_text(&small, &pyformat("x%s  %s", &args![format_number(count as f64), tr(t.name)]), rect.right() - 14 - (swatch.right() + 10));
             let s = small.render(&line, WHITE);
             self.canvas.blit(&s, swatch.right() + 10, ty);
             ty += BATCH_ROW_H;
@@ -179,7 +178,7 @@ impl Game {
             y = card_rect.bottom() + 22;
         }
         let charges = self.state.trait_charges;
-        let charges_txt = med.render(&tr!("Charges available: %d", charges), if charges != 0 { GOOD } else { grey() });
+        let charges_txt = med.render(&tr!("Charges available: %s", format_number(charges as f64)), if charges != 0 { GOOD } else { grey() });
         let r = Rect::with_center(charges_txt.w, charges_txt.h, (rect.centerx(), y + charges_txt.h / 2));
         self.canvas.blit(&charges_txt, r.x, r.y);
         y += 34;
@@ -218,7 +217,7 @@ impl Game {
 
         self.button(
             Rect::new(rect.centerx() - btn_w / 2, y, btn_w, 40),
-            &tr!("Use All Charges (%d)", charges),
+            &tr!("Use All Charges (%s)", format_number(charges as f64)),
             &sb,
             mouse_pos,
             if can { Color::rgb(52, 120, 80) } else { Color::rgb(70, 73, 88) },
@@ -227,16 +226,11 @@ impl Game {
             if can {
                 cb(|g| {
                     let n = g.state.trait_charges;
-                    let mut results: IndexMap<usize, i64> = IndexMap::new();
-                    while g.state.trait_charges > 0 {
-                        if let Some(idx) = g.state.roll_trait() {
-                            *results.entry(idx).or_insert(0) += 1;
-                        }
-                    }
+                    let results = g.state.roll_traits_bulk(n); // 600M charges in a fraction of a second
                     if n > 0 {
                         g.state.last_trait_batch = Some(results);
                         g.play("trait_roll", 0.0);
-                        g.show_toast(&tr!("Used %d trait charges!", n), 1.8);
+                        g.show_toast(&tr!("Used %s trait charges!", format_number(n as f64)), 1.8);
                     }
                 })
             } else {
