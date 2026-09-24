@@ -21,13 +21,13 @@ const SFX_FILES: [(&str, &str, f64); 4] = [
 fn sfx_category_of(name: &str) -> Option<&'static str> {
     Some(match name {
         "click" | "equip" => "click",
-        "roll" | "cyclic" | "mut_golden" | "mut_diamond" => "roll",
+        "roll" | "cyclic" | "mut_golden" | "mut_diamond" | "mut_rainbow" => "roll",
         "trait_charge" | "trait_roll" => "traits",
         "buy" => "upgrades",
         "milestone" => "milestones",
         "rebirth" => "rebirth",
         n if n.starts_with("rar_") => match n[4..].parse::<i32>() {
-            Ok(t) if (2..11).contains(&t) => "roll",
+            Ok(t) if (2..16).contains(&t) => "roll",
             _ => return None,
         },
         _ => return None,
@@ -80,6 +80,7 @@ impl Game {
             ("cyclic", seq(&[784.0, 988.0, 1175.0], 0.06, 0.26)),
             ("mut_golden", seq(&[880.0, 1109.0, 1319.0], 0.06, 0.30)),
             ("mut_diamond", seq(&[1047.0, 1319.0, 1568.0, 2093.0], 0.06, 0.30)),
+            ("mut_rainbow", seq(&[1047.0, 1319.0, 1568.0, 2093.0, 2637.0], 0.06, 0.30)),
             ("rar_2", seq(&[523.0, 659.0], 0.07, 0.30)),
             ("rar_3", seq(&[523.0, 659.0, 784.0], 0.08, 0.30)),
             ("rar_4", seq(&[523.0, 659.0, 784.0, 1047.0], 0.08, 0.30)),
@@ -89,6 +90,11 @@ impl Game {
             ("rar_8", seq(&[523.0, 659.0, 784.0, 1047.0, 1319.0, 1568.0, 2093.0], 0.10, 0.30)),
             ("rar_9", seq(&[392.0, 523.0, 659.0, 784.0, 1047.0, 1319.0, 1568.0, 2093.0], 0.10, 0.30)),
             ("rar_10", seq(&[523.0, 659.0, 784.0, 1047.0, 1319.0, 1568.0, 2093.0, 2637.0, 3136.0], 0.11, 0.30)),
+            ("rar_11", seq(&[587.0, 740.0, 880.0, 1175.0, 1480.0, 1760.0, 2349.0, 2960.0, 3520.0], 0.11, 0.30)),
+            ("rar_12", seq(&[659.0, 831.0, 988.0, 1319.0, 1661.0, 1976.0, 2637.0, 3322.0, 3951.0], 0.12, 0.30)),
+            ("rar_13", seq(&[392.0, 523.0, 659.0, 784.0, 1047.0, 1319.0, 1568.0, 2093.0, 2637.0, 3136.0, 4186.0], 0.12, 0.30)),
+            ("rar_14", seq(&[330.0, 440.0, 554.0, 659.0, 880.0, 1109.0, 1319.0, 1760.0, 2217.0, 2637.0, 3520.0, 4435.0], 0.12, 0.30)),
+            ("rar_15", seq(&[262.0, 392.0, 523.0, 784.0, 1047.0, 1568.0, 2093.0, 3136.0, 4186.0, 3136.0, 4186.0, 5274.0], 0.12, 0.30)),
         ];
         for (name, data) in raw {
             self.sounds.insert(name.to_string(), mixer.chunk_from_samples(data));
@@ -167,7 +173,7 @@ impl Game {
 
     pub fn play_roll_sfx(&mut self, r_idx: usize, mutation: &str, manual: bool, quiet: bool) {
         let tier = rarities()[r_idx].tier;
-        if !manual && tier < 3 && mutation != "diamond" {
+        if !manual && tier < 3 && mutation != "diamond" && mutation != "rainbow" {
             return;
         }
         if !manual && quiet && tier < AUTO_QUIET_MIN_TIER {

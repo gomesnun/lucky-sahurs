@@ -2,9 +2,19 @@
 
 use super::Game;
 use super::audio::AUTO_QUIET_RPS;
-use crate::core::data::{MAX_MANUAL_CPS, TIER_COSMIC, rarities};
+use crate::core::data::{AUTO_UPGRADE_EVERY, MAX_MANUAL_CPS, TIER_COSMIC, TIER_ETHEREAL, pet_order, rarities};
 use crate::core::state::now_ts;
+use crate::gfx::Color;
+use crate::ui::cards::rarity_glow_color;
 use crate::ui::widgets::Particle;
+
+/// rolls done one by one per frame; the rest go in bulk
+pub const AUTO_MAX_EXACT: i64 = 50;
+
+/// PET_RANK: "best pet" = rarest (the list order isn't the rarity order)
+pub fn pet_rank(pet: usize) -> i64 {
+    pet_order().iter().position(|&p| p == pet).map(|p| p as i64).unwrap_or(-1)
+}
 
 impl Game {
     pub fn update_roll_rate(&mut self, dt: f64) {
@@ -32,17 +42,45 @@ impl Game {
             return;
         }
         self.auto_accum -= n as f64;
-        let n = n.min(50);
+        // up to AUTO_MAX_EXACT rolls per frame are done one by one (with the Golden/Diamond/Rainbow Roll bonuses);
+        // the rest (e.g. a x1M speed event) at once, by statistics (see roll_bulk)
+        let exact = n.min(AUTO_MAX_EXACT);
+        self.state.probs_cache = Some(self.state.pet_probs(1.0, None)); // the same for every roll of this frame
         let mut gained_charges = 0;
         let (mut best_r, mut best_m): (i64, &'static str) = (-1, "normal");
-        for _ in 0..n {
+        let rank_of = |r: i64| if r < 0 { -1 } else { pet_rank(r as usize) };
+        for _ in 0..exact {
             let (r, m, gained, _b) = self.state.roll();
-            if r as i64 > best_r {
+            if pet_rank(r) > rank_of(best_r) {
                 best_r = r as i64;
                 best_m = m;
             }
             if gained {
                 gained_charges += 1;
+            }
+        }
+        self.state.probs_cache = None;
+        if n > exact {
+            let (best, charges) = self.state.roll_bulk(n - exact);
+            gained_charges += charges;
+            if let Some((r, m)) = best {
+                if pet_rank(r) > rank_of(best_r) {
+                    best_r = r as i64;
+                    best_m = m;
+                }
+            }
+            if best_r >= 0 {
+                self.state.last_roll = Some((best_r as usize, best_m));
+            }
+            // too fast to show each pet: the middle card says so (see draw_too_fast_card), with the best pet
+            // since it got this fast
+            let now = now_ts();
+            if now > self.too_fast_until {
+                self.too_fast_best = None;
+            }
+            self.too_fast_until = now + 0.6;
+            if best_r >= 0 && self.too_fast_best.is_none_or(|b| pet_rank(best_r as usize) > pet_rank(b.0)) {
+                self.too_fast_best = Some((best_r as usize, best_m));
             }
         }
         if best_r >= 0 {
@@ -65,6 +103,21 @@ impl Game {
         }
         if self.state.auto_equip_unlocked() && self.state.auto_equip_best_on {
             self.state.equip_best();
+        }
+    }
+
+    /// Auto Upgrader (a Misc upgrade): every AUTO_UPGRADE_EVERY seconds it buys the cheapest upgrades it can pay.
+    pub fn update_auto_upgrade(&mut self, dt: f64) {
+        self.auto_upgrade_timer += dt;
+        if self.auto_upgrade_timer < AUTO_UPGRADE_EVERY {
+            return;
+        }
+        self.auto_upgrade_timer = 0.0;
+        if self.state.auto_upgrade_step() > 0 {
+            self.play("buy", 1.0);
+            if self.state.auto_equip_unlocked() && self.state.auto_equip_best_on {
+                self.state.equip_best(); // it may have bought new slots
+            }
         }
     }
 
@@ -114,16 +167,22 @@ impl Game {
         if !self.animations() || r.tier < 4 {
             return;
         }
+        // the "bright" colour (the dark rarities glow too)
+        let color = rarity_glow_color(r.key);
         let n = if r.tier < 7 {
             14
         } else if r.tier < TIER_COSMIC {
             24
-        } else {
+        } else if r.tier < TIER_ETHEREAL {
             36
+        } else {
+            56
         };
+        let speed = 1.0 + 0.06 * (r.tier as f64 - 4.0).max(0.0);
         let (cx, cy) = self.main_card_rect().center();
-        for _ in 0..n {
-            self.particles.push(Particle::new(cx as f64, cy as f64, r.color));
+        for k in 0..n {
+            let c = if k % 4 != 0 { color } else { Color::rgb(255, 255, 255) };
+            self.particles.push(Particle::with_speed(cx as f64, cy as f64, c, speed));
         }
     }
 }

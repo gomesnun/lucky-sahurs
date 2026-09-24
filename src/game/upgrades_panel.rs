@@ -42,6 +42,19 @@ impl Game {
             "luck_divine" => tr!("Now: x%.2f weight on Divine+", 1.0 + LUCK_DIVINE_PER_LEVEL * lvl),
             "money" => tr!("Now: x%.1f money (total)", s.money_multiplier()),
             "money_prism" => tr!("Now: x%.2f money (from this upgrade only)", 1.0 + MONEY_PRISM_PER_LEVEL * lvl),
+            "money_ultra" => tr!("Now: x%.2f money (from this upgrade only)", 1.0 + MONEY_ULTRA_PER_LEVEL * lvl),
+            "luck_2" => tr!("Now: x%.2f weight on Rare+", 1.0 + LUCK_2_PER_LEVEL * lvl),
+            "luck_ultra" => tr!("Now: x%.2f weight on Rare+", 1.0 + LUCK_ULTRA_PER_LEVEL * lvl),
+            "luck_prism_2" => {
+                let b = 1.0 + LUCK_PRISM_2_PER_LEVEL * lvl;
+                tr!("Now: x%.2f Divine+ ... x%.2f Ethereal+", b, b.powi(4))
+            }
+            k if k.starts_with("luck_tier_") => {
+                let tier_key = &k["luck_tier_".len()..];
+                let per = LUCK_TIER_PER_LEVEL.iter().find(|(t, _)| *t == tier_key).map(|(_, v)| *v).unwrap_or(0.0);
+                tr!("Now: x%.2f weight on %s+", 1.0 + per * lvl, tr(RARITY_TIERS[tier_index(tier_key)].name))
+            }
+            "rainbow_chance" | "rainbow_unlock" | "rainbow_chance_2" => tr!("Now: %.2f%% Rainbow (max %.1f%%)", s.mutation_chances().2 * 100.0, RAINBOW_MAX_CHANCE * 100.0),
             "slots" | "slots_plus" => tr!("Now: %d slots", s.max_slots()),
             "auto_speed" | "auto_unlock" | "auto_turbo" => tr!("Now: %.2f rolls/sec", s.auto_rolls_per_second()),
             "golden_chance" | "golden_unlock" | "golden_chance_2" => tr!("Now: %.1f%% Golden (max %.0f%%)", s.mutation_chances().0 * 100.0, GOLDEN_MAX_CHANCE * 100.0),
@@ -124,6 +137,21 @@ impl Game {
             let cat_txt = self.f.med.render(&format!("{}  ({}/{})", tr(cat.label), lvls, mx), accent());
             self.canvas.blit(&cat_txt, rect.x + 20, top + 42);
             top += 84;
+        } else if self.state.auto_upgrade_unlocked() {
+            // the Auto Upgrader switch (only shows after buying it in Misc)
+            let on = self.state.auto_upgrade_on;
+            self.button(
+                Rect::new(rect.x + 20, top, rect.w - 46, 36),
+                &tr!("Auto Upgrader: %s", if on { tr("ON") } else { tr("OFF") }),
+                &sb,
+                mouse_pos,
+                if on { Color::rgb(52, 120, 80) } else { panel_light() },
+                panel_lighter(),
+                WHITE,
+                cb(|g| g.state.auto_upgrade_on = !g.state.auto_upgrade_on),
+                Bo::r(9),
+            );
+            top += 46;
         }
         let content_rect = Rect::new(rect.x, top, rect.w, rect.bottom() - top);
         let scroll = self.right_panel.get_scroll();

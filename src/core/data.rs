@@ -524,6 +524,31 @@ pub const MILESTONES: [MilestoneCat; 15] = [
 ];
 pub const MILESTONE_CAT_ORDER: [&str; 15] = ["rolls", "traits_rolled", "golden_rolled", "diamond_rolled", "rainbow_rolled", "secret_rolled", "divine_rolled", "cosmic_rolled", "transcendent_rolled", "ethereal_rolled", "celestial_rolled", "absolute_rolled", "indexed_pets", "coins", "playtime"];
 
+/// Groups: several categories in one row of the main list, which opens a list of just them (the rarity ones are
+/// many: the list was huge).
+pub struct MilestoneGroup {
+    pub key: &'static str,
+    pub label: &'static str,
+    pub desc: &'static str,
+    pub categories: &'static [&'static str],
+}
+
+pub const MILESTONE_GROUPS: [MilestoneGroup; 1] = [MilestoneGroup {
+    key: "rarities",
+    label: "Rarity Milestones",
+    desc: "Secret, Divine, Cosmic, Transcendent, Ethereal, Celestial and Absolute pets rolled",
+    categories: &["secret_rolled", "divine_rolled", "cosmic_rolled", "transcendent_rolled", "ethereal_rolled", "celestial_rolled", "absolute_rolled"],
+}];
+
+pub fn milestone_group(key: &str) -> Option<&'static MilestoneGroup> {
+    MILESTONE_GROUPS.iter().find(|g| g.key == key)
+}
+
+/// MILESTONE_GROUP_OF: the group a category belongs to.
+pub fn milestone_group_of(category: &str) -> Option<&'static str> {
+    MILESTONE_GROUPS.iter().find(|g| g.categories.contains(&category)).map(|g| g.key)
+}
+
 pub fn milestone_cat(key: &str) -> Option<&'static MilestoneCat> {
     MILESTONES.iter().find(|m| m.key == key)
 }

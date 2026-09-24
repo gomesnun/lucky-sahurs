@@ -26,6 +26,11 @@ pub fn rarity_glow_color(key: &str) -> Color {
         "divino" => (255, 156, 210),
         "cosmico" => (160, 130, 255),
         "transcendente" => (130, 240, 255),
+        "etereo" => (150, 225, 255),
+        "celestial" => (255, 214, 110),
+        "absoluto" => (255, 190, 50),
+        "primordial" => (255, 110, 40),
+        "paradoxo" => (190, 150, 255),
         _ => (255, 255, 255),
     };
     Color::rgb(r, g, b)
@@ -306,6 +311,10 @@ pub fn render_pet_card(rarity: &Rarity, mutation_key: &str, w: i32, h: i32, plat
 
     let border = mutation(mutation_key).and_then(|m| m.border);
     match border {
+        Some(_) if mutation_key == "rainbow" => {
+            draw::rect(&mut surf, outline(), rect, 2, radius);
+            crate::ui::drawing::draw_rainbow_border(&mut surf, rect.inflate(-4, -4), 4.max(radius - 2), 3.max(rnd(4.0 * s)));
+        }
         Some(b) => {
             draw::rect(&mut surf, outline(), rect, 2, radius);
             draw::rect(&mut surf, b, rect.inflate(-4, -4), 3.max(rnd(4.0 * s)), 4.max(radius - 2));

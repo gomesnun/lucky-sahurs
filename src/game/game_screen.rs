@@ -3,7 +3,7 @@
 use super::base::{Bo, blit_center, blit_midtop};
 use super::{Game, cb};
 use crate::config::{TOPBAR_H, VIRTUAL_H};
-use crate::core::data::{INDEX_ENTRIES, MILESTONES, rarities};
+use crate::core::data::{INDEX_ENTRIES, MILESTONES, mutation, rarities};
 use crate::core::formatting::{format_number, format_one_in, format_playtime};
 use crate::core::state::now_ts;
 use crate::gfx::{Color, Rect, Surface, draw, ti, transform};
@@ -11,10 +11,12 @@ use crate::i18n::tr;
 use crate::pyfmt::format as pyformat;
 use crate::theme::*;
 use crate::tr;
-use crate::ui::cards::{cell, render_pet_card};
-use crate::ui::drawing::{bar_fill_surface, dim_overlay, draw_panel, draw_rainbow_border, draw_state_border, rainbow_glow_surface, rarity_glow};
-use crate::ui::fonts::is_light;
-use crate::ui::icons::load_icon;
+use crate::ui::cards::{cell, rarity_glow_color, render_pet_card};
+use crate::ui::drawing::{
+    bar_fill_surface, dim_overlay, draw_panel, draw_rainbow_border, draw_shockwave, draw_state_border, ease_out_back, rainbow_glow_surface, rarity_glow,
+};
+use crate::ui::fonts::{fit_text, is_light};
+use crate::ui::icons::{load_icon, load_pet_image};
 use std::rc::Rc;
 
 const HINT_H: i32 = 0;
@@ -84,6 +86,14 @@ impl Game {
             self.begin_modal();
             self.draw_traits_page(mouse_pos);
         }
+        if self.index_open {
+            self.begin_modal();
+            self.draw_index_page(mouse_pos);
+        }
+        if self.shop.open {
+            self.begin_modal();
+            self.draw_shop_page(mouse_pos);
+        }
         if self.rebirth_open {
             self.begin_modal();
             self.draw_rebirth_page(mouse_pos);
@@ -111,7 +121,8 @@ impl Game {
         let med = self.f.med.clone();
         let friends_rect = Rect::new(self.vw - 472, 15, 146, 40);
         self.button(friends_rect, &tr("Friends"), &med, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.toggle_friends()), Bo::default().icon("friends"));
-        let pedidos = self.friends_pending_count();
+        // red dot: unanswered friend requests + conversations with unread messages
+        let pedidos = self.friends_pending_count() + self.chat_unread_count() as i64;
         if pedidos > 0 {
             self.draw_friends_badge(friends_rect.topright(), pedidos);
         }
@@ -167,6 +178,7 @@ impl Game {
         self.close_overlays();
         if content == "milestones" {
             self.milestones_selected_category = None;
+            self.milestones_selected_group = None;
         } else if content == "tree" {
             self.tree_selected_category = None;
         }
@@ -181,7 +193,7 @@ impl Game {
     pub fn draw_side_buttons(&mut self, mouse_pos: (f64, f64)) {
         let size = 62;
         let step = size + 38;
-        let labels = [tr("INDEX"), tr("UPGRADES"), tr("MILESTONES"), tr("DAILY"), tr("BAG"), tr("REBIRTH"), tr("TRAITS")];
+        let labels = [tr("INDEX"), tr("UPGRADES"), tr("MILESTONES"), tr("DAILY"), tr("BAG"), tr("REBIRTH"), tr("TRAITS"), tr("SHOP")];
         let mut lf = self.f.small_b.clone();
         if labels.iter().map(|t| lf.render(t, WHITE).w).max().unwrap_or(0) > size + 24 {
             lf = self.f.tiny_b.clone();
@@ -194,7 +206,8 @@ impl Game {
         let rp_open = self.right_panel.is_open();
         let rc = self.right_panel.content;
         let y = column_top(4);
-        self.side_button(Rect::new(x, y, size, size), &labels[0], "index", mouse_pos, rp_open && rc == Some("index"), Rc::new(|g: &mut Game| g.open_right_panel("index")), Some(lf.clone()), 0, false);
+        let idx_open = self.index_open;
+        self.side_button(Rect::new(x, y, size, size), &labels[0], "index", mouse_pos, idx_open, Rc::new(|g: &mut Game| g.toggle_index_page()), Some(lf.clone()), 0, false);
         let afford = self.state.affordable_upgrades_count() as i64;
         self.side_button(Rect::new(x, y + step, size, size), &labels[1], "tree", mouse_pos, rp_open && rc == Some("tree"), Rc::new(|g: &mut Game| g.open_right_panel("tree")), Some(lf.clone()), afford, false);
         self.side_button(Rect::new(x, y + 2 * step, size, size), &labels[2], "milestones", mouse_pos, rp_open && rc == Some("milestones"), Rc::new(|g: &mut Game| g.open_right_panel("milestones")), Some(lf.clone()), 0, false);
@@ -202,7 +215,7 @@ impl Game {
 
         let shown_l = if self.left_panel.visible() { self.left_panel.shown_width(self.left_w) } else { 0 };
         let lx = shown_l + 18;
-        let y = column_top(3);
+        let y = column_top(4); // the left column has 4 buttons (Bag, Rebirth, Traits, Shop)
         let lp_open = self.left_panel.is_open();
         self.side_button(Rect::new(lx, y, size, size), &labels[4], "bag", mouse_pos, lp_open, Rc::new(|g: &mut Game| g.open_left_panel("bag")), Some(lf.clone()), 0, false);
         let rb_open = self.rebirth_open;
@@ -210,6 +223,16 @@ impl Game {
         self.side_button(Rect::new(lx, y + step, size, size), &labels[5], "rebirth", mouse_pos, rb_open, Rc::new(|g: &mut Game| g.toggle_rebirth()), Some(lf.clone()), 0, rb_avail);
         let tr_open = self.traits_open;
         self.side_button(Rect::new(lx, y + 2 * step, size, size), &labels[6], "trait", mouse_pos, tr_open, Rc::new(|g: &mut Game| g.toggle_traits()), Some(lf.clone()), 0, false);
+        // Shop: locked until Rebirth 1 (the button shows anyway, dimmed)
+        let shop_rect = Rect::new(lx, y + 3 * step, size, size);
+        let sh_open = self.shop.open;
+        self.side_button(shop_rect, &labels[7], "shop", mouse_pos, sh_open, Rc::new(|g: &mut Game| g.toggle_shop()), Some(lf.clone()), 0, false);
+        if !self.state.shop_unlocked() {
+            let mut veil = Surface::new_alpha(shop_rect.w, shop_rect.h);
+            let vr = veil.get_rect();
+            draw::rect(&mut veil, Color::rgba(10, 12, 20, 150), vr, 0, 12);
+            self.canvas.blit(&veil, shop_rect.x, shop_rect.y);
+        }
         self.nav_mode = false;
     }
 
@@ -239,12 +262,53 @@ impl Game {
         (total, top)
     }
 
+    /// With the Auto Roller doing more rolls than can be shown (e.g. a x1M speed event), the middle card says so:
+    /// the rolls per second and the best pet since it got that fast.
+    fn draw_too_fast_card(&mut self, rect: Rect) {
+        let t = now_ts();
+        draw_panel(&mut self.canvas, rect, Some(panel_light()), 12, true, None);
+        let pulse = 0.5 + 0.5 * (t * 6.0).sin();
+        let a = accent();
+        let mixc = |c1: u8| (c1 as f64 + (255.0 - c1 as f64) * pulse) as i64 as u8;
+        draw_state_border(&mut self.canvas, rect, Color::rgb(mixc(a.r), mixc(a.g), mixc(a.b)), 12, 3);
+        let mut y = rect.y + 18;
+        let big = self.f.big.clone();
+        for line in [tr("TOO FAST"), tr("TO SHOW!")] {
+            let txt = big.render(&line, accent());
+            blit_midtop(&mut self.canvas, &txt, (rect.centerx(), y));
+            y += txt.h - 4;
+        }
+        let rps = self.f.small_b.render(&tr!("%s rolls / sec", format_number(self.state.auto_rolls_per_second())), WHITE);
+        blit_midtop(&mut self.canvas, &rps, (rect.centerx(), y + 6));
+        if let Some((r_idx, m)) = self.too_fast_best {
+            let rarity = &rarities()[r_idx];
+            let label = self.f.tiny_b.render(&tr("Best so far:"), grey());
+            blit_midtop(&mut self.canvas, &label, (rect.centerx(), rect.bottom() - 86));
+            let img = load_pet_image(rarity.pet, 44, false);
+            let ml = mutation(m).map(|x| x.label).unwrap_or("");
+            let name = if ml.is_empty() { rarity.pet.to_string() } else { format!("{} {}", tr(ml), rarity.pet) };
+            let sb = self.f.small_b.clone();
+            let nt = sb.render(&fit_text(&sb, &name, rect.w - 70), rarity_glow_color(rarity.key));
+            let total_w = if img.is_some() { 44 + 6 } else { 0 } + nt.w;
+            let mut x = rect.centerx() - total_w / 2;
+            if let Some(img) = img {
+                self.canvas.blit(&img, x, rect.bottom() - 64);
+                x += 50;
+            }
+            self.canvas.blit(&nt, x, rect.bottom() - 64 + 22 - nt.h / 2);
+            let rt = self.f.tiny.render(&tr(rarity.name), grey());
+            blit_midtop(&mut self.canvas, &rt, (rect.centerx(), rect.bottom() - 18));
+        }
+    }
+
     pub fn draw_main(&mut self, mouse_pos: (f64, f64)) {
         let center_x = self.main_center_x();
         let card_rect = self.main_card_rect();
         let (card_w, card_h) = card_rect.size();
 
-        if let Some((r_idx, m)) = self.state.last_roll {
+        if now_ts() < self.too_fast_until {
+            self.draw_too_fast_card(card_rect); // the Auto Roller is too fast to show each pet
+        } else if let Some((r_idx, m)) = self.state.last_roll {
             let rarity = &rarities()[r_idx];
             let income = self.state.pet_income(r_idx, m);
             let chance = self.state.combined_chance(r_idx, m, None, None);
@@ -255,11 +319,17 @@ impl Game {
             let glow = rarity_glow((card_w, card_h), glow_color, 30);
             let glow_rect = Rect::with_center(glow.w, glow.h, card_rect.center());
             let mut zoom = None;
+            let mut anim_elapsed = None;
             if self.animations() {
                 let elapsed = now_ts() - self.roll_anim_start;
-                let dur = 0.18;
+                // the better the rarity, the bigger the "pop" (and it lasts a little longer)
+                let dur = if rarity.tier < 3 { 0.18 } else { 0.32 };
                 if elapsed < dur {
-                    zoom = Some(0.72 + 0.28 * (elapsed / dur));
+                    let t = elapsed / dur;
+                    zoom = Some(if rarity.tier < 3 { 0.72 + 0.28 * t } else { 0.6 + 0.4 * ease_out_back(t) });
+                }
+                if elapsed < 0.6 {
+                    anim_elapsed = Some(elapsed);
                 }
             }
             self.canvas.blit(&glow, glow_rect.x, glow_rect.y);
@@ -268,6 +338,23 @@ impl Game {
                 None => card,
             };
             blit_center(&mut self.canvas, &card, card_rect.center());
+            if let Some(ae) = anim_elapsed.filter(|_| rarity.tier >= 3) {
+                // a shockwave in the rarity's colour (2 rings from Mythic on) + a quick white flash
+                let t = ae / 0.6;
+                let col = rarity_glow_color(rarity.key);
+                let base_r = card_w.max(card_h) as f64 * 0.55;
+                draw_shockwave(&mut self.canvas, card_rect.center(), base_r + t * base_r * 0.9, col, 220.0 * (1.0 - t), 6.0 * (1.0 - t) + 2.0);
+                if rarity.tier >= 5 && t > 0.15 {
+                    let t2 = (t - 0.15) / 0.85;
+                    draw_shockwave(&mut self.canvas, card_rect.center(), base_r + t2 * base_r * 0.6, WHITE, 160.0 * (1.0 - t2), 3.0);
+                }
+                if ae < 0.12 && rarity.tier >= 4 {
+                    let mut flash = Surface::new_alpha(card_rect.w, card_rect.h);
+                    let fr = flash.get_rect();
+                    draw::rect(&mut flash, Color::rgba(255, 255, 255, (170.0 * (1.0 - ae / 0.12)) as i32 as u8), fr, 0, 14);
+                    self.canvas.blit(&flash, card_rect.x, card_rect.y);
+                }
+            }
         } else {
             draw_panel(&mut self.canvas, card_rect, Some(panel_light()), 12, true, None);
             let t = self.f.med.render(&tr("Click ROLL to start!"), grey());
@@ -356,9 +443,26 @@ impl Game {
                 }
             }
         }
+        // equipped die (Shop): the button takes its colours, border and the little die on the left
+        let dice_style = self.roll_button_colors();
+        let (roll_base, roll_hover) = match dice_style {
+            Some(ds) => (ds.base, ds.hover),
+            None => (panel_light(), panel_lighter()),
+        };
+        if let Some(ds) = dice_style {
+            let roll_font = if roll_txt.h < self.f.huge.get_height() { self.f.big.clone() } else { self.f.huge.clone() };
+            roll_txt = roll_font.render(&tr("ROLL"), ds.text);
+            if roll_cx - roll_txt.w / 2 < roll_rect.x + roll_rect.h - 4 {
+                // doesn't cover the die
+                roll_cx = roll_rect.x + roll_rect.h - 4 + roll_txt.w / 2;
+            }
+        }
         let huge = self.f.huge.clone();
-        self.button(roll_rect, "", &huge, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.do_roll()), Bo::r(14).sfx(None));
+        self.button(roll_rect, "", &huge, mouse_pos, roll_base, roll_hover, WHITE, cb(|g| g.do_roll()), Bo::r(14).sfx(None));
         blit_center(&mut self.canvas, &roll_txt, (roll_cx, roll_rect.centery()));
+        if let Some(ds) = dice_style {
+            self.draw_roll_style_extras(roll_rect, ds);
+        }
         match bonus_kind {
             Some("rainbow") => draw_rainbow_border(&mut self.canvas, roll_rect.inflate(-9, -9), 10, 3),
             Some("diamond") => draw_state_border(&mut self.canvas, roll_rect, DIAMOND_BORDER, 14, 3),
@@ -385,8 +489,11 @@ impl Game {
         if self.state.rainbow_roll_unlocked() {
             let st = &self.state;
             let d = (st.rainbow_bonus_ready, st.rainbow_roll_mult(), st.rolls_until_rainbow_roll().unwrap_or(0), st.rainbow_roll_every());
-            self.draw_cycle_line("rainbow", y, d.0, "Rainbow Roll", d.1, d.2, d.3, Color::rgb(255, 140, 220), center_x, mouse_pos);
+            y = self.draw_cycle_line("rainbow", y, d.0, "Rainbow Roll", d.1, d.2, d.3, Color::rgb(255, 140, 220), center_x, mouse_pos);
         }
+
+        // active potions (Shop): a "pill" per potion with its level and the time left
+        self.draw_active_potions(center_x, y + 4);
     }
 
     #[allow(clippy::too_many_arguments)]

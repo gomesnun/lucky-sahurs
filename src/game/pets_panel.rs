@@ -2,36 +2,51 @@
 
 use super::base::{Bo, blit_center};
 use super::{Game, cb};
-use crate::core::data::{MUT_ORDER, RARITY_TIERS, base_pet_chance, is_mutation, mutation, pet_order, rarities};
+use crate::config::{TOPBAR_H, VIRTUAL_H};
+use crate::core::data::{INDEX_ENTRIES, MUT_ORDER, RARITY_TIERS, base_pet_chance, is_mutation, mutation, pet_order, rarities};
 use crate::core::formatting::{format_number, format_one_in};
 use crate::gfx::{Color, Rect, draw, ti};
 use crate::i18n::tr;
 use crate::theme::*;
 use crate::tr;
 use crate::ui::cards::{cell, cell3, render_pet_card};
-use crate::ui::drawing::draw_panel;
+use crate::ui::drawing::{dim_overlay, draw_panel, draw_rainbow_border};
 use crate::ui::fonts::{Font, wrap_text};
+use crate::ui::icons::load_icon;
 use std::rc::Rc;
 
 const INV_SORTS: [(&str, &str); 4] = [("money", "Money"), ("rarity", "Rarity"), ("mutation", "Mutation"), ("quantity", "Quantity")];
-const INV_MUT_FILTERS: [(&str, &str); 4] = [("all", "All"), ("normal", "Normal"), ("golden", "Golden"), ("diamond", "Diamond")];
+const INV_MUT_FILTERS: [(&str, &str); 5] = [("all", "All"), ("normal", "Normal"), ("golden", "Golden"), ("diamond", "Diamond"), ("rainbow", "Rainbow")];
+
+/// the upgrade that unlocks each mutation
+fn mutation_unlock(m: &str) -> Option<&'static str> {
+    match m {
+        "golden" => Some("golden_unlock"),
+        "diamond" => Some("diamond_unlock"),
+        "rainbow" => Some("rainbow_unlock"),
+        _ => None,
+    }
+}
 
 impl Game {
     pub fn draw_index_panel(&mut self, rect: Rect, mouse_pos: (f64, f64)) {
         self.panel_header(rect, &tr("Pet Index"), mouse_pos, Rc::new(|g: &mut Game| g.right_panel.close()));
-        let tabs = [("normal", tr("Normal")), ("golden", tr("Golden")), ("diamond", tr("Diamond"))];
+        let tabs = [("normal", tr("Normal")), ("golden", tr("Golden")), ("diamond", tr("Diamond")), ("rainbow", tr("Rainbow"))];
         let pad = 20;
-        let tab_w = (rect.w - pad * 2 - 16) / 3;
+        let tab_w = (rect.w - pad * 2 - 8 * (tabs.len() as i32 - 1)) / tabs.len() as i32;
         let mut tx = rect.x + pad;
         let ty = rect.y + 58;
         let sb = self.f.small_b.clone();
+        let tb = self.f.tiny_b.clone();
         for (key, label) in &tabs {
             let active = self.index_tab == *key;
             let k: &'static str = key;
+            let trect = Rect::new(tx, ty, tab_w, 30);
+            let font = if sb.size(label).0 <= tab_w - 10 { sb.clone() } else { tb.clone() };
             self.button(
-                Rect::new(tx, ty, tab_w, 30),
+                trect,
                 label,
-                &sb,
+                &font,
                 mouse_pos,
                 if active { accent() } else { panel_light() },
                 if !active { accent_hover() } else { accent() },
@@ -39,10 +54,13 @@ impl Game {
                 cb(move |g| g.index_tab = k),
                 Bo::r(8),
             );
+            if *key == "rainbow" && !active {
+                draw_rainbow_border(&mut self.canvas, trect.inflate(-6, -6), 6, 2);
+            }
             tx += tab_w + 8;
         }
         let m = self.index_tab;
-        let locked_mut = (m == "golden" && self.state.upgrade_level("golden_unlock") < 1) || (m == "diamond" && self.state.upgrade_level("diamond_unlock") < 1);
+        let locked_mut = mutation_unlock(m).is_some_and(|u| self.state.upgrade_level(u) < 1);
         let content = Rect::new(rect.x, ty + 40, rect.w, rect.bottom() - (ty + 40));
         let scroll = self.right_panel.get_scroll();
         self.push_clip(content);
@@ -69,12 +87,11 @@ impl Game {
             if crect.bottom() < content.top() - 4 || crect.top() > content.bottom() + 4 {
                 continue;
             }
-            let owned = self.state.count_owned(i, m);
             let real = self.state.combined_chance(i, m, Some(&live), Some(muts));
             let base_line = format!("({})", format_one_in(base_pet_chance(i, m)));
             let income_line = tr!("+%s/sec", format_number(self.state.pet_income(i, m)));
             let plates = vec![vec![cell(tr("Income"), income_line)], vec![cell3(tr("Chance"), format_one_in(real), base_line)]];
-            let locked = locked_mut || owned <= 0;
+            let locked = locked_mut || !self.state.is_indexed(i, m);
             let s = render_pet_card(rarity, m, card, card, &plates, 0, locked);
             self.canvas.blit(&s, crect.x, crect.y);
         }
@@ -85,8 +102,117 @@ impl Game {
         self.draw_scrollbar(content, scroll, content_h, Some("right"), Some(mouse_pos));
     }
 
+    // ---------------------------------------------------------------- the Index page (like the Traits one)
+    // With 64 verities x 4 mutations the side panel wasn't enough: the Index now opens as a big page with more
+    // columns. (draw_index_panel, above, stays only for compatibility.)
+    pub fn toggle_index_page(&mut self) {
+        if self.index_open {
+            self.close_index_page();
+        } else {
+            self.close_overlays();
+            self.index_open = true;
+            self.right_panel.close();
+            self.left_panel.close();
+        }
+    }
+
+    pub fn close_index_page(&mut self) {
+        self.index_open = false;
+    }
+
+    pub fn draw_index_page(&mut self, mouse_pos: (f64, f64)) {
+        let ov = dim_overlay(self.vw, VIRTUAL_H, 170);
+        self.canvas.blit(&ov, 0, 0);
+        let panel_w = 640.max((self.vw - 240).min(1300)); // wider than the Traits one: 4+ columns fit
+        let top = TOPBAR_H + 12;
+        let rect = Rect::new(self.vw / 2 - panel_w / 2, top, panel_w, VIRTUAL_H - top - 14);
+        draw_panel(&mut self.canvas, rect, Some(panel()), 16, true, None);
+        self.register_blocker(rect);
+
+        let sb = self.f.small_b.clone();
+        let title = self.f.big.render(&tr("Pet Index"), WHITE);
+        self.canvas.blit(&title, rect.x + 26, rect.y + 16);
+        self.button(Rect::new(rect.right() - 48, rect.y + 18, 30, 30), "X", &sb, mouse_pos, panel_light(), BAD, WHITE, cb(|g| g.close_index_page()), Bo::r(8));
+        let got = self.state.indexed_pets_count();
+        let sub = self.f.small.render(&tr!("Indexed: %d/%d  ·  %d verities, %d rarities", got, INDEX_ENTRIES as i64, rarities().len() as i64, RARITY_TIERS.len() as i64), grey());
+        self.canvas.blit(&sub, rect.x + 26, rect.y + 18 + title.h);
+
+        // tabs per mutation
+        let pad = 24;
+        let tabs = [("normal", tr("Normal")), ("golden", tr("Golden")), ("diamond", tr("Diamond")), ("rainbow", tr("Rainbow"))];
+        let tab_w = 170.min((rect.w - pad * 2 - 8 * (tabs.len() as i32 - 1)) / tabs.len() as i32);
+        let ty = rect.y + 26 + title.h + sub.h;
+        for (n, (key, label)) in tabs.iter().enumerate() {
+            let trect = Rect::new(rect.x + pad + n as i32 * (tab_w + 8), ty, tab_w, 34);
+            let active = self.index_tab == *key;
+            let k: &'static str = key;
+            self.button(
+                trect,
+                label,
+                &sb,
+                mouse_pos,
+                if active { accent() } else { panel_light() },
+                if !active { accent_hover() } else { accent() },
+                if active { BLACK } else { WHITE },
+                cb(move |g| {
+                    g.index_tab = k;
+                    g.index_scroll = 0.0;
+                }),
+                Bo::r(8),
+            );
+            if *key == "rainbow" && !active {
+                draw_rainbow_border(&mut self.canvas, trect.inflate(-6, -6), 6, 2);
+            }
+        }
+
+        let m = self.index_tab;
+        let locked_mut = mutation_unlock(m).is_some_and(|u| self.state.upgrade_level(u) < 1);
+        let content = Rect::new(rect.x + 12, ty + 46, rect.w - 24, rect.bottom() - 16 - (ty + 46));
+        self.index_list_rect = content;
+        let scroll = self.index_scroll;
+        self.push_clip(content);
+        let mut top_y = content.top() as f64 + 4.0 - scroll;
+        if locked_mut {
+            let t = self.f.small.render(&tr("Mutation not unlocked yet. Buy the upgrade in Upgrades."), BAD);
+            self.canvas.blit(&t, content.x + 12, ti(top_y));
+            top_y += 26.0;
+        }
+        let gap = 12;
+        let cols = 3.max((content.w - 24 + gap).div_euclid(190 + gap));
+        let card = (content.w - 24 - gap * (cols - 1)) / cols;
+        let live = self.state.pet_probs(1.0, None);
+        let muts = self.state.mutation_chances();
+        for (pos, &i) in pet_order().iter().enumerate() {
+            let pos = pos as i32;
+            let (col, row) = (pos % cols, pos / cols);
+            let crect = Rect::new(content.x + 6 + col * (card + gap), ti(top_y + (row * (card + gap)) as f64), card, card);
+            if crect.bottom() < content.top() - 4 || crect.top() > content.bottom() + 4 {
+                continue;
+            }
+            let real = self.state.combined_chance(i, m, Some(&live), Some(muts));
+            let base_line = format!("({})", format_one_in(base_pet_chance(i, m)));
+            let income_line = tr!("+%s/sec", format_number(self.state.pet_income(i, m)));
+            let plates = vec![vec![cell(tr("Income"), income_line)], vec![cell3(tr("Chance"), format_one_in(real), base_line)]];
+            let locked = locked_mut || !self.state.is_indexed(i, m);
+            let s = render_pet_card(&rarities()[i], m, card, card, &plates, 0, locked);
+            self.canvas.blit(&s, crect.x, crect.y);
+        }
+        let rows = (pet_order().len() as i32 + cols - 1) / cols;
+        let content_h = (top_y + scroll - content.top() as f64) + (rows * (card + gap)) as f64 + 10.0;
+        self.index_max_scroll = (content_h - content.h as f64).max(0.0);
+        self.index_scroll = self.index_scroll.clamp(0.0, self.index_max_scroll);
+        self.pop_clip();
+        self.draw_scrollbar(content, scroll, content_h, Some("index"), Some(mouse_pos));
+    }
+
+    /// The Bag switch: equipped pets <-> Inventory (every pet you have). From Potions it goes back to the pets.
     pub fn toggle_bag_view(&mut self) {
         self.bag_view = if self.bag_view == "inventory" { "equipped" } else { "inventory" };
+        self.left_panel.scroll.insert(Some("bag"), 0.0);
+    }
+
+    pub fn show_bag_potions(&mut self) {
+        self.bag_view = if self.bag_view == "potions" { "equipped" } else { "potions" };
         self.left_panel.scroll.insert(Some("bag"), 0.0);
     }
 
@@ -99,9 +225,26 @@ impl Game {
         let btn_y = rect.y + 74;
         let btn_w = rect.w - pad * 2;
         let in_inv = self.bag_view == "inventory";
+        let in_potions = self.bag_view == "potions";
         let sb = self.f.small_b.clone();
-        let view_rect = Rect::new(rect.x + pad, btn_y, btn_w, row_h);
+        // [Equipped Pets / Inventory] [Potions] side by side
+        let half = (btn_w - 8) / 2;
+        let view_rect = Rect::new(rect.x + pad, btn_y, half, row_h);
         self.button(view_rect, &if in_inv { tr("Equipped Pets") } else { tr("Inventory") }, &sb, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.toggle_bag_view()), Bo::r(9));
+        let pot_rect = Rect::new(view_rect.right() + 8, btn_y, btn_w - half - 8, row_h);
+        let n_pot: i64 = self.state.shop.potions.values().sum();
+        let pot_label = if n_pot > 0 { tr!("Potions (%d)", n_pot) } else { tr("Potions") };
+        self.button(
+            pot_rect,
+            &pot_label,
+            &sb,
+            mouse_pos,
+            if in_potions { accent() } else { panel_light() },
+            if !in_potions { accent_hover() } else { accent() },
+            if in_potions { BLACK } else { WHITE },
+            cb(|g| g.show_bag_potions()),
+            Bo::r(9).icon("shop/potion_luck"),
+        );
         let equip_rect = Rect::new(rect.x + pad, view_rect.bottom() + 8, btn_w, row_h);
         self.button(
             equip_rect,
@@ -155,7 +298,13 @@ impl Game {
         let content = Rect::new(rect.x, content_top, rect.w, rect.bottom() - content_top);
         let scroll = self.left_panel.get_scroll();
         self.push_clip(content);
-        let content_h = if in_inv { self.draw_bag_inventory(rect, content, scroll, mouse_pos) } else { self.draw_bag_equipped(rect, content, scroll, mouse_pos, pad) };
+        let content_h = if in_potions {
+            self.draw_bag_potions(rect, content, scroll, mouse_pos) as f64
+        } else if in_inv {
+            self.draw_bag_inventory(rect, content, scroll, mouse_pos)
+        } else {
+            self.draw_bag_equipped(rect, content, scroll, mouse_pos, pad)
+        };
         self.left_panel.set_max_scroll((content_h - content.h as f64).max(0.0));
         self.pop_clip();
         self.draw_scrollbar(content, scroll, content_h, Some("left"), Some(mouse_pos));
@@ -234,6 +383,12 @@ impl Game {
         self.inventory_scroll_top();
     }
 
+    pub fn step_inv_mut(&mut self, step: i64) {
+        let pos = INV_MUT_FILTERS.iter().position(|(k, _)| *k == self.inv_mut).unwrap_or(0) as i64;
+        let k = INV_MUT_FILTERS[(pos + step).rem_euclid(INV_MUT_FILTERS.len() as i64) as usize].0;
+        self.set_inv_mut(k);
+    }
+
     pub fn step_inv_tier(&mut self, step: i64) {
         let mut options: Vec<Option<usize>> = vec![None];
         options.extend((0..RARITY_TIERS.len()).map(Some));
@@ -257,26 +412,30 @@ impl Game {
         let order_label = if self.inv_high_first { tr("Highest first") } else { tr("Lowest first") };
         let order_w = w - half - gap;
         self.button(Rect::new(rect.x + pad + half + gap, y, order_w, h), &order_label, &font_for(&order_label, order_w), mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.toggle_inv_order()), Bo::r(8));
-        y += h + gap;
-        let tab_w = (w - gap * 3) / 4;
-        for (n, (key, label)) in INV_MUT_FILTERS.iter().enumerate() {
-            let active = self.inv_mut == *key;
-            let label = tr(label);
-            let k: &'static str = key;
-            self.button(
-                Rect::new(rect.x + pad + n as i32 * (tab_w + gap), y, tab_w, h),
-                &label,
-                &font_for(&label, tab_w),
-                mouse_pos,
-                if active { accent() } else { panel_light() },
-                if !active { accent_hover() } else { accent() },
-                if active { BLACK } else { WHITE },
-                cb(move |g| g.set_inv_mut(k)),
-                Bo::r(8),
-            );
-        }
+        // row 2: mutation filter (< Mutation: All >) - with 5 options the side-by-side buttons didn't fit
         y += h + gap;
         let arrow_w = 34;
+        self.button(Rect::new(rect.x + pad, y, arrow_w, h), "<", &sb, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.step_inv_mut(-1)), Bo::r(8));
+        self.button(Rect::new(rect.right() - pad - arrow_w, y, arrow_w, h), ">", &sb, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.step_inv_mut(1)), Bo::r(8));
+        let mid = Rect::new(rect.x + pad + arrow_w + gap, y, w - 2 * (arrow_w + gap), h);
+        let mut_name = INV_MUT_FILTERS.iter().find(|(k, _)| *k == self.inv_mut).map(|(_, l)| *l).unwrap_or("All");
+        let label = tr!("Mutation: %s", tr(mut_name));
+        let active = self.inv_mut != "all";
+        self.button(
+            mid,
+            &label,
+            &font_for(&label, mid.w),
+            mouse_pos,
+            if active { accent() } else { panel_light() },
+            if active { accent_hover() } else { panel_lighter() },
+            if active { BLACK } else { WHITE },
+            cb(|g| g.step_inv_mut(1)),
+            Bo::r(8),
+        );
+        if self.inv_mut == "rainbow" {
+            draw_rainbow_border(&mut self.canvas, mid.inflate(-6, -6), 6, 2);
+        }
+        y += h + gap;
         self.button(Rect::new(rect.x + pad, y, arrow_w, h), "<", &sb, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.step_inv_tier(-1)), Bo::r(8));
         self.button(Rect::new(rect.right() - pad - arrow_w, y, arrow_w, h), ">", &sb, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.step_inv_tier(1)), Bo::r(8));
         let mid = Rect::new(rect.x + pad + arrow_w + gap, y, w - 2 * (arrow_w + gap), h);
@@ -362,7 +521,7 @@ impl Game {
             let owned = self.state.count_owned(idx, m);
             let eq = self.state.equipped_count(idx, m);
             let income = self.state.pet_income(idx, m);
-            let plates = vec![vec![cell(tr("Income"), tr!("+%s/sec", format_number(income)))], vec![cell(tr("Have"), format_number(owned as f64)), cell(tr("Equipped"), eq.to_string())]];
+            let plates = vec![vec![cell(tr("Income"), tr!("+%s/sec", format_number(income)))], vec![cell(tr("Have"), format_number(owned as f64)), cell(tr("Equip"), eq.to_string())]];
             let s = render_pet_card(&rarities()[idx], m, card_w, card_h, &plates, 30, false);
             self.canvas.blit(&s, crect.x, crect.y);
             let bw = (card_w - 18) / 2;
@@ -372,6 +531,17 @@ impl Game {
             let can_plus = eq < owned && (self.state.equipped.len() as i64) < self.state.max_slots();
             self.button(minus, "-", &sb, mouse_pos, Color::rgb(38, 40, 52), BAD, WHITE, if can_minus { cb(move |g| { g.state.equip_remove_one(idx, m); }) } else { None }, Bo::r(7).enabled(can_minus).sfx(Some("equip")));
             self.button(plus, "+", &sb, mouse_pos, Color::rgb(38, 40, 52), GOOD, WHITE, if can_plus { cb(move |g| { g.state.equip_add(idx, m); }) } else { None }, Bo::r(7).enabled(can_plus).sfx(Some("equip")));
+
+            // the sell button ($): on the right, under the rarity, next to the verity's image
+            let sell_size = 28;
+            let sell_rect = Rect::new(crect.right() - 6 - sell_size, crect.y + 34, sell_size, sell_size);
+            let label = if load_icon("sell", 16).is_some() { "" } else { "$" };
+            self.button(sell_rect, label, &sb, mouse_pos, Color::rgb(38, 40, 52), Color::rgb(62, 66, 84), GOOD, cb(move |g| g.open_sell(idx, m)), Bo::r(7));
+            if let Some(icon) = load_icon("sell", sell_size - 6) {
+                if self.clip_allows(&sell_rect) {
+                    blit_center(&mut self.canvas, &icon, sell_rect.center());
+                }
+            }
         }
         let rows = (entries.len() as i32 + cols - 1) / cols;
         (top_y + scroll - content.top() as f64) + (rows * (card_h + gap)) as f64 + 10.0

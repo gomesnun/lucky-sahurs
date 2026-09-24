@@ -432,6 +432,71 @@ fn shots(dir: &str) {
     save(&g, "g_cutscene");
     g.end_cutscene();
 
+    // ---- v2.6-v2.9 screens
+    for key in ["etereo", "celestial", "absoluto", "primordial", "paradoxo"] {
+        g.start_cutscene(tier_first_pet(core::data::tier_index(key)), "rainbow");
+        g.cutscene_elapsed = 1.0;
+        g.draw(m);
+        save(&g, &format!("n_cutscene_{}", key));
+        g.end_cutscene();
+    }
+    g.state.rebirths = g.state.rebirths.max(1);
+    g.state.coins = 1e12;
+    let shop_now = online::firebase::server_now();
+    g.state.buy_dice("wood", shop_now);
+    *g.state.shop.potions.entry("luck_2".into()).or_insert(0) += 6;
+    *g.state.shop.potions.entry("money_1".into()).or_insert(0) += 2;
+    g.state.use_potion("money", 1);
+    g.draw(m);
+    save(&g, "n_main_dice");
+    g.too_fast_until = f64::INFINITY;
+    g.too_fast_best = Some((tier_first_pet(core::data::tier_index("absoluto")), "diamond"));
+    g.draw(m);
+    save(&g, "n_too_fast");
+    g.too_fast_until = 0.0;
+    g.toggle_index_page();
+    g.draw(m);
+    save(&g, "n_index_page");
+    g.index_tab = "rainbow";
+    g.index_scroll = 1e9;
+    g.draw(m);
+    g.draw(m);
+    save(&g, "n_index_page_rainbow_end");
+    g.close_overlays();
+    g.toggle_shop();
+    g.draw(m);
+    save(&g, "n_shop_dice");
+    g.shop.tab = "potions";
+    g.draw(m);
+    save(&g, "n_shop_potions");
+    g.close_overlays();
+    g.left_panel.open("bag");
+    g.left_panel.update(5.0);
+    g.show_bag_potions();
+    g.draw(m);
+    save(&g, "n_bag_potions");
+    g.bag_view = "inventory";
+    g.draw(m);
+    save(&g, "n_bag_inventory");
+    g.open_sell(0, "normal");
+    g.sell.field.set_text("3");
+    g.draw(m);
+    save(&g, "n_sell");
+    g.close_overlays();
+    g.left_panel.close();
+    g.left_panel.update(5.0);
+    g.right_panel.open("milestones");
+    g.right_panel.update(5.0);
+    g.milestones_selected_category = None;
+    g.draw(m);
+    save(&g, "n_milestones");
+    g.select_milestone_group(Some("rarities"));
+    g.draw(m);
+    save(&g, "n_milestones_rarities");
+    g.right_panel.close();
+    g.right_panel.update(5.0);
+    g.close_overlays();
+
     // ---- online screens with made-up data (no network: every refresh is pushed into the future)
     use online::firebase::{Event, Feedback, Message, Person};
     let now = 1_790_000_000.0;
@@ -443,6 +508,9 @@ fn shots(dir: &str) {
     g.account = Some(game::Account { uid: "u_me".into(), username: "tommy".into(), email: Some("t@x.io".into()), email_verified: true });
     let person = |uid: &str, name: &str, pet: Option<i64>, m: &str| Person { uid: uid.into(), username: name.into(), avatar_pet: pet, avatar_mut: m.into(), time: None, last_seen: None };
     g.fr.list = vec![person("u_a", "alice", Some(3), "golden"), person("u_b", "bob", None, "normal"), person("u_c", "carol_long_name", Some(12), "diamond")];
+    let snow = online::firebase::server_now();
+    g.fr.list[0].last_seen = Some(snow - 30.0);
+    g.fr.list[1].last_seen = Some(snow - 7300.0);
     g.fr.incoming = vec![person("u_d", "dave", Some(0), "normal")];
     g.fr.outgoing = vec![person("u_e", "eve", None, "normal")];
     g.fr.loaded = true;
@@ -485,6 +553,31 @@ fn shots(dir: &str) {
     g.chat.focus = true;
     g.draw(m);
     save(&g, "o_chat");
+    g.close_chat();
+    // trades: a slot tied to the account so trades_ready() is true
+    g.state.cloud_uid = Some("u_me".into());
+    g.trades.next_refresh = f64::INFINITY;
+    g.trades.loaded = true;
+    g.trades.received = vec![online::firebase::Trade {
+        id: "t1".into(),
+        from_uid: "u_a".into(),
+        to_uid: "u_me".into(),
+        offer: vec![("3_golden".into(), 2)],
+        request: vec![("0_normal".into(), 50), ("1_normal".into(), 5)],
+    }];
+    g.trades.sent = vec![online::firebase::Trade { id: "t2".into(), from_uid: "u_me".into(), to_uid: "u_b".into(), offer: vec![("2_diamond".into(), 1)], request: vec![("9_normal".into(), 1)] }];
+    g.set_friends_tab("trades");
+    g.draw(m);
+    save(&g, "o_trades");
+    g.trades.target = Some("u_a".into());
+    g.trades.target_name = "alice".into();
+    g.trades.their_wallet = Some([("3_golden".to_string(), 4i64), ("5_normal".to_string(), 12)].into_iter().collect());
+    g.set_trade_offer_qty("offer", "0_normal", 20);
+    g.set_trade_offer_qty("request", "3_golden", 2);
+    g.draw(m);
+    save(&g, "o_trade_propose");
+    g.close_trade_propose();
+    g.state.cloud_uid = None;
     g.close_friends();
     g.fb.next_refresh = f64::INFINITY;
     let fbk = |uid: &str, name: &str, text: &str, t: f64| Feedback { uid: uid.into(), username: name.into(), text: text.into(), updated_at: Some(t) };
@@ -508,6 +601,24 @@ fn shots(dir: &str) {
     g.toggle_event_admin();
     g.draw(m);
     save(&g, "o_event_admin");
+    g.close_event_admin();
+    g.toggle_admin_menu();
+    g.draw(m);
+    save(&g, "o_admin_menu");
+    g.adm.menu_open = false;
+    g.adm.ban_open = true;
+    g.adm.list_loaded = true;
+    g.adm.list = vec![online::firebase::Ban { uid: "u_x".into(), username: "cheater".into(), reason: "Edited the save".into(), by: "tommy".into(), at: Some(now - 3600.0) }];
+    g.adm.found = Some(person("u_b", "bob", None, "normal"));
+    g.draw(m);
+    save(&g, "o_ban_admin");
+    g.adm.ban_open = false;
+    g.adm.info = Some(online::firebase::Ban { uid: "u_me".into(), username: "tommy".into(), reason: "Testing the ban screen".into(), by: "admin".into(), at: Some(now - 86400.0) });
+    g.draw(m);
+    save(&g, "o_ban_screen");
+    g.adm.info = None;
+    g.adm.checked_uid = Some("u_me".into());
+    g.adm.check_at = f64::INFINITY;
     g.close_event_admin();
     g.lb_retry_at = f64::INFINITY;
     g.lb_data = Some(serde_json::json!({

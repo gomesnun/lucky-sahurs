@@ -298,7 +298,9 @@ impl Game {
             if y + *h as f64 >= (rect.top() - 4) as f64 && y <= (rect.bottom() + 4) as f64 {
                 let mine = me.as_deref() == Some(msg.from_uid.as_str());
                 let widest = lines.iter().map(|l| sb.size(l).0).max().unwrap_or(0);
-                let w = 60.max(widest + 2 * BUBBLE_PAD);
+                let when = chat_when(msg.sent_at);
+                let when_w = if when.is_empty() { 0 } else { tiny.size(&when).0 };
+                let w = 60.max(widest.max(when_w) + 2 * BUBBLE_PAD);
                 let x = if mine { rect.right() - 16 - w } else { rect.x };
                 let bx = Rect::new(x, y as i32, w, *h);
                 draw::rect(&mut self.canvas, if mine { accent() } else { panel_light() }, bx, 0, 12);
@@ -311,7 +313,6 @@ impl Game {
                     self.canvas.blit(&t, bx.x + BUBBLE_PAD, ty);
                     ty += line_h;
                 }
-                let when = chat_when(msg.sent_at);
                 if !when.is_empty() {
                     let t = tiny.render(&when, if mine { Color::rgb(40, 40, 40) } else { grey_dim() });
                     self.canvas.blit(&t, bx.right() - t.w - BUBBLE_PAD, bx.bottom() - BUBBLE_PAD - t.h + 2);

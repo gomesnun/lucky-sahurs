@@ -21,6 +21,7 @@ pub enum FieldRef {
     EventSeconds,
     BanSearch,
     BanReason,
+    SellAmount,
 }
 
 /// Optional arguments of button().
@@ -102,6 +103,7 @@ impl Game {
             FieldRef::EventSeconds => &mut self.ev.seconds_field,
             FieldRef::BanSearch => &mut self.adm.search,
             FieldRef::BanReason => &mut self.adm.reason,
+            FieldRef::SellAmount => &mut self.sell.field,
         }
     }
 
@@ -408,7 +410,7 @@ impl Game {
         let mut txt = if !label.is_empty() { Some(font.render(label, color)) } else { None };
         let Some(img) = img else {
             if let Some(mut t) = txt {
-                if t.w > rect.w - 6 {
+                if t.w > rect.w - 2 * pad {
                     t = self.texto_que_cabe(label, font, color, rect.w - 2 * pad);
                 }
                 blit_center(&mut self.canvas, &t, rect.center());

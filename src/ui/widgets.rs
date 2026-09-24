@@ -115,6 +115,40 @@ pub fn char_slice(s: &str, a: usize, b: usize) -> String {
     s.chars().skip(a).take(b.saturating_sub(a)).collect()
 }
 
+thread_local! {
+    static STAR_CACHE: std::cell::RefCell<HashMap<(u32, i32), std::rc::Rc<Surface>>> = std::cell::RefCell::new(HashMap::new());
+}
+
+/// A 4-pointed star (a sparkle) with a white centre, cached by colour and size.
+fn star_sprite(color: Color, r: i32) -> std::rc::Rc<Surface> {
+    let key = (Color::rgb(color.r, color.g, color.b).argb(), r);
+    if let Some(s) = STAR_CACHE.with(|c| c.borrow().get(&key).cloned()) {
+        return s;
+    }
+    let size = r * 2 + 2;
+    let mut surf = Surface::new_alpha(size, size);
+    let c = size as f64 / 2.0;
+    let pts: Vec<(i32, i32)> = (0..8)
+        .map(|i| {
+            let a = i as f64 * std::f64::consts::PI / 4.0;
+            let rr = if i % 2 == 0 { r as f64 } else { r as f64 * 0.32 };
+            ((c + a.cos() * rr) as i32, (c + a.sin() * rr) as i32)
+        })
+        .collect();
+    draw::polygon(&mut surf, Color::rgba(color.r, color.g, color.b, 255), &pts, 0);
+    draw::circle(&mut surf, Color::rgba(255, 255, 255, 230), (c as i32, c as i32), 1.max(r / 3), 0);
+    let surf = std::rc::Rc::new(surf);
+    STAR_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.len() > 300 {
+            cache.clear();
+        }
+        cache.insert(key, surf.clone());
+    });
+    surf
+}
+
+/// A spark that jumps off the card: 2/3 are little spinning, twinkling stars, the rest dots.
 pub struct Particle {
     pub x: f64,
     pub y: f64,
@@ -124,21 +158,45 @@ pub struct Particle {
     pub max_life: f64,
     pub color: Color,
     pub radius: f64,
+    pub star: bool,
+    pub spin: f64,
+    pub twinkle: f64,
 }
 
 impl Particle {
     pub fn new(x: f64, y: f64, color: Color) -> Particle {
+        Particle::with_speed(x, y, color, 1.0)
+    }
+
+    pub fn with_speed(x: f64, y: f64, color: Color, speed_mult: f64) -> Particle {
         let angle = rand_uniform(0.0, 2.0 * std::f64::consts::PI);
-        let speed = rand_uniform(60.0, 170.0);
-        let life = rand_uniform(0.45, 0.8);
+        let speed = rand_uniform(60.0, 190.0) * speed_mult;
+        let life = rand_uniform(0.5, 0.95);
         let radius = rand_uniform(2.5, 4.5);
-        Particle { x, y, vx: angle.cos() * speed, vy: angle.sin() * speed - 60.0, life, max_life: life, color, radius }
+        let star = crate::core::state::rand_random() < 0.66;
+        let spin = rand_uniform(0.0, 6.28);
+        let twinkle = rand_uniform(8.0, 16.0);
+        Particle {
+            x,
+            y,
+            vx: angle.cos() * speed,
+            vy: angle.sin() * speed - 60.0,
+            life,
+            max_life: life,
+            color: Color::rgb(color.r, color.g, color.b),
+            radius,
+            star,
+            spin,
+            twinkle,
+        }
     }
 
     pub fn update(&mut self, dt: f64) {
         self.x += self.vx * dt;
         self.y += self.vy * dt;
+        self.vx *= 1.0 - 0.9 * dt; // slows down a little in the air (feels "lighter")
         self.vy += 140.0 * dt;
+        self.spin += dt * 5.0;
         self.life -= dt;
     }
 
@@ -147,6 +205,15 @@ impl Particle {
             return;
         }
         let t = (self.life / self.max_life).max(0.0);
+        if self.star {
+            let flick = 0.65 + 0.35 * (self.spin * self.twinkle * 0.3).sin();
+            let r = 2.max((self.radius * 1.9 * (0.4 + 0.6 * t) * flick) as i32);
+            let spr = star_sprite(self.color, r);
+            let mut spr = crate::gfx::transform::rotozoom(&spr, self.spin.to_degrees() % 90.0, 1.0);
+            spr.set_alpha((255.0 * (t * 1.4).min(1.0)) as i32);
+            canvas.blit(&spr, ti(self.x - spr.w as f64 / 2.0), ti(self.y - spr.h as f64 / 2.0));
+            return;
+        }
         let r = 1.max((self.radius * t + 1.0) as i32);
         let mut s = Surface::new_alpha(r * 2, r * 2);
         draw::circle(&mut s, Color::rgba(self.color.r, self.color.g, self.color.b, (255.0 * t) as i32 as u8), (r, r), r, 0);
