@@ -1,0 +1,87 @@
+<!doctype html><html><head><style>html,body{margin:0;background:#000;overflow:hidden}
+#label{position:absolute;top:22px;width:100%;text-align:center;font:800 44px system-ui,sans-serif;letter-spacing:2px}
+#sub{position:absolute;bottom:22px;width:100%;text-align:center;font:600 20px system-ui,sans-serif;color:#bbb}</style>
+<script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js","three/addons/":"./node_modules/three/examples/jsm/"}}</script></head>
+<body><div id="label"></div><div id="sub"></div>
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {GLTFExporter} from 'three/addons/exporters/GLTFExporter.js';
+import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
+import {buildClips} from './anim.js';
+const P=new URLSearchParams(location.search), V=P.get('v')||'normal', W=+(P.get('w')||1300),H=+(P.get('h')||1000);
+const r=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});
+r.setSize(W,H); r.toneMapping=THREE.ACESFilmicToneMapping; r.outputColorSpace=THREE.SRGBColorSpace; document.body.appendChild(r.domElement);
+const scene=new THREE.Scene(), pm=new THREE.PMREMGenerator(r);
+scene.environment=pm.fromScene(new RoomEnvironment(),0.04).texture;
+const cfg={
+ normal:{bg:['#2a2a2a','#0b0b0b'],label:'Normal',col:'#e8d27a',sub:'original model'},
+ golden:{bg:['#5a3d00','#120a00'],label:'GOLDEN',col:'#ffcf3a',sub:'polished gold · warm glow'},
+ diamond:{bg:['#0a3a5c','#020a14'],label:'DIAMOND',col:'#8fe9ff',sub:'ice-crystal · clearcoat · iridescent'},
+ rainbow:{bg:['#3b1060','#07021a'],label:'RAINBOW',col:'#fff',sub:'chromatic skin · shifting hues'}}[V];
+const c=document.createElement('canvas');c.width=4;c.height=512;const g=c.getContext('2d'),gr=g.createLinearGradient(0,0,0,512);
+gr.addColorStop(0,cfg.bg[0]);gr.addColorStop(1,cfg.bg[1]);g.fillStyle=gr;g.fillRect(0,0,4,512);
+scene.background=new THREE.CanvasTexture(c); scene.background.colorSpace=THREE.SRGBColorSpace;
+const L=document.getElementById('label');L.textContent=cfg.label;L.style.color=cfg.col;
+if(V==='rainbow'){L.style.background='linear-gradient(90deg,#ff4d4d,#ffb84d,#fff04d,#4dff88,#4dc3ff,#b84dff)';L.style.webkitBackgroundClip='text';L.style.width='fit-content';L.style.left='50%';L.style.transform='translateX(-50%)';L.style.color='transparent';}
+L.style.textShadow=V==='rainbow'?'none':`0 0 24px ${cfg.col}`;
+document.getElementById('sub').textContent=cfg.sub;
+scene.add(new THREE.HemisphereLight(0xffffff,0x222222,0.6));
+const key=new THREE.DirectionalLight(0xffffff,2.2);key.position.set(2,4,3);scene.add(key);
+const rim=new THREE.DirectionalLight(new THREE.Color(cfg.col),V==='normal'?0.8:3);rim.position.set(-3,2,-3);scene.add(rim);
+
+// bake a variant texture from original luminance
+function bake(img,fn){const cv=document.createElement('canvas');cv.width=img.width;cv.height=img.height;
+ const x=cv.getContext('2d');x.drawImage(img,0,0);const d=x.getImageData(0,0,cv.width,cv.height),a=d.data,w=cv.width;
+ for(let i=0;i<a.length;i+=4){const l=(0.299*a[i]+0.587*a[i+1]+0.114*a[i+2])/255;
+  const red=a[i]>a[i+1]*1.35&&a[i]>90; // keep gums/teeth region natural-ish
+  const p=i/4,u=(p%w)/w,v=Math.floor(p/w)/w; const o=fn(l,u,v,red,[a[i],a[i+1],a[i+2]]);a[i]=o[0];a[i+1]=o[1];a[i+2]=o[2];}
+ x.putImageData(d,0,0);const t=new THREE.CanvasTexture(cv);t.flipY=false;t.colorSpace=THREE.SRGBColorSpace;return t;}
+const cl=v=>Math.max(0,Math.min(255,v));
+const gltf=await new GLTFLoader().loadAsync('./verity.glb');
+const root=gltf.scene; scene.add(root);
+let mesh;root.traverse(o=>{if(o.isMesh)mesh=o;});
+const old=mesh.material,img=old.map.image;
+let m=old;
+if(V==='golden'){
+ m=new THREE.MeshPhysicalMaterial({map:bake(img,(l,u,v,red,o)=>red?o:[cl(150+105*l),cl(100+95*l),cl(20+40*l)]),
+  metalness:1,roughness:0.3,clearcoat:0.6,clearcoatRoughness:0.1,emissive:new THREE.Color('#ff9a00'),emissiveIntensity:0.12,envMapIntensity:1.6});
+}else if(V==='diamond'){
+ m=new THREE.MeshPhysicalMaterial({map:bake(img,(l,u,v,red,o)=>red?[cl(o[0]*.6+60),cl(o[1]*.6+90),cl(o[2]*.6+120)]:[cl(40+120*l),cl(150+90*l),cl(220+35*l)]),
+  metalness:0.75,roughness:0.08,clearcoat:1,clearcoatRoughness:0.02,iridescence:1,iridescenceIOR:1.8,iridescenceThicknessRange:[200,700],
+  sheen:1,sheenColor:new THREE.Color('#bff6ff'),emissive:new THREE.Color('#2bc4ff'),emissiveIntensity:0.12,envMapIntensity:2.6});
+}else if(V==='rainbow'){
+ m=new THREE.MeshPhysicalMaterial({map:bake(img,(l,u,v,red,o)=>{if(red)return o;const q=cl(150+105*l);return[q,q,q];}),
+  vertexColors:true,metalness:0.3,roughness:0.3,clearcoat:1,iridescence:0.5,emissive:new THREE.Color('#ffffff'),emissiveIntensity:0.06,envMapIntensity:1.4});
+ // coherent rainbow bands over the body via vertex colors (by height)
+ const pos=mesh.geometry.attributes.position;mesh.geometry.computeBoundingBox();const bb=mesh.geometry.boundingBox;
+ const cols=new Float32Array(pos.count*3),tmp=new THREE.Color();
+ for(let i=0;i<pos.count;i++){const y=(pos.getY(i)-bb.min.y)/(bb.max.y-bb.min.y),x=(pos.getX(i)-bb.min.x)/(bb.max.x-bb.min.x);
+  tmp.setHSL((y*1.8+Math.abs(x-0.5)*0.6)%1,1,0.55);cols.set([tmp.r,tmp.g,tmp.b],i*3);}
+ mesh.geometry.setAttribute('color',new THREE.BufferAttribute(cols,3));
+}
+m.side=THREE.DoubleSide;m.transparent=old.transparent;m.alphaTest=0.3;m.name=V;m.map&&(m.map.needsUpdate=true);mesh.material=m;
+const clips=buildClips(root,gltf.animations[0]),mixer=new THREE.AnimationMixer(root);
+let cur=null;
+window.pose=(name,t)=>{const c=clips.find(c=>c.name===name);if(cur!==c){mixer.stopAllAction();mixer.clipAction(c).play();cur=c;}mixer.setTime(t%c.duration);};
+window.pose('Idle',0);
+root.updateMatrixWorld(true);
+const box=new THREE.Box3().setFromObject(root),sz=box.getSize(new THREE.Vector3()),ct=box.getCenter(new THREE.Vector3());
+const cam=new THREE.PerspectiveCamera(30,W/H,0.01,1000);const dist=Math.max(sz.y,sz.x/(W/H))*1.6;
+cam.position.set(ct.x+dist*0.45,ct.y+sz.y*0.05,ct.z+dist);cam.lookAt(ct.x,ct.y+sz.y*0.06,ct.z);
+// sparkles
+if(V!=='normal'){const n=160,pp=new Float32Array(n*3);for(let i=0;i<n;i++){pp.set([ct.x+(Math.random()-.5)*sz.y*1.1,ct.y+(Math.random()-.5)*sz.y*1.2,ct.z+(Math.random()-.5)*sz.y*0.6],i*3);}
+ const sg=new THREE.BufferGeometry();sg.setAttribute('position',new THREE.BufferAttribute(pp,3));
+ const sc=document.createElement('canvas');sc.width=sc.height=64;const sx=sc.getContext('2d'),rg=sx.createRadialGradient(32,32,0,32,32,32);
+ rg.addColorStop(0,'#fff');rg.addColorStop(0.25,cfg.col);rg.addColorStop(1,'rgba(0,0,0,0)');sx.fillStyle=rg;sx.fillRect(0,0,64,64);
+ const sp=new THREE.Points(sg,new THREE.PointsMaterial({size:sz.y*0.03,map:new THREE.CanvasTexture(sc),transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,vertexColors:false}));
+ if(V==='rainbow'){const cc=new Float32Array(n*3);for(let i=0;i<n;i++){const q=new THREE.Color().setHSL(Math.random(),1,.6);cc.set([q.r,q.g,q.b],i*3);}sg.setAttribute('color',new THREE.BufferAttribute(cc,3));sp.material.vertexColors=true;sp.material.color.set('#fff');}
+ scene.add(sp);window.sparkles=sp;}
+const CL=document.createElement('div');CL.style.cssText='position:absolute;top:84px;width:100%;text-align:center;font:700 26px system-ui;color:#ddd;letter-spacing:3px';document.body.appendChild(CL);
+window.renderAt=(name,t)=>{window.pose(name,t);CL.textContent=name.toUpperCase();if(window.sparkles){window.sparkles.rotation.y=t*0.25;}r.render(scene,cam);};
+window.renderAt('Idle',0);
+window.exportGLB=async()=>{if(window.sparkles)scene.remove(window.sparkles);
+ const b=await new GLTFExporter().parseAsync(root,{binary:true,animations:clips});
+ let s='';const u=new Uint8Array(b);for(let i=0;i<u.length;i+=32768)s+=String.fromCharCode.apply(null,u.subarray(i,i+32768));return btoa(s);};
+window.done=true;
+</script></body></html>
