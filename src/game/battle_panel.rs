@@ -292,7 +292,11 @@ impl Game {
             let Some(ev) = ui.queue.pop_front() else { break };
             let t = ui.next_start;
             let new_shot = match &ev {
-                Ev::Say(_) => None,
+                // "X used Y!": the camera already goes to the attacker, before the attack itself
+                Ev::Say(_) => match ui.queue.front() {
+                    Some(Ev::Lunge { side, special }) => Some(Shot::Attack(*side, *special)),
+                    _ => None,
+                },
                 Ev::SendOut { side, .. } => Some(Shot::SendOut(*side)),
                 // a monster's special is a dash, like a Strike
                 Ev::Lunge { side, special } => Some(Shot::Attack(*side, *special)),
@@ -302,9 +306,12 @@ impl Game {
                 Ev::Faint { side } => Some(Shot::Faint(*side)),
             };
             if let Some(sh) = new_shot {
-                ui.prev_shot = ui.shot;
-                ui.shot = sh;
-                ui.shot_t0 = t;
+                // the attack shot may have started on its "X used Y!" line already: keep it going
+                if sh != ui.shot {
+                    ui.prev_shot = ui.shot;
+                    ui.shot = sh;
+                    ui.shot_t0 = t;
+                }
             }
             match &ev {
                 Ev::Say(s) => ui.text = s.clone(),

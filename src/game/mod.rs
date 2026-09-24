@@ -25,6 +25,7 @@ pub mod sell_panel;
 pub mod evolve_panel;
 pub mod battle_panel;
 pub mod battle3d;
+pub mod monster3d;
 pub mod tutorial;
 pub mod shop_panel;
 pub mod title_saves;

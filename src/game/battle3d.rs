@@ -7,6 +7,7 @@ use crate::core::data::rarities;
 use crate::gfx::r3d::{Camera, Fog, Frame, Tex, UP, V3, View, v3};
 use crate::gfx::{Surf, Surface};
 use crate::ui::drawing::hsv_to_rgb;
+use super::monster3d::{MonsterDraw, draw_monster};
 use crate::ui::icons::load_pet_phase_image;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -389,8 +390,13 @@ fn fighter_pose(st: &Stage, side: usize) -> Pose {
     }
     // attacking
     let dl = t - st.lunge_t0[side];
-    let dash = !st.lunge_special[side] || monster;
-    if dash && (0.0..1.5).contains(&dl) {
+    let dash = !st.lunge_special[side];
+    if monster && st.lunge_special[side] && (0.85..2.0).contains(&dl) {
+        // a monster's Special: it roars in place (0-0.85), then dashes in and slashes
+        let dist = (base(1).x - base(0).x).abs() - 2.6;
+        let off = if dl < SPECIAL_ARRIVE { dist * ease((dl - 0.85) / (SPECIAL_ARRIVE - 0.85)) } else if dl < 1.5 { dist } else { dist * (1.0 - ease((dl - 1.5) / 0.5)) };
+        p = p + fwd * off;
+    } else if dash && (0.0..1.5).contains(&dl) {
         let dist = (base(1).x - base(0).x).abs() - 2.0;
         let off = if dl < 0.25 {
             -0.7 * ease(dl / 0.25)
@@ -402,10 +408,10 @@ fn fighter_pose(st: &Stage, side: usize) -> Pose {
             dist * (1.0 - ease((dl - 0.95) / 0.5))
         };
         p = p + fwd * off;
-        if (0.25..STRIKE_ARRIVE).contains(&dl) {
+        if (0.25..STRIKE_ARRIVE).contains(&dl) && !monster {
             p.y += ((dl - 0.25) / (STRIKE_ARRIVE - 0.25) * PI).sin() * 1.3;
         }
-    } else if !dash && (0.0..1.8).contains(&dl) {
+    } else if !dash && !monster && (0.0..1.8).contains(&dl) {
         // charging: rises a little, then recoils as it fires
         let up = if dl < 0.8 { ease(dl / 0.8) } else { 1.0 - ease((dl - 0.8) / 0.8) };
         p.y += up * 0.5;
@@ -424,6 +430,13 @@ fn fighter_pose(st: &Stage, side: usize) -> Pose {
     }
     // fainted: sinks and fades
     let mut alpha = 1.0;
+    if let (Some(f0), true) = (st.faint_t0[side], monster) {
+        let k = ((t - f0 - 1.3) / 0.5).clamp(0.0, 1.0);
+        if k >= 1.0 {
+            return Pose { pos: p, alpha: 0.0, flash: 0.0, visible: false };
+        }
+        return Pose { pos: p, alpha: 1.0 - k, flash, visible: true };
+    }
     if let Some(f0) = st.faint_t0[side] {
         let k = ((t - f0) / 1.1).clamp(0.0, 1.0);
         p.y -= ease(k) * 2.4;
@@ -435,6 +448,30 @@ fn fighter_pose(st: &Stage, side: usize) -> Pose {
     Pose { pos: p, alpha, flash, visible: true }
 }
 
+/// Which of the monster's animations plays now, and how far into it.
+fn monster_move(st: &Stage, side: usize) -> (&'static str, f64) {
+    let t = st.t;
+    if let Some(f0) = st.faint_t0[side] {
+        return ("Faint", t - f0);
+    }
+    let dh = t - st.hit_t0[side];
+    if (0.0..0.6).contains(&dh) {
+        return ("Hit", dh);
+    }
+    let dl = t - st.lunge_t0[side];
+    if st.lunge_special[side] {
+        if (0.0..0.85).contains(&dl) {
+            return ("Special", dl);
+        }
+        if (0.85..1.5).contains(&dl) {
+            return ("Attack", 0.35 + (dl - 0.85));
+        }
+    } else if (0.0..1.0).contains(&dl) {
+        return ("Attack", dl);
+    }
+    ("Idle", t + side as f64 * 1.3)
+}
+
 /// The middle of a verity (what effects aim at).
 fn center_of(st: &Stage, side: usize) -> V3 {
     let pose = fighter_pose(st, side);
@@ -443,6 +480,11 @@ fn center_of(st: &Stage, side: usize) -> V3 {
 }
 
 // ---------------------------------------------------------------- the camera
+/// Is this side a Monster (4 blocks tall: the camera stands further back)?
+fn tall(st: &Stage, side: usize) -> bool {
+    st.shown[side].is_some_and(|s| s.phase >= 3)
+}
+
 fn shot_camera(st: &Stage, shot: Shot, since: f64) -> Camera {
     let mid = (base(0) + base(1)) * 0.5 + v3(0.0, 1.2, 0.0);
     match shot {
@@ -450,34 +492,41 @@ fn shot_camera(st: &Stage, shot: Shot, since: f64) -> Camera {
             // Pokemon style: behind your verity (near, bottom left), looking at the rival (far, top right)
             let sway = (st.t * 0.21).sin();
             let look = base(0).lerp(base(1), 0.62) + v3(0.0, 1.0, 0.0);
-            let pos = base(0) - facing(0) * 6.5 + SIDEWAYS * (6.8 + sway * 0.8) + v3(0.0, 3.6 + (st.t * 0.15).sin() * 0.3, 0.0);
+            let back = if tall(st, 0) { 9.5 } else { 6.5 };
+            let high = if tall(st, 0) { 5.2 } else { 3.6 };
+            let pos = base(0) - facing(0) * back + SIDEWAYS * (6.8 + sway * 0.8) + v3(0.0, high + (st.t * 0.15).sin() * 0.3, 0.0);
             let _ = mid;
             Camera { pos, target: look, fov: 46.0 }
         }
         Shot::SendOut(s) => {
             let b = base(s);
             let rise = ease(since / 1.2) * 0.8;
-            Camera { pos: b + facing(s) * 5.0 + SIDEWAYS * 3.8 + v3(0.0, 2.0 + rise, 0.0), target: b + v3(0.0, 1.3, 0.0), fov: 52.0 }
+            let k = if tall(st, s) { 1.7 } else { 1.0 };
+            Camera { pos: b + facing(s) * 5.0 * k + SIDEWAYS * 3.8 * k + v3(0.0, 2.0 * k + rise, 0.0), target: b + v3(0.0, 1.3 * k, 0.0), fov: 52.0 }
         }
         Shot::Attack(a, special) => {
             let b = 1 - a;
             let push = ease(since / if special { 1.25 } else { 0.7 }) * 1.4;
-            let from = base(a) - facing(a) * (4.2 - push) + SIDEWAYS * 2.8 + v3(0.0, 2.6, 0.0);
+            let (back, high, out) = if tall(st, a) { (8.0, 5.4, 4.0) } else { (4.2, 2.6, 2.8) };
+            let from = base(a) - facing(a) * (back - push) + SIDEWAYS * out + v3(0.0, high, 0.0);
             Camera { pos: from, target: base(b) + v3(0.0, 1.1, 0.0), fov: 54.0 }
         }
         Shot::Impact(b) => {
             let spin = since * 0.35;
-            let pos = base(b) + facing(b) * (4.6 - spin) + SIDEWAYS * (2.6 + spin) + v3(0.0, 1.7, 0.0);
-            Camera { pos, target: base(b) + v3(0.0, 1.0, 0.0), fov: 50.0 }
+            let k = if tall(st, b) { 1.7 } else { 1.0 };
+            let pos = base(b) + facing(b) * (4.6 * k - spin) + SIDEWAYS * (2.6 * k + spin) + v3(0.0, 1.7 * k, 0.0);
+            Camera { pos, target: base(b) + v3(0.0, 1.0 * k, 0.0), fov: 50.0 }
         }
         Shot::Guard(s) | Shot::Heal(s) => {
             let a = since * 0.5;
-            let pos = base(s) + facing(s) * (3.4 * a.cos()) + SIDEWAYS * (2.4 + a.sin() * 1.5) + v3(0.0, 1.7, 0.0);
-            Camera { pos, target: base(s) + v3(0.0, 1.1, 0.0), fov: 50.0 }
+            let k = if tall(st, s) { 1.8 } else { 1.0 };
+            let pos = base(s) + facing(s) * (3.4 * k * a.cos()) + SIDEWAYS * ((2.4 + a.sin() * 1.5) * k) + v3(0.0, 1.7 * k, 0.0);
+            Camera { pos, target: base(s) + v3(0.0, 1.1 * k, 0.0), fov: 50.0 }
         }
         Shot::Faint(s) => {
-            let pos = base(s) + facing(s) * (4.5 - ease(since / 1.4)) + SIDEWAYS * 1.6 + v3(0.0, 0.6, 0.0);
-            Camera { pos, target: base(s) + v3(0.0, 0.7, 0.0), fov: 48.0 }
+            let k = if tall(st, s) { 1.8 } else { 1.0 };
+            let pos = base(s) + facing(s) * (4.5 * k - ease(since / 1.4)) + SIDEWAYS * 1.6 * k + v3(0.0, 0.6 * k, 0.0);
+            Camera { pos, target: base(s) + v3(0.0, 0.7 * k, 0.0), fov: 48.0 }
         }
     }
 }
@@ -549,11 +598,15 @@ pub fn draw_arena_3d(st: &Stage, w: usize, h: usize) -> (Surface, Marks) {
         }
         let fwd = facing(side);
         if s.phase >= 3 {
-            if let Some(img) = load_pet_phase_image(rarities()[s.pet].pet, 3, 384, false) {
-                // the monster art: the figure spans 0.23..0.86 of the image height
-                fr.sprite(&view, &img, pose.pos, (0.5, 0.86), MONSTER_H / 0.63, pose.alpha, pose.flash, side == 1, &fog);
+            // the real 3D monster, animated, in the verity's colours; its accessories float at its head
+            let (move_name, move_t) = monster_move(st, side);
+            let d = MonsterDraw { pet: s.pet, at: pose.pos, facing: fwd, height: MONSTER_H, move_name, move_t, alpha: pose.alpha, flash: pose.flash };
+            let head = draw_monster(&mut fr, &view, &fog, &d).unwrap_or(pose.pos + v3(0.0, MONSTER_H * 0.93, 0.0));
+            if let Some(acc) = accessories(Shown { phase: 0, ..s }) {
+                let head_d = MONSTER_H * 0.14;
+                fr.sprite(&view, &acc, head, (0.5, 0.542), head_d * 2.6 / 0.56, pose.alpha, 0.0, false, &fog);
             }
-            marks.head[side] = view.project(pose.pos + v3(0.0, MONSTER_H + 0.3, 0.0)).map(|(x, y, _)| (x, y));
+            marks.head[side] = view.project(head + v3(0.0, 0.8, 0.0)).map(|(x, y, _)| (x, y));
         } else {
             let Some(img) = load_pet_phase_image(rarities()[s.pet].pet, s.phase, IMG, false) else { continue };
             let img: &Surface = &img;
@@ -656,7 +709,8 @@ fn draw_effects(st: &Stage, fr: &mut Frame, view: &View) {
             }
         }
         // ---- a monster's rampage: a trail of red flames behind the dash
-        if monster && (0.25..STRIKE_ARRIVE + 0.1).contains(&dl) {
+        let (d0, d1) = if st.lunge_special[a] { (0.85, SPECIAL_ARRIVE + 0.1) } else { (0.25, STRIKE_ARRIVE + 0.1) };
+        if monster && (d0..d1).contains(&dl) {
             for k in 0..20 {
                 let pos = ca - facing(a) * (k as f64 * 0.35) + dir(k, 7) * 0.3;
                 fr.glow(view, pos, 0.3 * (1.0 - k as f64 / 20.0), (255.0, 80.0 + k as f64 * 6.0, 40.0), 0.8);

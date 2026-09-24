@@ -124,7 +124,7 @@ fn embed_assets() {
     }
     files.retain(|(r, _)| {
         let l = r.to_lowercase();
-        [".png", ".ogg", ".ttf", ".otf"].iter().any(|e| l.ends_with(e))
+        [".png", ".ogg", ".ttf", ".otf", ".lvm"].iter().any(|e| l.ends_with(e))
     });
     files.sort();
     let mut code = String::from("pub static EMBEDDED: &[(&str, &[u8])] = &[\n");

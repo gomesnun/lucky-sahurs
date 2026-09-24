@@ -314,6 +314,44 @@ impl Frame {
         }
     }
 
+    /// A skinned (already posed) triangle mesh, drawn on all cores: `world` vertex positions, the skin texture
+    /// (0xKKRRGGBB, KK=1: the texel keeps its own colour) and a colour per vertex that the skin's shading is
+    /// applied to. Both sides of each triangle are drawn.
+    #[allow(clippy::too_many_arguments)]
+    pub fn skinned_mesh(&mut self, view: &View, world: &[V3], uv: &[[f32; 2]], colors: &[u32], tris: &[[u32; 3]], skin: &[u32], skin_w: usize, fog: &Fog, alpha: f64, flash: f64) {
+        let proj: Vec<(f64, f64, f64)> = world
+            .iter()
+            .map(|p| {
+                let c = view.to_cam(*p);
+                if c.z <= NEAR { (0.0, 0.0, -1.0) } else { (view.cx + c.x / c.z * view.focal, view.cy - c.y / c.z * view.focal, c.z) }
+            })
+            .collect();
+        let light_dir = v3(-0.4, 0.8, 0.45).norm();
+        let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1).clamp(1, 8);
+        let rows = self.h.div_ceil(threads);
+        let proj = &proj;
+        std::thread::scope(|scope| {
+            for mut band in self.bands(rows) {
+                scope.spawn(move || {
+                    for t in tris {
+                        let [a, b, c] = [t[0] as usize, t[1] as usize, t[2] as usize];
+                        let (pa, pb, pc) = (proj[a], proj[b], proj[c]);
+                        if pa.2 <= 0.0 || pb.2 <= 0.0 || pc.2 <= 0.0 {
+                            continue;
+                        }
+                        let (miny, maxy) = (pa.1.min(pb.1).min(pc.1), pa.1.max(pb.1).max(pc.1));
+                        if maxy < band.y0 as f64 || miny > band.y1 as f64 {
+                            continue;
+                        }
+                        let n = (world[b] - world[a]).cross(world[c] - world[a]).norm();
+                        let light = 0.72 + 0.35 * n.dot(light_dir).abs();
+                        band.mesh_tri([pa, pb, pc], [uv[a], uv[b], uv[c]], [colors[a], colors[b], colors[c]], skin, skin_w, light, fog, alpha, flash);
+                    }
+                });
+            }
+        });
+    }
+
     /// Copies the frame into a Surface (opaque).
     pub fn to_surface(&self) -> Surface {
         let mut s = Surface::new(self.w as i32, self.h as i32);
@@ -415,6 +453,83 @@ impl Band<'_> {
         }
     }
 
+}
+
+impl Band<'_> {
+    /// One triangle of a skinned mesh (see Frame::skinned_mesh). p = (screen x, screen y, camera z).
+    #[allow(clippy::too_many_arguments)]
+    fn mesh_tri(&mut self, p: [(f64, f64, f64); 3], uv: [[f32; 2]; 3], col: [u32; 3], skin: &[u32], skin_w: usize, light: f64, fog: &Fog, alpha: f64, flash: f64) {
+        let area = (p[1].0 - p[0].0) * (p[2].1 - p[0].1) - (p[2].0 - p[0].0) * (p[1].1 - p[0].1);
+        if area.abs() < 1e-9 {
+            return;
+        }
+        let minx = p.iter().map(|q| q.0).fold(f64::INFINITY, f64::min).floor().max(0.0) as i64;
+        let maxx = p.iter().map(|q| q.0).fold(f64::NEG_INFINITY, f64::max).ceil().min(self.w as f64 - 1.0) as i64;
+        let miny = p.iter().map(|q| q.1).fold(f64::INFINITY, f64::min).floor().max(self.y0 as f64) as i64;
+        let maxy = p.iter().map(|q| q.1).fold(f64::NEG_INFINITY, f64::max).ceil().min(self.y1 as f64 - 1.0) as i64;
+        if minx > maxx || miny > maxy {
+            return;
+        }
+        let inv = 1.0 / area;
+        let iz: [f64; 3] = std::array::from_fn(|k| 1.0 / p[k].2);
+        let ch = |c: u32, s: u32| ((c >> s) & 255) as f64;
+        // attributes over z, for perspective-correct interpolation: u, v, r, g, b
+        let at: [[f64; 5]; 3] = std::array::from_fn(|k| [uv[k][0] as f64 * iz[k], uv[k][1] as f64 * iz[k], ch(col[k], 16) * iz[k], ch(col[k], 8) * iz[k], ch(col[k], 0) * iz[k]]);
+        let sw = skin_w as f64;
+        let sh = (skin.len() / skin_w.max(1)) as f64;
+        for y in miny..=maxy {
+            let py = y as f64 + 0.5;
+            for x in minx..=maxx {
+                let px = x as f64 + 0.5;
+                let w0 = ((p[1].0 - px) * (p[2].1 - py) - (p[2].0 - px) * (p[1].1 - py)) * inv;
+                let w1 = ((p[2].0 - px) * (p[0].1 - py) - (p[0].0 - px) * (p[2].1 - py)) * inv;
+                let w2 = 1.0 - w0 - w1;
+                if w0 < -1e-9 || w1 < -1e-9 || w2 < -1e-9 {
+                    continue;
+                }
+                let zi = w0 * iz[0] + w1 * iz[1] + w2 * iz[2];
+                let z = 1.0 / zi;
+                let i = (y as usize - self.y0) * self.w + x as usize;
+                if z as f32 >= self.depth[i] {
+                    continue;
+                }
+                let a: [f64; 5] = std::array::from_fn(|k| (w0 * at[0][k] + w1 * at[1][k] + w2 * at[2][k]) * z);
+                let tx = ((a[0] * sw) as i64).clamp(0, sw as i64 - 1) as usize;
+                let ty = ((a[1] * sh) as i64).clamp(0, sh as i64 - 1) as usize;
+                let texel = skin[ty * skin_w + tx];
+                let (tr, tg, tb) = (ch(texel, 16), ch(texel, 8), ch(texel, 0));
+                let (mut r, mut g, mut b) = if texel >> 24 & 1 == 1 {
+                    (tr, tg, tb)
+                } else {
+                    // the skin's shading on the verity's colour (dark colours lifted a little so they still read)
+                    let l = ((0.299 * tr + 0.587 * tg + 0.114 * tb) / 150.0).min(1.3);
+                    let lum = (0.299 * a[2] + 0.587 * a[3] + 0.114 * a[4]) / 255.0;
+                    let lift = 46.0 * (1.0 - ((lum - 0.08) / 0.22).clamp(0.0, 1.0));
+                    (a[2] * l + lift, a[3] * l + lift, a[4] * l + lift)
+                };
+                r *= light;
+                g *= light;
+                b *= light;
+                if flash > 0.0 {
+                    r += (255.0 - r) * flash;
+                    g += (255.0 - g) * flash;
+                    b += (255.0 - b) * flash;
+                }
+                let c = fog_mix(pack(r, g, b), fog.color, ((z - fog.start) / (fog.end - fog.start)).clamp(0.0, 1.0));
+                if alpha >= 0.999 {
+                    self.color[i] = c;
+                    self.depth[i] = z as f32;
+                } else {
+                    let (sr, sg, sb) = rgb(c);
+                    let (dr, dg, db) = rgb(self.color[i]);
+                    self.color[i] = pack(dr + (sr - dr) * alpha, dg + (sg - dg) * alpha, db + (sb - db) * alpha);
+                    if alpha > 0.6 {
+                        self.depth[i] = z as f32;
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Cuts a polygon (camera space) to the part in front of the near plane.

@@ -604,6 +604,14 @@ fn shots(dir: &str) {
         g.tick_battle(3.0);
         g.draw(m);
         save(&g, "n_battle_attack");
+        // a whole turn, frame by frame (to check the animations)
+        g.tick_battle(8.0);
+        g.battle_use(core::battle::Move::Special);
+        for i in 0..20 {
+            g.tick_battle(0.45);
+            g.draw(m);
+            save(&g, &format!("n_battle_seq_{:02}", i));
+        }
         for _ in 0..200 {
             g.tick_battle(30.0);
             let Some(b) = g.battle.battle.as_ref() else { break };
