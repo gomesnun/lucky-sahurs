@@ -485,8 +485,13 @@ impl Game {
             move |g, e| {
                 g.pub_inflight = false;
                 if e.code == "denied" && prestige.is_some() && !g.lb_no_prestige {
+                    // maybe the rules don't have "prestige" yet: try once without it
                     g.lb_no_prestige = true;
                     g.pub_retry_at = now_ts() + 5.0;
+                } else if e.code == "denied" && prestige.is_none() && g.lb_no_prestige {
+                    // refused without it too: it wasn't the prestige (e.g. the 5-minute limit) - send it again next time
+                    g.lb_no_prestige = false;
+                    g.pub_retry_at = now_ts() + LEADERBOARD_PERIOD;
                 } else if e.code == "denied" || e.status == 429 {
                     g.pub_retry_at = now_ts() + LEADERBOARD_PERIOD;
                 } else {
