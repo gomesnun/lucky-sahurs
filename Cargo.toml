@@ -1,0 +1,35 @@
+[package]
+name = "lucky-verities"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+flate2 = "1.1.10"
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+indexmap = { version = "2.14.2", features = ["serde"] }
+lewton = "0.10.2"
+sdl2 = { version = "0.37", default-features = false, features = ["unsafe_textures"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.151", features = ["preserve_order", "float_roundtrip"] }
+sha2 = "0.11.0"
+tar = "0.4.46"
+ureq = "3.4.2"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+
+[profile.dev]
+opt-level = 2
+
+[features]
+# release builds: link the static SDL2 from LV_SDL2_PREFIX (see build.rs)
+static = ["sdl2/static-link"]
+
+[build-dependencies]
+cc = "1.4.7"
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"

@@ -5,14 +5,15 @@ import os
 import sys
 import pygame
 
-from config import GAME_DIR
+from config import GAME_DIR, SHARED_DIR
 
 
 def _icon_dirs():
     """Onde procurar, por ordem: ao lado do jogo / .exe (para poderes trocar os ícones), a pasta do
     projeto e, dentro do .exe (PyInstaller), a pasta embutida."""
     dirs = [os.path.join(GAME_DIR, "icons"),
-            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "icons")]
+            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "icons"),
+            os.path.join(SHARED_DIR, "icons")]
     bundled = getattr(sys, "_MEIPASS", None)
     if bundled:
         dirs.append(os.path.join(bundled, "icons"))
@@ -97,7 +98,7 @@ def set_window_icon(name="verity", size=64):
 def find_asset(folder, filename):
     """Caminho de <folder>/<filename> (sons, por exemplo): ao lado do jogo / .exe, na pasta do projeto
     ou embutido no .exe (PyInstaller). Devolve None se o ficheiro não existir em nenhum sítio."""
-    roots = [GAME_DIR, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))]
+    roots = [GAME_DIR, os.path.dirname(os.path.dirname(os.path.abspath(__file__))), SHARED_DIR]
     bundled = getattr(sys, "_MEIPASS", None)
     if bundled:
         roots.append(bundled)

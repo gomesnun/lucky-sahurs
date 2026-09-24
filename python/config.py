@@ -78,6 +78,10 @@ def _pasta_do_jogo():
 # trocar as imagens / a letra). Os SAVES já não ficam aqui: ver _pasta_dos_saves().
 GAME_DIR = _pasta_do_jogo()
 
+# A pasta acima de python/ (a raiz do repositório): é lá que estão os icons/, sounds/ e fonts/, partilhados com a
+# versão em Rust e com o site. (No Android, o android.yml copia-os para dentro de python/ antes de construir o APK.)
+SHARED_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 # Ficheiros pessoais que as versões antigas guardavam ao lado do jogo.
 _FICHEIROS_ANTIGOS = ("savegame*.json", "lucky_sahurs_*.json", "lucky_verities_*.json", "firebase_config.json")
 

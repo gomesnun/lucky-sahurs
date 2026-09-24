@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://gomesnun.github.io/lucky-verities/website/"><b>🌐 Website &amp; live roll simulator</b></a> ·
   <a href="https://github.com/gomesnun/lucky-verities/releases/latest"><b>⬇ Download latest release</b></a> ·
-  <a href="LEIA-ME.md"><b>🇵🇹 Versão portuguesa</b></a>
+  <a href="python/LEIA-ME.md"><b>🇵🇹 Versão portuguesa</b></a>
 </p>
 
 <p align="center">
@@ -17,8 +17,8 @@
   <img alt="macOS" src="https://img.shields.io/badge/macOS-Apple%20Silicon%20%2B%20Intel-000000?logo=apple&logoColor=white">
   <img alt="Linux" src="https://img.shields.io/badge/Linux-x86__64-FCC624?logo=linux&logoColor=black">
   <img alt="Android" src="https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white">
-  <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white">
-  <img alt="pygame-ce" src="https://img.shields.io/badge/pygame--ce-engine-green">
+  <img alt="Rust" src="https://img.shields.io/badge/Rust-desktop-B7410E?logo=rust&logoColor=white">
+  <img alt="Python" src="https://img.shields.io/badge/Python-Android-3776AB?logo=python&logoColor=white">
 </p>
 
 ---
@@ -69,10 +69,12 @@ Pick your platform. Fastest path is the prebuilt download; no Python needed.
 2. Download the Linux `.tar.gz` and extract it.
 3. Make it runnable and start it:
    ```bash
-   chmod +x "Lucky Verities"
-   ./"Lucky Verities"
+   chmod +x LuckyVerities
+   ./LuckyVerities
    ```
    The binary needs **glibc ≥ 2.39** (Ubuntu 24.04+, Fedora 40+, Mint 22+, Arch).
+
+Installed copies update themselves: when a newer release is out, the game offers the update on launch.
 
 ### 🤖 Android
 
@@ -85,6 +87,31 @@ open panel. Account, cloud saves and the leaderboard work the same as on desktop
    debug-signed, so Play Protect shows an "unknown app" warning: **More details → Install anyway**.
 
 Minimum Android 7.0 (API 24), `arm64-v8a` + `armeabi-v7a`.
+
+---
+
+## Source layout
+
+| Path | What |
+|---|---|
+| `src/`, `Cargo.toml`, `build.rs` | **The game** (Rust). Desktop releases (Windows / macOS / Linux) are built from here. |
+| `icons/`, `sounds/`, `fonts/` | Game files, built into the executable. Shared with `python/` and the website. |
+| `python/` | The original Python + pygame-ce version. Still used for the **Android** APK. |
+| `tools/` | Parity checks: the Rust build must match `python/` pixel for pixel. |
+| `website/`, `backend/` | Landing page and the e-mail backend. |
+
+Run from source (needs Rust, SDL2, FreeType and HarfBuzz from your package manager):
+
+```bash
+cargo run --release
+```
+
+Parity checks: `lucky-verities --shots DIR` against `tools/screens_reference.py python DIR`, and
+`--sim DIR` against `tools/sim_reference.py python DIR`, compared with `tools/compare_png.py`.
+
+Releases: push a tag `vX.Y.Z` (higher than the last one). `.github/workflows/build.yml` builds the desktop
+files and `android.yml` the APK; the release files keep the old names, so every installed copy (including the
+older Python builds) updates itself.
 
 ---
 

@@ -5,7 +5,7 @@ import os
 import sys
 import pygame
 
-from config import GAME_DIR
+from config import GAME_DIR, SHARED_DIR
 from theme import BLACK, FONT_NAMES, OUTLINE, WHITE
 
 
@@ -56,7 +56,8 @@ def find_custom_font():
     if _CUSTOM_FONT == "unset":
         _CUSTOM_FONT = None
         folders = [os.path.join(GAME_DIR, "fonts"),
-                   os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fonts")]
+                   os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fonts"),
+                   os.path.join(SHARED_DIR, "fonts")]
         bundled = getattr(sys, "_MEIPASS", None)
         if bundled:
             folders.append(os.path.join(bundled, "fonts"))

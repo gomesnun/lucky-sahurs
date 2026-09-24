@@ -1,10 +1,16 @@
 # Cria os executaveis do Lucky Verities para Windows, Linux e macOS (Apple Silicon + Intel)
 # e publica-os numa "Release" do GitHub, de onde os amigos descarregam.
 #
+# Desde a v2.5.0 os executaveis sao a versao em Rust (a raiz do repositorio): o mesmo jogo, mais rapido.
+# Os ficheiros da Release tem os MESMOS nomes de sempre (Lucky-Verities-Windows.exe, ...), por isso
+# quem ainda tem a versao em Python e atualizado sozinho para a versao em Rust (ver online/updater.py).
+# Os saves ficam na mesma pasta, nao se perde nada. O APK de Android continua em Python (python/, android.yml).
+#
 # COMO USAR
-#   1) Publicar uma versao:   git tag v1.0.0 && git push origin v1.0.0
-#      (ou no GitHub: Releases > Draft a new release > criar a tag v1.0.0 > Publish)
-#      -> constroi os 4 ficheiros e anexa-os a Release dessa tag (demora uns 5 a 10 minutos).
+#   1) Publicar uma versao:   git tag v2.5.0 && git push origin v2.5.0
+#      (ou no GitHub: Releases > Draft a new release > criar a tag v2.5.0 > Publish)
+#      -> constroi os 4 ficheiros e anexa-os a Release dessa tag.
+#      O numero TEM de ser maior que o da ultima Release, senao ninguem e atualizado.
 #   2) So testar o build:     separador Actions > "Build Lucky Verities" > Run workflow
 #      -> os ficheiros ficam em "Artifacts" no fim da execucao (sem criar Release).
 #
@@ -14,7 +20,7 @@
 #     - separador Secrets:  RELEASES_TOKEN = um token com permissao "Contents: Read and write" nessa repo
 #   Sem estas duas definicoes, tudo funciona como antes (Release nesta repo).
 #
-# QUOTA (repo privada): 2000 min/mes; Windows conta 2x e macOS 10x. Cada build completo gasta ~120 min.
+# QUOTA (repo privada): 2000 min/mes; Windows conta 2x e macOS 10x.
 #   Para gastar menos, apaga a linha do "macOS (Intel)" na lista de baixo (poupa cerca de metade).
 
 name: Build Lucky Verities
@@ -36,25 +42,39 @@ jobs:
       matrix:
         include:
           - { name: "Windows",                os: windows-latest, asset: "Lucky-Verities-Windows.exe" }
-          # ubuntu-24.04: o binario precisa de glibc >= 2.39 (Ubuntu 24.04+, Fedora 40+, Mint 22+, Arch...).
-          # Em distros mais antigas usa-se ./run_linux_mac.sh.
           - { name: "Linux",                  os: ubuntu-24.04,   asset: "Lucky-Verities-Linux.tar.gz" }
           - { name: "macOS (Apple Silicon)",  os: macos-latest,   asset: "Lucky-Verities-macOS-AppleSilicon.zip" }
           # macos-15-intel e o ultimo runner Intel do GitHub (disponivel ate agosto de 2027).
           - { name: "macOS (Intel)",          os: macos-15-intel, asset: "Lucky-Verities-macOS-Intel.zip" }
 
+    env:
+      # Bibliotecas em C que vao DENTRO do executavel (um so ficheiro, como o --onefile do PyInstaller).
+      # Sao as mesmas versoes com que o jogo foi comparado pixel a pixel com a versao em Python.
+      SDL2_VERSION: "2.32.10"
+      SDL2_SHA256: "5f5993c530f084535c65a6879e9b26ad441169b3e25d789d83287040a9ca5165"
+      FREETYPE_VERSION: "2.14.3"
+      FREETYPE_SHA256: "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f"
+      HARFBUZZ_VERSION: "14.2.1"
+      HARFBUZZ_SHA256: "a54a5d8e9380a41fbb762ce367bcbf7704792dfca0d93f1bbca86c5a57902e0e"
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+      CARGO_TERM_COLOR: never
+
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
 
-      # certifi = certificados HTTPS que vao dentro do programa (sem eles o online / as atualizacoes podem falhar no macOS e no Linux)
-      - name: Instalar pygame-ce, certifi e PyInstaller
-        run: python -m pip install --upgrade pip pygame-ce certifi pyinstaller
+      # O SDL carrega o X11 / Wayland / som do sistema quando o jogo abre; so precisa dos cabecalhos para compilar.
+      - name: Dependencias de compilacao (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build pkg-config \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev libegl-dev libgl-dev \
+            libasound2-dev libpulse-dev libpipewire-0.3-dev libdbus-1-dev libudev-dev
 
-      # Escreve o numero da versao (a tag, ex.: v1.0.1) dentro do jogo. E com ele que o jogo sabe que versao e e
+      # Escreve o numero da versao (a tag, ex.: v2.5.0) dentro do jogo. E com ele que o jogo sabe que versao e e
       # se ha uma mais nova. So numa tag vX.Y.Z; num "Run workflow" fica "dev" (esse programa nao pede atualizacoes).
       - name: Guardar o numero da versao no jogo
         shell: bash
@@ -64,33 +84,81 @@ jobs:
           else
             V="dev"
           fi
-          printf 'BUILD_VERSION = "%s"\n' "$V" > build_version.py
+          echo "LV_BUILD_VERSION=$V" >> "$GITHUB_ENV"
           echo "Versao deste build: $V"
 
-      - name: Verificar que o codigo compila
-        run: python -m compileall -q main.py config.py storage.py theme.py i18n.py i18n_pt.py build_version.py core ui online
+      - name: Descarregar SDL2, FreeType e HarfBuzz (com verificacao SHA-256)
+        shell: bash
+        run: |
+          mkdir -p deps && cd deps
+          get() {  # url ficheiro sha256
+            curl -fsSL --retry 3 -o "$2" "$1"
+            got=$(cmake -E sha256sum "$2" | cut -d' ' -f1)
+            if [ "$got" != "$3" ]; then echo "::error::SHA-256 errado para $2 ($got)"; exit 1; fi
+            cmake -E tar xf "$2"
+          }
+          get "https://github.com/libsdl-org/SDL/releases/download/release-$SDL2_VERSION/SDL2-$SDL2_VERSION.tar.gz" sdl2.tar.gz "$SDL2_SHA256"
+          get "https://download.savannah.gnu.org/releases/freetype/freetype-$FREETYPE_VERSION.tar.xz" freetype.tar.xz "$FREETYPE_SHA256"
+          get "https://github.com/harfbuzz/harfbuzz/releases/download/$HARFBUZZ_VERSION/harfbuzz-$HARFBUZZ_VERSION.tar.xz" harfbuzz.tar.xz "$HARFBUZZ_SHA256"
+
+      - name: Compilar o SDL2 (biblioteca estatica)
+        shell: bash
+        run: |
+          EXTRA=""
+          if [ "$RUNNER_OS" = "Windows" ]; then EXTRA="-DSDL_FORCE_STATIC_VCRT=ON"; fi
+          if [ "$RUNNER_OS" = "Linux" ]; then EXTRA="-G Ninja"; fi
+          cmake -S "deps/SDL2-$SDL2_VERSION" -B deps/sdl-build $EXTRA \
+            -DCMAKE_BUILD_TYPE=Release -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_TEST=OFF \
+            -DSDL_STATIC_PIC=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/deps/sdl-prefix"
+          cmake --build deps/sdl-build --config Release --parallel
+          cmake --install deps/sdl-build --config Release
+
+      - name: Compilar o jogo
+        shell: bash
+        env:
+          LV_STATIC: "1"
+        run: |
+          W="$GITHUB_WORKSPACE"
+          export LV_SDL2_PREFIX="$W/deps/sdl-prefix"
+          export LV_FT_SRC="$W/deps/freetype-$FREETYPE_VERSION"
+          export LV_HB_SRC="$W/deps/harfbuzz-$HARFBUZZ_VERSION"
+          export RUSTFLAGS="-L native=$W/deps/sdl-prefix/lib"
+          # Windows: o runtime do C tambem vai dentro do .exe (nao precisa do "Visual C++ Redistributable")
+          if [ "$RUNNER_OS" = "Windows" ]; then export RUSTFLAGS="$RUSTFLAGS -C target-feature=+crt-static"; fi
+          cargo build --release --locked --features static
+          cargo test --release --locked --features static updater
+
+      # Antes de publicar: o executavel tem de arrancar e mostrar a versao certa (sem janela, sem som).
+      - name: Testar o executavel
+        shell: bash
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+          LUCKY_VERITIES_NO_UPDATE: "1"
+        run: |
+          EXE=target/release/lucky-verities
+          [ "$RUNNER_OS" = "Windows" ] && EXE="$EXE.exe"
+          mkdir -p shots-test
+          LUCKY_VERITIES_SAVE_DIR="$PWD/shots-save" "$EXE" --shots shots-test
+          ls shots-test | wc -l
 
       # ---------------------------------------------------------------- Windows: um unico .exe com o icone do Verity
       - name: Criar o .exe (Windows)
         if: runner.os == 'Windows'
         shell: bash
-        env:
-          MSYS_NO_PATHCONV: "1"
         run: |
-          python -m PyInstaller --noconfirm --clean --onefile --windowed \
-            --icon "icons/verity.ico" \
-            --add-data "icons;icons" --add-data "sounds;sounds" --add-data "fonts;fonts" \
-            --name "Lucky Verities" main.py
-          mv "dist/Lucky Verities.exe" "dist/${{ matrix.asset }}"
+          mkdir -p dist
+          cp target/release/lucky-verities.exe "dist/${{ matrix.asset }}"
 
       # ---------------------------------------------------------------- Linux: um unico binario dentro de um .tar.gz
       # (o .tar.gz guarda a permissao de executavel, que um upload simples perderia)
       - name: Criar o binario (Linux)
         if: runner.os == 'Linux'
         run: |
-          python -m PyInstaller --noconfirm --clean --onefile --windowed \
-            --add-data "icons:icons" --add-data "sounds:sounds" --add-data "fonts:fonts" \
-            --name "LuckyVerities" main.py
+          mkdir -p dist
+          cp target/release/lucky-verities dist/LuckyVerities
+          chmod 755 dist/LuckyVerities
           tar -czf "dist/${{ matrix.asset }}" -C dist LuckyVerities
 
       # ---------------------------------------------------------------- macOS: uma .app com o icone do Verity, dentro de um .zip
@@ -98,11 +166,32 @@ jobs:
       - name: Criar a .app (macOS)
         if: runner.os == 'macOS'
         run: |
-          python -m PyInstaller --noconfirm --clean --windowed \
-            --icon "icons/verity.icns" \
-            --add-data "icons:icons" --add-data "sounds:sounds" --add-data "fonts:fonts" \
-            --name "Lucky Verities" main.py
-          ditto -c -k --sequesterRsrc --keepParent "dist/Lucky Verities.app" "dist/${{ matrix.asset }}"
+          APP="dist/Lucky Verities.app"
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp target/release/lucky-verities "$APP/Contents/MacOS/Lucky Verities"
+          cp icons/verity.icns "$APP/Contents/Resources/verity.icns"
+          V="${LV_BUILD_VERSION#v}"; [ "$V" = "dev" ] && V="0.0.0"
+          cat > "$APP/Contents/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key><string>Lucky Verities</string>
+            <key>CFBundleDisplayName</key><string>Lucky Verities</string>
+            <key>CFBundleExecutable</key><string>Lucky Verities</string>
+            <key>CFBundleIdentifier</key><string>Lucky Verities</string>
+            <key>CFBundleIconFile</key><string>verity.icns</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>$V</string>
+            <key>CFBundleVersion</key><string>$V</string>
+            <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+            <key>LSMinimumSystemVersion</key><string>$MACOSX_DEPLOYMENT_TARGET</string>
+            <key>NSHighResolutionCapable</key><true/>
+          </dict>
+          </plist>
+          EOF
+          codesign --force --deep --sign - "$APP"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "dist/${{ matrix.asset }}"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -156,5 +245,5 @@ jobs:
             gh release upload "$TAG" release/* --clobber
           else
             gh release create "$TAG" release/* --title "Lucky Verities $TAG" \
-              --notes "Descarrega o ficheiro do teu sistema: Windows (.exe), Linux (.tar.gz) ou macOS (.zip)."
+              --notes "Descarrega o ficheiro do teu sistema: Windows (.exe), Linux (.tar.gz) ou macOS (.zip). Quem ja tem o jogo instalado e atualizado automaticamente."
           fi

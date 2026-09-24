@@ -7,6 +7,8 @@ crash_log.txt
 .escrita_teste
 
 # ---- ficheiros gerados ----
+# Rust (cargo build)
+/target/
 # escrito pelo GitHub Actions em cada build (com o numero da versao): nunca vai para o repositorio
 build_version.py
 __pycache__/
@@ -19,3 +21,8 @@ dist/
 # Android (buildozer)
 .buildozer/
 bin/
+
+# Android (build): copias dos icons/sounds/fonts da raiz, feitas pelo android.yml
+/python/icons/
+/python/sounds/
+/python/fonts/
