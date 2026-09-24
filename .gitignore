@@ -17,6 +17,5 @@ build/
 dist/
 .venv/
 *.exe
-
-tools/phases/node_modules/
-tools/phases/clean/
+# local art tools for the verity phase images (not part of the game)
+tools/phases/
