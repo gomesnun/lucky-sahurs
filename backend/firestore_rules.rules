@@ -76,10 +76,9 @@ service cloud.firestore {
       // contas banidas (/bans/{uid}, ver em baixo) não publicam; o admin apaga a linha delas ao banir
       allow create: if request.auth != null && request.auth.uid == uid && validEntry()
                     && !exists(/databases/$(database)/documents/bans/$(uid));
-      // no máximo uma atualização de 5 em 5 minutos por conta (o jogo publica de 10 em 10 minutos,
-      // com um mínimo de 6 entre publicações: a regra tem de pedir MENOS do que isso)
+      // sem limite de tempo (v3.0.1): o jogo já só publica de 10 em 10 minutos, e os batoteiros resolvem-se
+      // com os Bans do menu de admin
       allow update: if request.auth != null && request.auth.uid == uid && validEntry()
-                    && request.time > resource.data.updated_at + duration.value(5, 'm')
                     && !exists(/databases/$(database)/documents/bans/$(uid));
       allow delete: if isAdmin();
     }
