@@ -1114,7 +1114,7 @@ impl Game {
         let w = world(self.explore.dim);
         // ---- Steve walks: the keys, or toward where you clicked
         let mut dir = (0.0, 0.0);
-        if self.explore.overlay.is_empty() && self.explore.travel.is_none() {
+        if self.explore.overlay.is_empty() && self.explore.travel.is_none() && !self.index_open {
             use sdl2::keyboard::Scancode as S;
             let mut raw = (0.0, 0.0);
             if held(&[S::W, S::Up]) {
@@ -1438,6 +1438,13 @@ impl Game {
         if !self.explore.open {
             return false;
         }
+        if self.index_open {
+            // the Pet Index page is on top: Escape closes it, nothing reaches the world behind it
+            if ev.key == K::Escape {
+                self.close_index_page();
+            }
+            return true;
+        }
         match ev.key {
             K::Escape => {
                 if !self.explore.overlay.is_empty() {
@@ -1459,7 +1466,7 @@ impl Game {
     }
 
     pub fn explore_scroll(&mut self, step: f64) -> bool {
-        if !self.explore.open || self.explore.overlay != "pets" {
+        if !self.explore.open || self.explore.overlay != "pets" || self.index_open {
             return false;
         }
         self.explore.pets_scroll = (self.explore.pets_scroll + step).clamp(0.0, self.explore.pets_max_scroll);

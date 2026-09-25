@@ -1150,7 +1150,9 @@ impl Game {
         // leave - it just gets more insistent-looking the longer it's been, in case they left it open by mistake).
         // Shown even while `busy` (an animation/event is still playing out) - an AFK friend must never be able to
         // strand the player behind a "click to skip" they can't otherwise reach.
-        if let (Some((_, gone, waited)), false) = (&waiting, over) {
+        // (never on my own turn: the move buttons sit on top of it there, and a click in the gap between them
+        // would forfeit)
+        if let (Some((_, gone, waited)), false, false) = (&waiting, over, self.online_my_turn()) {
             let r = Rect::with_center(menu.w - 60, 50, menu.center());
             let urgent = *gone || *waited > PATIENCE;
             self.button(r, &tr("Leave"), &med, mouse_pos, if urgent { BAD } else { panel_light() }, if urgent { Color::rgb(250, 110, 110) } else { panel_lighter() }, WHITE, cb(|g| g.leave_online_battle()), Bo::r(10));

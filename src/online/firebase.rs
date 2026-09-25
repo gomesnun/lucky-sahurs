@@ -1529,7 +1529,9 @@ impl FirebaseClient {
             Err(e) if e.code == "not_found" => return Ok(None),
             Err(e) => return Err(e),
         };
-        Ok(Some(event_from_doc(&doc, "personal")))
+        // unlike /events/{kind}, the kind is a field here (the doc id is the target's uid)
+        let kind = fs_fields(&doc).str_or("kind", "");
+        Ok(Some(event_from_doc(&doc, &kind)))
     }
 
     /// Admin only: starts (or replaces) the one personal event aimed at `uid`.

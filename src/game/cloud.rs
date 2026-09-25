@@ -72,6 +72,8 @@ impl Game {
         self.adm.ban_open = false;
         self.ev.admin_checked = false;
         self.ev.admin_open = false;
+        self.ev.personal = None;
+        self.ev.personal_next_poll = 0.0;
         self.cloud_slots.clear();
         self.cloud_slots_loaded = false;
         self.cloud_slots_loading = false;
@@ -395,13 +397,23 @@ impl Game {
             },
             |g, held: bool| {
                 g.session_inflight = false;
-                if g.session_held && !held {
-                    // just lost it: stop autosaving over whatever the other device is now writing - the same
-                    // recovery the save-conflict path already offers
-                    g.state.sync_conflict = true;
-                    g.show_toast(&tr("This account is being played on another device now. Go to the main menu and open the slot again."), 4.0);
-                }
+                let lost = g.session_held && !held;
+                // set first, so go_to_menu's release_session doesn't clear the OTHER device's lock
                 g.session_held = held;
+                if lost && g.screen_mode == "game" {
+                    // another device took this account over: stop syncing (never write over it) and leave the
+                    // game here - this PC's copy is kept locally, and reopening the slot takes the account back
+                    g.state.sync_conflict = true;
+                    if g.battle.online.is_some() {
+                        g.leave_online_battle();
+                    }
+                    g.battle.wild = None;
+                    if g.battle.open {
+                        g.close_battle();
+                    }
+                    g.go_to_menu();
+                    g.show_toast(&tr("This account was opened on another device, so it was closed here. Open the slot again to play here instead."), 7.0);
+                }
             },
             |g, _| {
                 g.session_inflight = false;

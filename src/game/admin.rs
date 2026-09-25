@@ -183,6 +183,7 @@ impl Game {
         self.adm.ban_open = false;
         self.adm.confirm = false;
         self.set_ban_focus(None);
+        self.set_event_admin_focus(None);
     }
 
     /// The Back button of the Admin Abuse and Bans pages.
@@ -200,6 +201,9 @@ impl Game {
     pub fn set_ban_focus(&mut self, field: Option<&'static str>) {
         if field == self.adm.focus {
             return;
+        }
+        if field.is_some() {
+            self.ev.admin_focus = None; // the one-player page's multiplier/duration fields
         }
         self.adm.focus = field;
         if field.is_some() {
@@ -235,6 +239,8 @@ impl Game {
         if ev.key == K::Escape {
             if self.adm.focus.is_some() {
                 self.set_ban_focus(None);
+            } else if self.ev.admin_focus.is_some() {
+                self.set_event_admin_focus(None);
             } else {
                 self.close_ban_admin();
             }
@@ -598,7 +604,14 @@ impl Game {
         let panel_h = (VIRTUAL_H - 40).min(760);
         let rect = Rect::new(self.vw / 2 - panel_w / 2, 20.max(VIRTUAL_H / 2 - panel_h / 2), panel_w, panel_h);
         draw_panel(&mut self.canvas, rect, Some(panel()), 16, true, None);
-        self.register_button(rect, Rc::new(|g: &mut Game| g.set_ban_focus(None)), None);
+        self.register_button(
+            rect,
+            Rc::new(|g: &mut Game| {
+                g.set_ban_focus(None);
+                g.set_event_admin_focus(None);
+            }),
+            None,
+        );
         let sb = self.f.small_b.clone();
         let small = self.f.small.clone();
         let med = self.f.med.clone();

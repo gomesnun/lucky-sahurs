@@ -1275,36 +1275,60 @@ impl GameState {
         (sold, gain)
     }
 
-    /// Removes up to `qty` total of this pet+mutation, spending whichever phases have it (lowest first,
-    /// skipping locked ones) - trades (and the online wallet they settle against) are phase-independent, the
-    /// same pet+mutation counts however it's split across your phase buckets. Returns how many were removed.
+    /// What the online trade wallet holds: one count per pet+mutation ("idx_mutation", the key trades and the
+    /// Firestore rules use), every phase added up. `owned` itself is per phase ("idx_mutation_phase").
+    pub fn wallet_snapshot(&self) -> Vec<(String, i64)> {
+        let mut out: IndexMap<String, i64> = IndexMap::new();
+        for (k, v) in &self.owned {
+            if *v <= 0 {
+                continue;
+            }
+            if let Some((idx, m, _)) = parse_owned_key(k) {
+                *out.entry(format!("{}_{}", idx, m)).or_insert(0) += v;
+            }
+        }
+        out.into_iter().collect()
+    }
+
+    /// How many of this pet+mutation can go in a trade: every phase you have it at, minus locked stacks.
+    pub fn count_tradeable(&self, rarity_index: usize, m: &str) -> i64 {
+        (0..=MAX_PHASE).filter(|p| !self.is_locked(rarity_index, m, *p)).map(|p| self.count_owned_at(rarity_index, m, p)).sum()
+    }
+
+    /// Removes up to `qty` total of this pet+mutation across whatever phases it's in - lowest phase first, and
+    /// unlocked stacks before locked ones. Trades (and the online wallet they settle against) are
+    /// phase-independent; by the time this runs the trade has already gone through online, so it must come out
+    /// of the save too (a locked stack is only spent if nothing else covers it - never a free copy).
+    /// Returns how many were actually removed.
     pub fn take_owned_any_phase(&mut self, rarity_index: usize, m: &str, qty: i64) -> i64 {
         let mut left = qty.max(0);
         let mut removed = 0;
-        for phase in 0..=MAX_PHASE {
-            if left <= 0 {
-                break;
+        for take_locked in [false, true] {
+            for phase in 0..=MAX_PHASE {
+                if left <= 0 {
+                    return removed;
+                }
+                if self.is_locked(rarity_index, m, phase) != take_locked {
+                    continue;
+                }
+                let have = self.count_owned_at(rarity_index, m, phase);
+                if have <= 0 {
+                    continue;
+                }
+                let take = have.min(left);
+                let key = owned_key(rarity_index, m, phase);
+                let remain = have - take;
+                if remain > 0 {
+                    self.owned.insert(key, remain);
+                } else {
+                    self.owned.shift_remove(&key); // stays in the Index anyway (seen_pets)
+                }
+                while self.equipped_count(rarity_index, m, phase) > remain {
+                    self.equip_remove_one(rarity_index, m, phase);
+                }
+                left -= take;
+                removed += take;
             }
-            if self.is_locked(rarity_index, m, phase) {
-                continue;
-            }
-            let have = self.count_owned_at(rarity_index, m, phase);
-            if have <= 0 {
-                continue;
-            }
-            let take = have.min(left);
-            let key = owned_key(rarity_index, m, phase);
-            let remain = have - take;
-            if remain > 0 {
-                self.owned.insert(key, remain);
-            } else {
-                self.owned.shift_remove(&key); // stays in the Index anyway (seen_pets)
-            }
-            while self.equipped_count(rarity_index, m, phase) > remain {
-                self.equip_remove_one(rarity_index, m, phase);
-            }
-            left -= take;
-            removed += take;
         }
         removed
     }
@@ -2562,6 +2586,32 @@ mod phase_tests {
         t.load_dict(&s.to_dict()).unwrap();
         assert_eq!(t.owned, s.owned);
         assert_eq!(t.equipped, s.equipped);
+    }
+
+    #[test]
+    fn trades_and_wallet_see_every_phase_under_one_key() {
+        let mut s = GameState::new();
+        s.owned.insert(owned_key(3, "golden", 0), 4);
+        s.owned.insert(owned_key(3, "golden", 2), 2);
+        s.owned.insert(owned_key(5, "normal", 0), 1);
+        // the wallet (and the Firestore rules) use "idx_mutation", with the phases added up
+        let w: HashMap<String, i64> = s.wallet_snapshot().into_iter().collect();
+        assert_eq!(w.get("3_golden"), Some(&6));
+        assert_eq!(w.get("5_normal"), Some(&1));
+        assert!(w.keys().all(|k| k.matches('_').count() == 1), "no phase-suffixed keys in the wallet: {:?}", w);
+        // a locked stack can't be offered...
+        s.toggle_lock(3, "golden", 2);
+        assert_eq!(s.count_tradeable(3, "golden"), 4);
+        // ...but once a trade went through online it still comes out of the save: unlocked first, lowest phase
+        // first, and the locked stack only for what's left (never a free copy)
+        assert_eq!(s.take_owned_any_phase(3, "golden", 5), 5);
+        assert_eq!(s.count_owned_at(3, "golden", 0), 0);
+        assert_eq!(s.count_owned_at(3, "golden", 2), 1);
+        assert_eq!(s.take_owned_any_phase(3, "golden", 9), 1);
+        assert_eq!(s.count_owned(3, "golden"), 0);
+        // what a trade brings in lands at Phase 1, like a roll
+        s.add_owned_phase1(7, "diamond", 3);
+        assert_eq!(s.count_owned_at(7, "diamond", 0), 3);
     }
 
     #[test]

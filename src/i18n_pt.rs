@@ -465,7 +465,7 @@ pub const PT: &[(&str, &str)] = &[
     ("Loading save...", "A carregar o save..."),
     ("Offline: playing from this PC's copy. It will sync later.", "Offline: a jogar a partir da cópia deste PC. Sincroniza mais tarde."),
     ("Couldn't claim this account right now. Try again.", "Não foi possível assumir esta conta agora. Tenta outra vez."),
-    ("This account is being played on another device now. Go to the main menu and open the slot again.", "Esta conta está a ser jogada noutro dispositivo agora. Vai ao menu principal e abre o slot outra vez."),
+    ("This account was opened on another device, so it was closed here. Open the slot again to play here instead.", "Esta conta foi aberta noutro dispositivo, por isso foi fechada aqui. Abre o slot outra vez para jogares aqui."),
     ("This save couldn't be read. Nothing was changed.", "Não foi possível ler este save. Nada foi alterado."),
     ("Couldn't read the local save for slot %d.", "Não foi possível ler o save local do slot %d."),
     ("Slot %d imported. Your local file was kept.", "Slot %d importado. O teu ficheiro local foi mantido."),

@@ -152,7 +152,7 @@ impl Game {
     /// On entering the game (or changing save): the online wallet becomes EXACTLY what you have. Before, this
     /// only happened when proposing a trade, so whoever never proposed one showed friends an empty wallet.
     fn sync_wallet_full(&mut self, now: f64, key: (String, u64)) {
-        let snapshot: Vec<(String, i64)> = self.state.owned.iter().filter(|(_, v)| **v > 0).map(|(k, v)| (k.clone(), *v)).collect();
+        let snapshot = self.state.wallet_snapshot();
         // everything is already in the total; what you roll next is added on top
         let pending = std::mem::take(&mut self.state.wallet_pending);
         self.trades.wallet_syncing = true;
@@ -286,7 +286,7 @@ impl Game {
         for &idx in pet_order() {
             for m in MUT_ORDER {
                 let key = format!("{}_{}", idx, m);
-                let q = self.state.count_owned(idx, m);
+                let q = self.state.count_tradeable(idx, m); // locked stacks stay out of trades
                 if q > 0 {
                     out.push((key, q));
                 }
@@ -316,7 +316,7 @@ impl Game {
     pub fn set_trade_offer_qty(&mut self, side: &str, key: &str, qty: i64) {
         let cap = if side == "offer" {
             // `key` is phase-independent ("idx_mutation") - `owned` isn't any more, so this counts every phase
-            key.split_once('_').and_then(|(idx_s, m)| idx_s.trim().parse::<usize>().ok().map(|idx| self.state.count_owned(idx, m))).unwrap_or(0)
+            key.split_once('_').and_then(|(idx_s, m)| idx_s.trim().parse::<usize>().ok().map(|idx| self.state.count_tradeable(idx, m))).unwrap_or(0)
         } else {
             self.trades.their_wallet.as_ref().and_then(|w| w.get(key).copied()).unwrap_or(0)
         };
@@ -342,7 +342,7 @@ impl Game {
         let offer: Vec<(String, i64)> = self.trades.my_offer.iter().map(|(k, v)| (k.clone(), *v)).collect();
         let request: Vec<(String, i64)> = self.trades.their_request.iter().map(|(k, v)| (k.clone(), *v)).collect();
         let to_uid = self.trades.target.clone().unwrap();
-        let owned: Vec<(String, i64)> = self.state.owned.iter().map(|(k, v)| (k.clone(), *v)).collect();
+        let owned = self.state.wallet_snapshot();
         self.trades.sending = true;
         let client = self.client.clone().unwrap();
         self.run_job(
@@ -430,7 +430,7 @@ impl Game {
         self.trades.msg = None;
         for (k, q) in &trade.request {
             // what I give
-            let have = parse_trade_key(k).map(|(idx, m)| self.state.count_owned(idx, m)).unwrap_or(0);
+            let have = parse_trade_key(k).map(|(idx, m)| self.state.count_tradeable(idx, m)).unwrap_or(0);
             if have < *q {
                 // (the save open now is what counts: another slot may have more)
                 self.trades.msg = Some((

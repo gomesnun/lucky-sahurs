@@ -1105,7 +1105,7 @@ impl Game {
             self.chat.field.add(text);
         } else if self.fb.open && self.fb.focus && !self.update_modal_active() {
             self.fb.field.add(text);
-        } else if self.ev.admin_open && self.ev.admin_focus.is_some() && !self.update_modal_active() {
+        } else if self.event_fields_active() && self.ev.admin_focus.is_some() && !self.update_modal_active() {
             if self.ev.admin_focus == Some("mult") {
                 self.ev.mult_field.add(text);
             } else {
@@ -1263,6 +1263,14 @@ impl Game {
         if self.update_log_open {
             if self.update_log_list_rect.collidepoint(pos) {
                 self.update_log_scroll = clamp(self.update_log_scroll + step, self.update_log_max_scroll);
+                return true;
+            }
+            return false;
+        }
+        // the Pet Index can be open over Explore (the battle screen), which the check below would refuse
+        if self.index_open && self.battle.open && self.screen_mode == "game" && !self.update_modal_active() {
+            if self.index_list_rect.collidepoint(pos) {
+                self.index_scroll = clamp(self.index_scroll + step, self.index_max_scroll);
                 return true;
             }
             return false;

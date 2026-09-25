@@ -19,6 +19,8 @@ use std::rc::Rc;
 
 /// seconds between reads of the events (each read costs 1 per active event, per player)
 pub const EVENT_POLL: f64 = 15.0;
+/// a player's own personal Admin Abuse: rarer (1 read each, and almost always "not found")
+pub const PERSONAL_EVENT_POLL: f64 = 60.0;
 pub const EVENT_KINDS: [&str; 3] = ["luck", "money", "speed"];
 /// quick presets - the admin can also type any number in the text fields
 pub const EVENT_MULT_PRESETS: [i64; 15] = [2, 5, 10, 25, 50, 100, 250, 500, 1000, 5000, 10000, 50000, 100000, 500000, 1000000];
@@ -197,7 +199,7 @@ impl Game {
             return;
         }
         self.ev.personal_loading = true;
-        self.ev.personal_next_poll = now + EVENT_POLL;
+        self.ev.personal_next_poll = now + PERSONAL_EVENT_POLL;
         self.run_job(
             move || client.get_personal_event(&acc.uid),
             |g, ev: Option<Event>| {
@@ -235,9 +237,18 @@ impl Game {
         self.set_event_admin_focus(None);
     }
 
+    /// The multiplier/duration fields are on screen: the global Admin Abuse page, or the one-player page.
+    pub fn event_fields_active(&self) -> bool {
+        self.ev.admin_open || (self.adm.ban_open && self.adm.page == "personal")
+    }
+
     pub fn set_event_admin_focus(&mut self, field: Option<&'static str>) {
         if field == self.ev.admin_focus {
             return;
+        }
+        if field.is_some() {
+            // only one text field takes the typing (the one-player page also has the username search)
+            self.adm.focus = None;
         }
         self.ev.admin_focus = field;
         if field.is_some() {
@@ -323,7 +334,7 @@ impl Game {
     pub fn handle_event_admin_key(&mut self, ev: KeyEv) -> bool {
         use sdl2::keyboard::Keycode as K;
         let Some(focus) = self.ev.admin_focus else { return false };
-        if !self.ev.admin_open {
+        if !self.event_fields_active() {
             return false;
         }
         let field = if focus == "mult" { FieldRef::EventMult } else { FieldRef::EventSeconds };
