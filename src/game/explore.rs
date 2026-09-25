@@ -639,7 +639,8 @@ fn build_world(dim: usize) -> World {
     // the faces where a block meets something see-through
     let mut faces = Vec::new();
     let mut lights = Vec::new();
-    let dirs: [(i64, i64, i64); 4] = [(0, 1, 0), (1, 0, 0), (-1, 0, 0), (0, 0, 1)];
+    // every side but the bottom: the camera orbits Steve, so the -z sides show too once it's turned around
+    let dirs: [(i64, i64, i64); 5] = [(0, 1, 0), (1, 0, 0), (-1, 0, 0), (0, 0, 1), (0, 0, -1)];
     for y in 0..H {
         for z in 0..N {
             for x in 0..N {
