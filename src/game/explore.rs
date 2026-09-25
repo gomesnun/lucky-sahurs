@@ -1520,12 +1520,16 @@ fn draw_world(sc: &Scene, w: usize, h: usize) -> (Frame, View) {
     let (sx, sz) = (sc.steve.x.floor() as i64, sc.steve.z.floor() as i64);
     // (tree tops between the camera and Steve are left out; behind anything else he shows through, see below)
     let cut = sc.steve.y + 2.2;
+    // which side of Steve the camera is actually on - not always +z any more, now that it can turn around him
+    let (cd0, cd1) = (sc.cam.pos.x - sc.steve.x, sc.cam.pos.z - sc.steve.z);
+    let cam_len = (cd0 * cd0 + cd1 * cd1).sqrt().max(1e-6);
+    let (cam_dx, cam_dz) = (cd0 / cam_len, cd1 / cam_len);
     let faces: Vec<&Face> = world
         .faces
         .iter()
         .filter(|f| (f.x - sx).abs() <= 20 && (f.z - sz).abs() <= 20)
         .filter(|f| face_in_view(&view, &f.corners))
-        .filter(|f| !(sc.cut_front && f.leafy && f.z > sz - 2 && f.corners[0].y.min(f.corners[1].y) >= cut))
+        .filter(|f| !(sc.cut_front && f.leafy && (f.x - sx) as f64 * cam_dx + (f.z - sz) as f64 * cam_dz > -2.0 && f.corners[0].y.min(f.corners[1].y) >= cut))
         .collect();
     let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1).clamp(1, 8);
     let texes: &Vec<Tex> = &world.texes;
@@ -1591,8 +1595,9 @@ fn draw_world(sc: &Scene, w: usize, h: usize) -> (Frame, View) {
     for (p, c, k) in sparkles {
         fr.glow(&view, p, 0.06, c, k);
     }
-    // glowing blocks light up around them (the nearest ones)
-    for (p, c) in world.lights.iter().filter(|(p, _)| (p.x - sc.steve.x).abs() < 17.0 && p.z - sc.steve.z > -15.0 && p.z - sc.steve.z < 8.0).take(48) {
+    // glowing blocks light up around them (the nearest ones) - a plain radius, not biased to a fixed
+    // direction, since the camera can now face any way around Steve
+    for (p, c) in world.lights.iter().filter(|(p, _)| (p.x - sc.steve.x).powi(2) + (p.z - sc.steve.z).powi(2) < 17.0 * 17.0).take(48) {
         let flick = 0.8 + 0.2 * (sc.t * 3.0 + p.x * 1.7 + p.z).sin();
         fr.glow(&view, *p, 0.55, *c, 0.3 * flick);
     }

@@ -1521,6 +1521,42 @@ impl FirebaseClient {
         }
     }
 
+    // ---- Admin Abuse aimed at one player only (see /personal_events/{uid} in the rules) ----
+    /// This account's own personal event, if it has one running.
+    pub fn get_personal_event(&self, uid: &str) -> Res<Option<Event>> {
+        let doc = match self.fs("GET", &format!("/personal_events/{}", uid), None, &[]) {
+            Ok(d) => d,
+            Err(e) if e.code == "not_found" => return Ok(None),
+            Err(e) => return Err(e),
+        };
+        Ok(Some(event_from_doc(&doc, "personal")))
+    }
+
+    /// Admin only: starts (or replaces) the one personal event aimed at `uid`.
+    pub fn start_personal_event(&self, uid: &str, kind: &str, mult: f64, seconds: f64) -> Res<Event> {
+        let server_ends = server_now() + seconds;
+        let by = self.username().filter(|s| !s.is_empty()).unwrap_or_default();
+        let mut fields = Map::new();
+        fields.insert("kind".into(), fs_str(kind));
+        fields.insert("by".into(), fs_str(&by));
+        fields.insert("ends_at".into(), json!({"timestampValue": iso_timestamp(server_ends)}));
+        fields.insert("mult".into(), fs_f64(mult));
+        let params: Vec<(String, String)> = fields.keys().map(|k| ("updateMask.fieldPaths".to_string(), k.clone())).collect();
+        self.fs("PATCH", &format!("/personal_events/{}", uid), Some(json!({"fields": fields})), &params)?;
+        self.log_admin_action("start_personal_event", &format!("uid={} kind={} mult={} seconds={}", uid, kind, mult, seconds));
+        Ok(Event { kind: kind.into(), mult, ends_at: server_ends, by })
+    }
+
+    /// Admin only: ends `uid`'s personal event early.
+    pub fn stop_personal_event(&self, uid: &str) -> Res<()> {
+        match self.fs("DELETE", &format!("/personal_events/{}", uid), None, &[]) {
+            Err(e) if e.code != "not_found" => return Err(e),
+            _ => {}
+        }
+        self.log_admin_action("stop_personal_event", &format!("uid={}", uid));
+        Ok(())
+    }
+
     // ---- bans (admins only; see /bans/{uid} in the rules) ----
     /// This account's ban, or None if it isn't banned.
     pub fn get_my_ban(&self) -> Res<Option<Ban>> {

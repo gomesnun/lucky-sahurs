@@ -296,6 +296,22 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Admin Abuse aplicado a UM jogador só (não a todos): o mesmo bónus dos /events, mas só quem tem o
+    // uid no caminho o vê. Um único documento por conta-alvo (kind/mult/ends_at/by) - dar um novo tipo
+    // substitui o anterior, tal como o /events global.
+    match /personal_events/{uid} {
+      allow get: if request.auth != null && (request.auth.uid == uid || isAdmin());
+      allow create, update: if isAdmin()
+          && request.resource.data.keys().hasOnly(['kind', 'mult', 'ends_at', 'by'])
+          && request.resource.data.kind in ['luck', 'money', 'speed']
+          && request.resource.data.mult is number
+          && request.resource.data.mult >= 1 && request.resource.data.mult <= 1000000
+          && request.resource.data.ends_at is timestamp
+          && request.resource.data.ends_at > request.time
+          && request.resource.data.ends_at < request.time + duration.value(86520, 's');
+      allow delete: if isAdmin();
+    }
+
     // ================= Trocas de pets (entre amigos) =================
     // Sem Cloud Functions: quem valida tudo é a própria regra, lendo outros documentos com get()/exists().
     // Três peças:

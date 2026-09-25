@@ -85,6 +85,12 @@ pub struct EventsUi {
     /// kinds with a request running (start or stop)
     pub busy: HashSet<&'static str>,
     pub msg: Option<(String, Color)>,
+    /// Admin Abuse aimed at THIS account only (not everyone) - None if it doesn't have one running
+    pub personal: Option<Event>,
+    pub personal_next_poll: f64,
+    pub personal_loading: bool,
+    /// the admin's page: which kind a personal grant will be for (shares admin_mult/admin_seconds above)
+    pub target_kind: &'static str,
 }
 
 impl EventsUi {
@@ -104,6 +110,10 @@ impl EventsUi {
             seconds_field: TextField::new("digits"),
             busy: HashSet::new(),
             msg: None,
+            personal: None,
+            personal_next_poll: 0.0,
+            personal_loading: false,
+            target_kind: "money",
         }
     }
 }
@@ -119,8 +129,15 @@ impl Game {
         EVENT_KINDS.iter().copied().filter(|k| self.active_event(k).is_some()).collect()
     }
 
+    /// This account's own personal Admin Abuse of this kind, if it's still running.
+    pub fn active_personal_event(&self, kind: &str) -> Option<Event> {
+        self.ev.personal.as_ref().filter(|e| e.kind == kind && e.ends_at > server_now()).cloned()
+    }
+
     pub fn event_mult(&self, kind: &str) -> f64 {
-        self.active_event(kind).map(|e| e.mult.max(1.0)).unwrap_or(1.0)
+        let global = self.active_event(kind).map(|e| e.mult.max(1.0)).unwrap_or(1.0);
+        let personal = self.active_personal_event(kind).map(|e| e.mult.max(1.0)).unwrap_or(1.0);
+        global * personal
     }
 
     pub fn event_seconds_left(&self, kind: &str) -> f64 {
@@ -170,10 +187,33 @@ impl Game {
         );
     }
 
+    fn poll_personal_event(&mut self) {
+        let (Some(client), Some(acc)) = (self.client.clone(), self.account.clone()) else { return };
+        if self.ev.personal_loading {
+            return;
+        }
+        let now = crate::core::state::now_ts();
+        if now < self.ev.personal_next_poll {
+            return;
+        }
+        self.ev.personal_loading = true;
+        self.ev.personal_next_poll = now + EVENT_POLL;
+        self.run_job(
+            move || client.get_personal_event(&acc.uid),
+            |g, ev: Option<Event>| {
+                g.ev.personal_loading = false;
+                g.ev.personal = ev;
+            },
+            // failing to read it isn't worth showing: the game goes on
+            |g, _| g.ev.personal_loading = false,
+        );
+    }
+
     pub fn tick_events(&mut self, _now: f64) {
         if self.events_ready() {
             self.check_admin();
             self.poll_events(false);
+            self.poll_personal_event();
         }
         // the GameState doesn't know about the online part: each kind's bonus goes through core/event.rs,
         // one by one (all three can be active at once)
@@ -218,7 +258,7 @@ impl Game {
     }
 
     /// What's typed in the field (if anything valid) becomes the multiplier to use.
-    fn commit_event_fields(&mut self) {
+    pub(crate) fn commit_event_fields(&mut self) {
         let t = self.ev.mult_field.text.trim().to_string();
         if !t.is_empty() {
             self.ev.admin_mult = digits_value(&t).clamp(1, EVENT_MAX_MULT);
@@ -299,10 +339,11 @@ impl Game {
     // ---------------------------------------------------------------- banner
     fn event_banner_text(&self) -> Option<String> {
         let active = self.any_active_events();
-        if active.is_empty() {
+        let personal = EVENT_KINDS.iter().find(|k| self.active_personal_event(k).is_some());
+        if active.is_empty() && personal.is_none() {
             return None;
         }
-        let parts: Vec<String> = active
+        let mut parts: Vec<String> = active
             .iter()
             .filter_map(|k| {
                 let ev = self.active_event(k)?;
@@ -310,6 +351,13 @@ impl Game {
                 Some(format!("{}x {} ({}:{:02})", g_fmt(ev.mult), event_kind_label(k), left / 60, left % 60))
             })
             .collect();
+        if let Some(k) = personal {
+            if let Some(ev) = self.active_personal_event(k) {
+                let left = (ev.ends_at - server_now()).max(0.0) as i64;
+                let time = format!("{}:{:02}", left / 60, left % 60);
+                parts.push(tr!("%sx %s just for you (%s)", g_fmt(ev.mult), event_kind_label(k), time));
+            }
+        }
         Some(tr!("ADMIN ABUSE: %s", parts.join(" | ")))
     }
 
@@ -376,7 +424,7 @@ impl Game {
     /// Label + a text field where the number is typed. The label shows the value that will REALLY be used: what's
     /// typed (if anything), already capped at the maximum.
     #[allow(clippy::too_many_arguments)]
-    fn draw_event_number_field(&mut self, x0: i32, mut y: i32, w: i32, label: &str, field: FieldRef, focus_key: &'static str, current: i64, maximum: i64) -> i32 {
+    pub(crate) fn draw_event_number_field(&mut self, x0: i32, mut y: i32, w: i32, label: &str, field: FieldRef, focus_key: &'static str, current: i64, maximum: i64) -> i32 {
         let typed = self.field_mut(field).text.trim().to_string();
         let mut current = current;
         if !typed.is_empty() {

@@ -12,7 +12,8 @@ use crate::config::VIRTUAL_H;
 use crate::core::state::now_ts;
 use crate::gfx::{Color, Rect, Surface, draw};
 use crate::i18n::tr;
-use crate::online::firebase::{Ban, LogEntry, Person, online_error_text, username_ok};
+use super::events::{EVENT_KINDS, EVENT_MAX_MULT, EVENT_MAX_SECONDS, EVENT_MULT_PRESETS, EVENT_SECONDS_PRESETS, event_kind_label, event_seconds_label, fmt_mult};
+use crate::online::firebase::{Ban, Event, LogEntry, Person, online_error_text, username_ok};
 use crate::theme::*;
 use crate::tr;
 use crate::ui::drawing::{dim_overlay, draw_panel};
@@ -110,6 +111,17 @@ impl Game {
         self.adm.menu_open = false;
         self.ev.admin_open = true;
         self.ev.msg = None;
+    }
+
+    /// Admin Abuse aimed at one player: search a username, then give (or clear) their own event.
+    pub fn open_personal_admin(&mut self) {
+        self.adm.menu_open = false;
+        self.adm.ban_open = true;
+        self.adm.page = "personal";
+        self.adm.msg = None;
+        self.adm.found = None;
+        self.adm.confirm = false;
+        self.set_ban_focus(Some("search"));
     }
 
     /// v3.0.1: Resets (one player, or everyone).
@@ -282,7 +294,7 @@ impl Game {
                     Some(p) => {
                         g.adm.found = Some(p);
                         g.season.player_confirm = false;
-                        g.set_ban_focus(if g.adm.page == "reset" { None } else { Some("reason") });
+                        g.set_ban_focus(if g.adm.page == "reset" || g.adm.page == "personal" { None } else { Some("reason") });
                     }
                 }
             },
@@ -332,6 +344,56 @@ impl Game {
                 g.adm.reason.set_text("");
                 g.set_ban_focus(Some("search"));
                 g.refresh_ban_list();
+            },
+            |g, e| {
+                g.adm.busy = false;
+                g.adm.msg = Some((online_error_text(&e), BAD));
+            },
+        );
+    }
+
+    /// Admin Abuse for ONE player: gives them (and only them) the multiplier/duration/kind picked on the page.
+    pub fn give_personal_event(&mut self) {
+        let Some(found) = self.adm.found.clone() else { return };
+        if self.adm.busy || !self.ev.is_admin {
+            return;
+        }
+        self.commit_event_fields();
+        let kind = self.ev.target_kind;
+        let seconds = EVENT_MAX_SECONDS.min(self.ev.admin_seconds) as f64;
+        let mult = EVENT_MAX_MULT.min(self.ev.admin_mult) as f64;
+        self.adm.busy = true;
+        self.adm.msg = None;
+        let (uid, username) = (found.uid.clone(), found.username.clone());
+        let client = self.client.clone().unwrap();
+        self.run_job(
+            move || client.start_personal_event(&uid, kind, mult, seconds),
+            move |g, _: Event| {
+                g.adm.busy = false;
+                g.adm.msg = Some((tr!("%s got a personal %s event.", username, event_kind_label(kind)), GOOD));
+            },
+            |g, e| {
+                g.adm.busy = false;
+                g.adm.msg = Some((online_error_text(&e), BAD));
+            },
+        );
+    }
+
+    /// Ends the found player's personal event early.
+    pub fn clear_personal_event(&mut self) {
+        let Some(found) = self.adm.found.clone() else { return };
+        if self.adm.busy || !self.ev.is_admin {
+            return;
+        }
+        self.adm.busy = true;
+        self.adm.msg = None;
+        let (uid, username) = (found.uid.clone(), found.username.clone());
+        let client = self.client.clone().unwrap();
+        self.run_job(
+            move || client.stop_personal_event(&uid),
+            move |g, _: ()| {
+                g.adm.busy = false;
+                g.adm.msg = Some((tr!("%s's personal event was cleared.", username), GOOD));
             },
             |g, e| {
                 g.adm.busy = false;
@@ -437,7 +499,7 @@ impl Game {
     pub fn draw_admin_menu(&mut self, mouse_pos: (f64, f64)) {
         let ov = dim_overlay(self.vw, VIRTUAL_H, 170);
         self.canvas.blit(&ov, 0, 0);
-        let (panel_w, panel_h) = (460.min(self.vw - 40), 402); // 3 buttons + v4.0.1's "Log"
+        let (panel_w, panel_h) = (460.min(self.vw - 40), 468); // 4 buttons + v4.0.1's "Log"
         let rect = Rect::new(self.vw / 2 - panel_w / 2, VIRTUAL_H / 2 - panel_h / 2, panel_w, panel_h);
         draw_panel(&mut self.canvas, rect, Some(panel()), 16, true, None);
         self.register_blocker(rect);
@@ -453,6 +515,8 @@ impl Game {
         let (x0, w) = (rect.x + 24, panel_w - 48);
         let mut y = rect.y + 104;
         self.button(Rect::new(x0, y, w, 54), &tr("Admin Abuse"), &med, mouse_pos, panel_light(), panel_lighter(), accent(), cb(|g| g.open_admin_abuse()), Bo::r(12).icon("admin_event"));
+        y += 66;
+        self.button(Rect::new(x0, y, w, 54), &tr("Target one player"), &med, mouse_pos, panel_light(), panel_lighter(), accent(), cb(|g| g.open_personal_admin()), Bo::r(12).icon("admin_event"));
         y += 66;
         self.button(Rect::new(x0, y, w, 54), &tr("Bans"), &med, mouse_pos, panel_light(), panel_lighter(), BAD, cb(|g| g.open_ban_admin()), Bo::r(12).icon("ban"));
         y += 66;
@@ -525,6 +589,88 @@ impl Game {
         self.draw_reset_everyone_button(Rect::new(x0, rect.bottom() - 24 - 54, w, 54), mouse_pos);
     }
 
+    /// Admin Abuse aimed at one player only: search them, pick a kind/multiplier/duration (the same fields as
+    /// the global Admin Abuse page) and give it just to them.
+    fn draw_personal_admin(&mut self, mouse_pos: (f64, f64)) {
+        let ov = dim_overlay(self.vw, VIRTUAL_H, 170);
+        self.canvas.blit(&ov, 0, 0);
+        let panel_w = 640.min(self.vw - 40);
+        let panel_h = (VIRTUAL_H - 40).min(760);
+        let rect = Rect::new(self.vw / 2 - panel_w / 2, 20.max(VIRTUAL_H / 2 - panel_h / 2), panel_w, panel_h);
+        draw_panel(&mut self.canvas, rect, Some(panel()), 16, true, None);
+        self.register_button(rect, Rc::new(|g: &mut Game| g.set_ban_focus(None)), None);
+        let sb = self.f.small_b.clone();
+        let small = self.f.small.clone();
+        let med = self.f.med.clone();
+        let title = self.f.big.render(&tr("Target one player"), WHITE);
+        self.canvas.blit(&title, rect.x + 24, rect.y + 18);
+        self.button(Rect::new(rect.right() - 46, rect.y + 20, 28, 28), "X", &sb, mouse_pos, panel_light(), BAD, WHITE, cb(|g| g.close_ban_admin()), Bo::r(8));
+        self.draw_back_button(rect, mouse_pos);
+        let (x0, w) = (rect.x + 24, panel_w - 48);
+        let mut y = rect.y + 30 + title.h;
+
+        for line in wrap_text(&tr("The same Luck/Money/Auto Speed boost as Admin Abuse, but only this one player sees it."), &small, w) {
+            let l = small.render(&line, grey());
+            self.canvas.blit(&l, x0, y);
+            y += l.h + 2;
+        }
+        y += 6;
+
+        // ---- search ----
+        let field = Rect::new(x0, y, w - 130, 44);
+        let display = self.adm.search.text.clone();
+        let focused = self.adm.focus == Some("search");
+        self.draw_text_field(field, FieldRef::BanSearch, &display, &tr("Username..."), focused, Rc::new(|g: &mut Game| g.set_ban_focus(Some("search"))));
+        let busy = self.adm.busy;
+        self.button(Rect::new(field.right() + 10, y, 120, 44), &tr("Search"), &med, mouse_pos, accent(), accent_hover(), BLACK, cb(|g| g.search_ban_player()), Bo::r(10).enabled(!busy));
+        y += 44 + 10;
+
+        let Some(found) = self.adm.found.clone() else {
+            let t = small.render(&tr("Search a username to target them."), grey());
+            self.canvas.blit(&t, x0, y);
+            if let Some((text, color)) = self.adm.msg.clone() {
+                y += t.h + 8;
+                let m = small.render(&fit_text(&small, &text, w), color);
+                self.canvas.blit(&m, x0, y);
+            }
+            return;
+        };
+        let t = sb.render(&tr!("Found: %s", found.username.clone()), accent());
+        self.canvas.blit(&t, x0, y);
+        y += t.h + 10;
+
+        // ---- kind ----
+        let t = sb.render(&tr("Type"), grey_dim());
+        self.canvas.blit(&t, x0, y);
+        y += t.h + 6;
+        let kind_opts: Vec<(String, i64)> = EVENT_KINDS.iter().enumerate().map(|(i, k)| (event_kind_label(k), i as i64)).collect();
+        let chosen = EVENT_KINDS.iter().position(|k| *k == self.ev.target_kind).unwrap_or(1) as i64;
+        y = self.draw_choice_grid(x0, y, w, mouse_pos, &kind_opts, chosen, |g, v| g.ev.target_kind = EVENT_KINDS[v as usize], 3);
+        y += 6;
+
+        // ---- multiplier / duration (same fields the global page uses) ----
+        y = self.draw_event_number_field(x0, y, w, &tr("Multiplier"), FieldRef::EventMult, "mult", self.ev.admin_mult, EVENT_MAX_MULT);
+        let opts: Vec<(String, i64)> = EVENT_MULT_PRESETS.iter().map(|&m| (fmt_mult(m), m)).collect();
+        let chosen = self.ev.admin_mult;
+        y = self.draw_choice_grid(x0, y, w, mouse_pos, &opts, chosen, |g, v| g.set_event_mult(v), 5);
+        y += 6;
+        y = self.draw_event_number_field(x0, y, w, &tr("Time (seconds)"), FieldRef::EventSeconds, "seconds", self.ev.admin_seconds, EVENT_MAX_SECONDS);
+        let opts: Vec<(String, i64)> = EVENT_SECONDS_PRESETS.iter().map(|&s| (event_seconds_label(s), s)).collect();
+        let chosen = self.ev.admin_seconds;
+        y = self.draw_choice_grid(x0, y, w, mouse_pos, &opts, chosen, |g, v| g.set_event_seconds(v), 4);
+        y += 10;
+
+        let bw = (w - 10) / 2;
+        self.button(Rect::new(x0, y, bw, 48), &tr!("Give to %s", found.username.clone()), &med, mouse_pos, accent(), accent_hover(), BLACK, cb(|g| g.give_personal_event()), Bo::r(10).enabled(!busy).icon("admin_event"));
+        self.button(Rect::new(x0 + bw + 10, y, bw, 48), &tr("Clear their event"), &med, mouse_pos, Color::rgb(150, 60, 60), Color::rgb(235, 90, 90), WHITE, cb(|g| g.clear_personal_event()), Bo::r(10).enabled(!busy));
+        y += 48 + 10;
+
+        if let Some((text, color)) = self.adm.msg.clone() {
+            let t = small.render(&fit_text(&small, &text, w), color);
+            self.canvas.blit(&t, x0, y);
+        }
+    }
+
     /// The Back button (to the admin menu) in the top corner of an admin page, next to the X.
     pub fn draw_back_button(&mut self, rect: Rect, mouse_pos: (f64, f64)) {
         let sb = self.f.small_b.clone();
@@ -538,6 +684,10 @@ impl Game {
         }
         if self.adm.page == "log" {
             self.draw_admin_log(mouse_pos);
+            return;
+        }
+        if self.adm.page == "personal" {
+            self.draw_personal_admin(mouse_pos);
             return;
         }
         let ov = dim_overlay(self.vw, VIRTUAL_H, 170);

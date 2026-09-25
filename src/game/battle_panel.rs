@@ -648,7 +648,9 @@ impl Game {
                 }
             }
             K::Escape => {
-                let waiting_for_friend = self.battle.online.is_some() && !self.battle.busy() && !self.online_my_turn() && self.battle.battle.as_ref().is_some_and(|b| b.winner.is_none());
+                // stuck waiting on a friend's move (even mid-animation - an AFK friend must never trap the
+                // player behind a "click to skip" they have no other way to reach): Escape always leaves
+                let waiting_for_friend = self.battle.online.is_some() && !self.online_my_turn() && self.battle.battle.as_ref().is_some_and(|b| b.winner.is_none());
                 if self.battle.stage == "pick" {
                     self.battle_back_to_hub();
                 } else if waiting_for_friend {
@@ -1146,8 +1148,10 @@ impl Game {
         let menu = Rect::new(text_box.right() + 12, area.y, menu_w, area.h);
         draw_panel(&mut self.canvas, menu, Some(Color::rgb(34, 38, 56)), 12, false, None);
         // online, waiting for the friend to move: always a way out (never make the player wait to be able to
-        // leave - it just gets more insistent-looking the longer it's been, in case they left it open by mistake)
-        if let (Some((_, gone, waited)), false, false) = (&waiting, self.battle.busy(), over) {
+        // leave - it just gets more insistent-looking the longer it's been, in case they left it open by mistake).
+        // Shown even while `busy` (an animation/event is still playing out) - an AFK friend must never be able to
+        // strand the player behind a "click to skip" they can't otherwise reach.
+        if let (Some((_, gone, waited)), false) = (&waiting, over) {
             let r = Rect::with_center(menu.w - 60, 50, menu.center());
             let urgent = *gone || *waited > PATIENCE;
             self.button(r, &tr("Leave"), &med, mouse_pos, if urgent { BAD } else { panel_light() }, if urgent { Color::rgb(250, 110, 110) } else { panel_lighter() }, WHITE, cb(|g| g.leave_online_battle()), Bo::r(10));
