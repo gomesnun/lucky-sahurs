@@ -652,8 +652,14 @@ fn shots(dir: &str) {
     let now = 1_790_000_000.0;
     g.back_to_title();
     g.open_saves();
+    g.settings.set_str("slot_name_local_1", "Main run"); // v3.0.4: a named slot
     g.draw(m);
     save(&g, "o_saves_local");
+    g.start_slot_rename(2);
+    g.slot_name_field.set_text("Speedrun");
+    g.draw(m);
+    save(&g, "o_saves_rename");
+    g.slot_rename = None;
     g.screen_mode = "title";
     g.account = Some(game::Account { uid: "u_me".into(), username: "tommy".into(), email: Some("t@x.io".into()), email_verified: true });
     let person = |uid: &str, name: &str, pet: Option<i64>, m: &str| Person { uid: uid.into(), username: name.into(), avatar_pet: pet, avatar_mut: m.into(), time: None, last_seen: None, title: None };

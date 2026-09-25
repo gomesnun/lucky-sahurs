@@ -22,6 +22,7 @@ pub enum FieldRef {
     BanSearch,
     BanReason,
     SellAmount,
+    SlotName,
 }
 
 /// Optional arguments of button().
@@ -92,6 +93,7 @@ impl Game {
             FieldRef::BanSearch => &mut self.adm.search,
             FieldRef::BanReason => &mut self.adm.reason,
             FieldRef::SellAmount => &mut self.sell.field,
+            FieldRef::SlotName => &mut self.slot_name_field,
         }
     }
 
