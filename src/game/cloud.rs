@@ -165,10 +165,10 @@ impl Game {
         let uid2 = uid.clone();
         self.run_job(
             move || {
+                // taking this account over on THIS device, even if another one currently holds it - it will
+                // notice (tick_session) and back off on its own next heartbeat, the same way a save conflict
+                // already does
                 let mut held = false;
-                if let Ok(Some(_)) = client.session_blocker(&iid) {
-                    return Ok(StartRes { busy: true, held: false, cloud: None });
-                }
                 match client.write_session(&iid, true) {
                     Ok(()) => held = true,
                     Err(e) if e.code == "denied" => return Ok(StartRes { busy: true, held: false, cloud: None }),
@@ -180,7 +180,7 @@ impl Game {
             move |g, res: StartRes| {
                 g.slot_starting = false;
                 if res.busy {
-                    g.show_toast(&tr("This account is already being played on another device. Close the game there and try again."), 6.0);
+                    g.show_toast(&tr("Couldn't claim this account right now. Try again."), 3.0);
                     return;
                 }
                 g.session_held = res.held;
@@ -384,10 +384,24 @@ impl Game {
         let Some(client) = self.client.clone() else { return };
         let iid = self.install_id.clone();
         self.run_job(
-            move || client.write_session(&iid, true),
-            |g, _| {
+            move || {
+                // someone else has since claimed this account on another device: back off rather than fight
+                // them for the lock (whoever claims it most recently wins - see start_cloud_slot)
+                if client.session_blocker(&iid)?.is_some() {
+                    return Ok(false);
+                }
+                client.write_session(&iid, true)?;
+                Ok(true)
+            },
+            |g, held: bool| {
                 g.session_inflight = false;
-                g.session_held = true;
+                if g.session_held && !held {
+                    // just lost it: stop autosaving over whatever the other device is now writing - the same
+                    // recovery the save-conflict path already offers
+                    g.state.sync_conflict = true;
+                    g.show_toast(&tr("This account is being played on another device now. Go to the main menu and open the slot again."), 4.0);
+                }
+                g.session_held = held;
             },
             |g, _| {
                 g.session_inflight = false;
