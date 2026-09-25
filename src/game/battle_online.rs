@@ -186,7 +186,7 @@ impl Game {
         if !self.online_ready() || self.battle.picks.is_empty() || self.battle.ch_action.is_some() {
             return;
         }
-        let picks: Vec<(usize, &'static str, usize)> = self.battle.picks.iter().map(|(p, m)| (*p, *m, self.state.phase(*p, m))).collect();
+        let picks: Vec<(usize, &'static str, usize)> = self.battle.picks.iter().map(|(p, m)| (*p, *m, self.state.best_phase(*p, m))).collect();
         let team = team_code(&picks);
         let seed = ((now_ts() * 1000.0) as i64).rem_euclid(1 << 40) ^ (self.state.total_rolls & 0xffff);
         let me = self.my_username();
@@ -213,7 +213,7 @@ impl Game {
         if !self.online_ready() || self.battle.picks.is_empty() || self.battle.ch_action.is_some() {
             return;
         }
-        let picks: Vec<(usize, &'static str, usize)> = self.battle.picks.iter().map(|(p, m)| (*p, *m, self.state.phase(*p, m))).collect();
+        let picks: Vec<(usize, &'static str, usize)> = self.battle.picks.iter().map(|(p, m)| (*p, *m, self.state.best_phase(*p, m))).collect();
         let team = team_code(&picks);
         self.battle.ch_action = Some(doc.id.clone());
         let client = self.client.clone().unwrap();
@@ -260,7 +260,7 @@ impl Game {
 
     // ---------------------------------------------------------------- ranked queue
     fn my_team_code(&self) -> String {
-        let picks: Vec<(usize, &'static str, usize)> = self.battle.picks.iter().map(|(p, m)| (*p, *m, self.state.phase(*p, m))).collect();
+        let picks: Vec<(usize, &'static str, usize)> = self.battle.picks.iter().map(|(p, m)| (*p, *m, self.state.best_phase(*p, m))).collect();
         team_code(&picks)
     }
 

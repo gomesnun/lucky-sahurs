@@ -330,7 +330,7 @@ impl Game {
             let rarity = &rarities()[r_idx];
             let label = self.f.tiny_b.render(&tr("Best so far:"), grey());
             blit_midtop(&mut self.canvas, &label, (rect.centerx(), rect.bottom() - 86));
-            let img = load_pet_phase_image(rarity.pet, self.state.phase(r_idx, m), 44, false);
+            let img = load_pet_phase_image(rarity.pet, 0, 44, false); // a roll always lands at Phase 1
             let ml = mutation(m).map(|x| x.label).unwrap_or("");
             let name = if ml.is_empty() { rarity.pet.to_string() } else { format!("{} {}", tr(ml), rarity.pet) };
             let sb = self.f.small_b.clone();
@@ -356,10 +356,11 @@ impl Game {
             self.draw_too_fast_card(card_rect); // the Auto Roller is too fast to show each pet
         } else if let Some((r_idx, m)) = self.state.last_roll {
             let rarity = &rarities()[r_idx];
-            let income = self.state.pet_income(r_idx, m);
+            // v4.0.1: a roll always lands at Phase 1, whatever phase you've already fused this pet+mutation to
+            let income = self.state.pet_income(r_idx, m, 0);
             let chance = self.state.combined_chance(r_idx, m, None, None);
             let plates = vec![vec![cell(tr("Income"), tr!("+%s/sec", format_number(income)))], vec![cell(tr("Roll Chance"), format_one_in(chance))]];
-            let card = render_pet_card_phase(rarity, m, self.state.phase(r_idx, m), card_w, card_h, &plates, 0, false);
+            let card = render_pet_card_phase(rarity, m, 0, card_w, card_h, &plates, 0, false);
             let c = rarity.color;
             let glow_color = if c.b > 60 || is_light(c) { c } else { Color::rgb(90, 90, 110) };
             let glow = rarity_glow((card_w, card_h), glow_color, 30);

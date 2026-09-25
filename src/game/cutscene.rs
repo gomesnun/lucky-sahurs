@@ -208,9 +208,10 @@ impl Game {
         let scale = 0.35 + 0.65 * pop_t;
         let spin_deg = if anim { (1.0 - ease_out_cubic((elapsed / 0.55).min(1.0))) * -14.0 } else { 0.0 };
         let base = 220.max(380.min((self.vw.min(VIRTUAL_H) as f64 * 0.46) as i32));
-        let income = self.state.pet_income(r_idx, mutation_key);
+        // v4.0.1: a roll always lands at Phase 1 now, whatever phase you've already fused this pet+mutation to
+        let income = self.state.pet_income(r_idx, mutation_key, 0);
         let plates = vec![vec![cell(tr("Income"), tr!("+%s/sec", format_number(income)))]];
-        let mut card_surf = render_pet_card_phase(rarity, mutation_key, self.state.phase(r_idx, mutation_key), base, base, &plates, 0, false);
+        let mut card_surf = render_pet_card_phase(rarity, mutation_key, 0, base, base, &plates, 0, false);
         if (scale - 1.0).abs() > 0.005 {
             let s = 1.max((base as f64 * scale) as i32);
             card_surf = Rc::new(transform::smoothscale(&card_surf, s, s));

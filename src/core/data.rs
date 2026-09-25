@@ -292,6 +292,25 @@ pub fn mut_key(key: &str) -> &'static str {
     mutation(key).map(|m| m.key).unwrap_or("normal")
 }
 
+/// v4.0.1: the key `owned` (and `locked_pets`) are stored under - "{rarity_index}_{mutation}_{phase}". Every
+/// copy of a pet+mutation now sits in the bucket for its own phase (rolling always adds to phase 0, so a fresh
+/// roll is never handed the phase you've already fused that pet+mutation up to).
+pub fn owned_key(rarity_index: usize, m: &str, phase: usize) -> String {
+    format!("{}_{}_{}", rarity_index, mut_key(m), phase.min(MAX_PHASE))
+}
+
+/// Parses an owned_key back into (rarity_index, mutation, phase). None if malformed or out of range.
+pub fn parse_owned_key(key: &str) -> Option<(usize, &'static str, usize)> {
+    let (rest, phase_s) = key.rsplit_once('_')?;
+    let (idx_s, m) = rest.split_once('_')?;
+    let idx: usize = idx_s.trim().parse().ok()?;
+    let phase: usize = phase_s.trim().parse().ok()?;
+    if idx >= rarities().len() || !is_mutation(m) || phase > MAX_PHASE {
+        return None;
+    }
+    Some((idx, mut_key(m), phase))
+}
+
 pub const GOLDEN_MAX_CHANCE: f64 = 0.25;
 pub const DIAMOND_MAX_CHANCE: f64 = 0.09;
 pub const RAINBOW_MAX_CHANCE: f64 = 0.025;

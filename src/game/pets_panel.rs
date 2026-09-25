@@ -3,7 +3,7 @@
 use super::base::{Bo, blit_center};
 use super::{Game, cb};
 use crate::config::{TOPBAR_H, VIRTUAL_H};
-use crate::core::data::{INDEX_ENTRIES, MUT_ORDER, RARITY_TIERS, base_pet_chance, is_mutation, pet_order, rarities};
+use crate::core::data::{INDEX_ENTRIES, MUT_ORDER, RARITY_TIERS, base_pet_chance, pet_order, rarities};
 use crate::core::formatting::{format_number, format_one_in};
 use crate::gfx::{Color, Rect, draw, ti};
 use crate::i18n::tr;
@@ -89,7 +89,7 @@ impl Game {
             }
             let real = self.state.combined_chance(i, m, Some(&live), Some(muts));
             let base_line = format!("({})", format_one_in(base_pet_chance(i, m)));
-            let income_line = tr!("+%s/sec", format_number(self.state.pet_income(i, m)));
+            let income_line = tr!("+%s/sec", format_number(self.state.pet_income(i, m, 0))); // reference: what it earns at Phase 1
             let plates = vec![vec![cell(tr("Income"), income_line)], vec![cell3(tr("Chance"), format_one_in(real), base_line)]];
             let locked = locked_mut || !self.state.is_indexed(i, m);
             let s = render_pet_card(rarity, m, card, card, &plates, 0, locked);
@@ -191,7 +191,7 @@ impl Game {
             }
             let real = self.state.combined_chance(i, m, Some(&live), Some(muts));
             let base_line = format!("({})", format_one_in(base_pet_chance(i, m)));
-            let income_line = tr!("+%s/sec", format_number(self.state.pet_income(i, m)));
+            let income_line = tr!("+%s/sec", format_number(self.state.pet_income(i, m, 0))); // reference: what it earns at Phase 1
             let plates = vec![vec![cell(tr("Income"), income_line)], vec![cell3(tr("Chance"), format_one_in(real), base_line)]];
             let locked = locked_mut || !self.state.is_indexed(i, m);
             let s = render_pet_card(&rarities()[i], m, card, card, &plates, 0, locked);
@@ -520,8 +520,8 @@ impl Game {
         {
             let st = &self.state;
             order.sort_by(|a, b| {
-                let ia = -st.pet_income(st.equipped[*a].0, st.equipped[*a].1);
-                let ib = -st.pet_income(st.equipped[*b].0, st.equipped[*b].1);
+                let ia = -st.pet_income(st.equipped[*a].0, st.equipped[*a].1, st.equipped[*a].2);
+                let ib = -st.pet_income(st.equipped[*b].0, st.equipped[*b].1, st.equipped[*b].2);
                 ia.partial_cmp(&ib).unwrap_or(std::cmp::Ordering::Equal)
             });
         }
@@ -533,10 +533,10 @@ impl Game {
             }
             if (i as usize) < order.len() {
                 let actual = order[i as usize];
-                let (r_idx, m) = self.state.equipped[actual];
-                let income = self.state.pet_income(r_idx, m);
+                let (r_idx, m, phase) = self.state.equipped[actual];
+                let income = self.state.pet_income(r_idx, m, phase);
                 let plates = vec![vec![cell(tr("Income"), tr!("+%s/sec", format_number(income)))]];
-                let s = render_pet_card_phase(&rarities()[r_idx], m, self.state.phase(r_idx, m), card, card, &plates, 0, false);
+                let s = render_pet_card_phase(&rarities()[r_idx], m, phase, card, card, &plates, 0, false);
                 self.canvas.blit(&s, crect.x, crect.y);
                 if crect.collidepoint(mouse_pos) && content.collidepoint(mouse_pos) {
                     draw::rect(&mut self.canvas, WHITE, crect, 3, 12);
@@ -665,39 +665,39 @@ impl Game {
         y + h
     }
 
-    pub fn inventory_entries(&self) -> Vec<(usize, &'static str)> {
+    /// One entry per (pet, mutation, phase) bucket you have copies of - v4.0.1 fused stock and freshly rolled
+    /// Phase 1 copies of the same pet+mutation are separate cards now, each with its own income and count.
+    pub fn inventory_entries(&self) -> Vec<(usize, &'static str, usize)> {
         let st = &self.state;
-        let mut entries: Vec<(usize, &'static str)> = Vec::new();
+        let mut entries: Vec<(usize, &'static str, usize)> = Vec::new();
         for (key, n) in &st.owned {
-            let Some((idx_s, m)) = key.split_once('_') else { continue };
-            let Ok(idx) = idx_s.trim().parse::<i64>() else { continue };
-            if *n > 0 && idx >= 0 && (idx as usize) < rarities().len() && is_mutation(m) {
-                let mk = crate::core::data::mut_key(m);
-                if self.inv_mut != "all" && mk != self.inv_mut {
+            let Some((idx, m, phase)) = crate::core::data::parse_owned_key(key) else { continue };
+            if *n > 0 {
+                if self.inv_mut != "all" && m != self.inv_mut {
                     continue;
                 }
                 if let Some(t) = self.inv_tier {
-                    if rarities()[idx as usize].tier != t {
+                    if rarities()[idx].tier != t {
                         continue;
                     }
                 }
-                entries.push((idx as usize, mk));
+                entries.push((idx, m, phase));
             }
         }
         let rank = |i: usize| pet_order().iter().position(|p| *p == i).unwrap_or(0) as f64;
-        let money = |e: &(usize, &str)| st.pet_base_income(e.0, e.1);
+        let money = |e: &(usize, &str, usize)| st.pet_base_income(e.0, e.1, e.2);
         let mi = |m: &str| MUT_ORDER.iter().position(|x| *x == m).unwrap_or(0) as f64;
-        let primary = |e: &(usize, &str)| -> f64 {
+        let primary = |e: &(usize, &str, usize)| -> f64 {
             match self.inv_sort {
                 "rarity" => rank(e.0),
                 "mutation" => mi(e.1),
-                "quantity" => st.count_owned(e.0, e.1) as f64,
+                "quantity" => st.count_owned_at(e.0, e.1, e.2) as f64,
                 _ => money(e),
             }
         };
         entries.sort_by(|a, b| {
-            let ka = (-primary(a), -money(a), -rank(a.0), -mi(a.1));
-            let kb = (-primary(b), -money(b), -rank(b.0), -mi(b.1));
+            let ka = (-primary(a), -money(a), -rank(a.0), -mi(a.1), -(a.2 as f64));
+            let kb = (-primary(b), -money(b), -rank(b.0), -mi(b.1), -(b.2 as f64));
             ka.partial_cmp(&kb).unwrap_or(std::cmp::Ordering::Equal)
         });
         if !self.inv_high_first {
@@ -725,34 +725,34 @@ impl Game {
             return 80.0;
         }
         let sb = self.f.small_b.clone();
-        for (n, (idx, m)) in entries.iter().enumerate() {
-            let (idx, m) = (*idx, *m);
+        for (n, (idx, m, phase)) in entries.iter().enumerate() {
+            let (idx, m, phase) = (*idx, *m, *phase);
             let n = n as i32;
             let (col, row) = (n % cols, n / cols);
             let crect = Rect::new(rect.x + ipad + col * (card_w + gap), ti(top_y + (row * (card_h + gap)) as f64), card_w, card_h);
             if crect.bottom() < content.top() - 4 || crect.top() > content.bottom() + 4 {
                 continue;
             }
-            let owned = self.state.count_owned(idx, m);
-            let eq = self.state.equipped_count(idx, m);
-            let income = self.state.pet_income(idx, m);
+            let owned = self.state.count_owned_at(idx, m, phase);
+            let eq = self.state.equipped_count(idx, m, phase);
+            let income = self.state.pet_income(idx, m, phase);
             let plates = vec![vec![cell(tr("Income"), tr!("+%s/sec", format_number(income)))], vec![cell(tr("Have"), format_number(owned as f64)), cell(tr("Equip"), eq.to_string())]];
-            let s = render_pet_card_phase(&rarities()[idx], m, self.state.phase(idx, m), card_w, card_h, &plates, 30, false);
+            let s = render_pet_card_phase(&rarities()[idx], m, phase, card_w, card_h, &plates, 30, false);
             self.canvas.blit(&s, crect.x, crect.y);
             let bw = (card_w - 18) / 2;
             let minus = Rect::new(crect.x + 6, crect.bottom() - 28, bw, 22);
             let plus = Rect::new(crect.right() - 6 - bw, crect.bottom() - 28, bw, 22);
             let can_minus = eq > 0;
             let can_plus = eq < owned && (self.state.equipped.len() as i64) < self.state.max_slots();
-            self.button(minus, "-", &sb, mouse_pos, Color::rgb(38, 40, 52), BAD, WHITE, if can_minus { cb(move |g| { g.state.equip_remove_one(idx, m); }) } else { None }, Bo::r(7).enabled(can_minus).sfx(Some("equip")));
-            self.button(plus, "+", &sb, mouse_pos, Color::rgb(38, 40, 52), GOOD, WHITE, if can_plus { cb(move |g| { g.state.equip_add(idx, m); }) } else { None }, Bo::r(7).enabled(can_plus).sfx(Some("equip")));
+            self.button(minus, "-", &sb, mouse_pos, Color::rgb(38, 40, 52), BAD, WHITE, if can_minus { cb(move |g| { g.state.equip_remove_one(idx, m, phase); }) } else { None }, Bo::r(7).enabled(can_minus).sfx(Some("equip")));
+            self.button(plus, "+", &sb, mouse_pos, Color::rgb(38, 40, 52), GOOD, WHITE, if can_plus { cb(move |g| { g.state.equip_add(idx, m, phase); }) } else { None }, Bo::r(7).enabled(can_plus).sfx(Some("equip")));
 
             // the evolve button: on the left, mirroring the sell one; lit up when there are enough copies to stack
             let evo_rect = Rect::new(crect.x + 6, crect.y + 34, 28, 28);
-            let ready = self.state.can_evolve(idx, m);
+            let ready = self.state.can_evolve(idx, m, phase);
             let (base, hover) = if ready { (Color::rgb(120, 40, 40), Color::rgb(170, 60, 60)) } else { (Color::rgb(38, 40, 52), Color::rgb(62, 66, 84)) };
             let evo_label = if load_icon("evolve", 16).is_some() { "" } else { "^" };
-            self.button(evo_rect, evo_label, &sb, mouse_pos, base, hover, WHITE, cb(move |g| g.open_evolve(idx, m)), Bo::r(7));
+            self.button(evo_rect, evo_label, &sb, mouse_pos, base, hover, WHITE, cb(move |g| g.open_evolve(idx, m, phase)), Bo::r(7));
             if let Some(icon) = load_icon("evolve", 20) {
                 if self.clip_allows(&evo_rect) {
                     blit_center(&mut self.canvas, &icon, evo_rect.center());
@@ -763,14 +763,14 @@ impl Game {
             let sell_size = 28;
             let sell_rect = Rect::new(crect.right() - 6 - sell_size, crect.y + 34, sell_size, sell_size);
             let label = if load_icon("sell", 16).is_some() { "" } else { "$" };
-            self.button(sell_rect, label, &sb, mouse_pos, Color::rgb(38, 40, 52), Color::rgb(62, 66, 84), GOOD, cb(move |g| g.open_sell(idx, m)), Bo::r(7));
+            self.button(sell_rect, label, &sb, mouse_pos, Color::rgb(38, 40, 52), Color::rgb(62, 66, 84), GOOD, cb(move |g| g.open_sell(idx, m, phase)), Bo::r(7));
             if let Some(icon) = load_icon("sell", sell_size - 6) {
                 if self.clip_allows(&sell_rect) {
                     blit_center(&mut self.canvas, &icon, sell_rect.center());
                 }
             }
             // v3.0.4: the lock (under the sell button) - a locked verity can't be sold
-            let locked = self.state.is_locked(idx, m);
+            let locked = self.state.is_locked(idx, m, phase);
             let lock_rect = Rect::new(sell_rect.x, sell_rect.bottom() + 6, sell_size, sell_size);
             let lock_label = if load_icon("lock", 16).is_some() { "" } else { "L" };
             self.button(
@@ -781,7 +781,7 @@ impl Game {
                 if locked { accent() } else { Color::rgb(38, 40, 52) },
                 if locked { accent_hover() } else { Color::rgb(62, 66, 84) },
                 WHITE,
-                cb(move |g| g.state.toggle_lock(idx, m)),
+                cb(move |g| g.state.toggle_lock(idx, m, phase)),
                 Bo::r(7),
             );
             if let Some(icon) = load_icon("lock", sell_size - 8) {

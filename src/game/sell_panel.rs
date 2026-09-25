@@ -22,8 +22,8 @@ use std::rc::Rc;
 pub const SELL_CONFIRM_SECONDS: f64 = 4.0;
 
 pub struct SellUi {
-    /// (pet index, mutation) being sold, or None = page closed
-    pub target: Option<(usize, &'static str)>,
+    /// (pet index, mutation, phase) being sold, or None = page closed
+    pub target: Option<(usize, &'static str, usize)>,
     pub field: TextField,
     pub focus: bool,
     /// "Sell All" on: sells them all, no typing needed
@@ -48,12 +48,12 @@ pub fn sell_pet_label(rarity_index: usize, m: &str) -> String {
 
 impl Game {
     // ---------------------------------------------------------------- open / close
-    pub fn open_sell(&mut self, rarity_index: usize, m: &'static str) {
-        if self.state.is_locked(rarity_index, m) {
+    pub fn open_sell(&mut self, rarity_index: usize, m: &'static str, phase: usize) {
+        if self.state.is_locked(rarity_index, m, phase) {
             self.show_toast(&tr!("%s is locked! Unlock it (the lock on its card) to sell it.", sell_pet_label(rarity_index, m)), 2.5);
             return;
         }
-        self.sell.target = Some((rarity_index, m));
+        self.sell.target = Some((rarity_index, m, phase));
         self.sell.field.set_text("");
         self.sell.all = false;
         self.sell.confirm = false;
@@ -90,8 +90,8 @@ impl Game {
     // ---------------------------------------------------------------- amount
     /// How many pets will be sold now (never more than you have).
     pub fn sell_amount(&self) -> i64 {
-        let Some((r, m)) = self.sell.target else { return 0 };
-        let owned = self.state.count_owned(r, m);
+        let Some((r, m, phase)) = self.sell.target else { return 0 };
+        let owned = self.state.count_owned_at(r, m, phase);
         if self.sell.all {
             return owned;
         }
@@ -129,8 +129,8 @@ impl Game {
             self.sell.confirm_timer = SELL_CONFIRM_SECONDS;
             return;
         }
-        let Some((r, m)) = self.sell.target else { return };
-        let (sold, gain) = self.state.sell_pets(r, m, amount);
+        let Some((r, m, phase)) = self.sell.target else { return };
+        let (sold, gain) = self.state.sell_pets(r, m, phase, amount);
         if sold > 0 && self.state.auto_equip_unlocked() && self.state.auto_equip_best_on {
             self.state.equip_best();
         }
@@ -177,8 +177,8 @@ impl Game {
 
     // ---------------------------------------------------------------- drawing
     pub fn draw_sell_page(&mut self, mouse_pos: (f64, f64)) {
-        let Some((r_idx, m)) = self.sell.target else { return };
-        let owned = self.state.count_owned(r_idx, m);
+        let Some((r_idx, m, phase)) = self.sell.target else { return };
+        let owned = self.state.count_owned_at(r_idx, m, phase);
         if owned <= 0 {
             // none left (a trade, another sale...): nothing to sell
             self.close_sell();
@@ -211,16 +211,16 @@ impl Game {
         // ---- the pet's card (left) + details (right) ----
         let top = rect.y + 72;
         let (card_w, card_h) = (140, 160);
-        let card = render_pet_card_phase(&rarities()[r_idx], m, self.state.phase(r_idx, m), card_w, card_h, &[], 0, false);
+        let card = render_pet_card_phase(&rarities()[r_idx], m, phase, card_w, card_h, &[], 0, false);
         self.canvas.blit(&card, x0, top);
 
         let info_x = x0 + card_w + 20;
         let info_w = rect.right() - 24 - info_x;
-        let price = self.state.sell_price(r_idx, m);
+        let price = self.state.sell_price(r_idx, m, phase);
         let rows = [
             (tr("Pet"), sell_pet_label(r_idx, m)),
             (tr("Have"), format_number(owned as f64)),
-            (tr("Equipped"), format_number(self.state.equipped_count(r_idx, m) as f64)),
+            (tr("Equipped"), format_number(self.state.equipped_count(r_idx, m, phase) as f64)),
             (tr("Price each"), format!("${}", format_number(price))),
         ];
         let mut y = top + 4;

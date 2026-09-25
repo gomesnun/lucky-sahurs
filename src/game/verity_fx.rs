@@ -80,7 +80,7 @@ impl Game {
     /// The verities that rain: the ones you have equipped, or else any you own.
     fn rain_pets(&self) -> Vec<usize> {
         let mut pets: Vec<usize> = Vec::new();
-        for (p, _) in &self.state.equipped {
+        for (p, _, _) in &self.state.equipped {
             if !pets.contains(p) {
                 pets.push(*p);
             }

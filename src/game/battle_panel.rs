@@ -265,7 +265,8 @@ impl Game {
 
     // ---------------------------------------------------------------- picking the team
     fn fighter_for(&self, pet: usize, m: &'static str) -> Fighter {
-        Fighter::battle(pet, m, self.state.phase(pet, m))
+        // battling with your best copy of this pet+mutation (a fresh Phase 1 roll doesn't weaken your team)
+        Fighter::battle(pet, m, self.state.best_phase(pet, m))
     }
 
     /// Your verities (one entry per verity + mutation), the strongest first.
@@ -706,7 +707,7 @@ impl Game {
             .battle_choices()
             .into_iter()
             .take(2)
-            .map(|(pet, m)| Shown { pet, m, phase: self.state.phase(pet, m).min(3) })
+            .map(|(pet, m)| Shown { pet, m, phase: self.state.best_phase(pet, m).min(3) })
             .collect();
         let mine = best.first().copied().unwrap_or(Shown { pet: 0, m: "normal", phase: 0 });
         let theirs = best.get(1).copied().unwrap_or(Shown { pet: 13, m: "normal", phase: 1 });
@@ -844,7 +845,7 @@ impl Game {
             let r = Rect::new(rect.x + pad + i as i32 * (slot + 12), ty + 24, slot, slot);
             match self.battle.picks.get(i).copied() {
                 Some((pet, m)) => {
-                    let card = render_pet_card_phase(&rarities()[pet], m, self.state.phase(pet, m), slot, slot, &[], 0, false);
+                    let card = render_pet_card_phase(&rarities()[pet], m, self.state.best_phase(pet, m), slot, slot, &[], 0, false);
                     self.canvas.blit(&card, r.x, r.y);
                     if r.collidepoint(mouse_pos) {
                         draw::rect(&mut self.canvas, BAD, r, 3, 12);
@@ -902,7 +903,7 @@ impl Game {
             }
             let power = self.fighter_for(pet, m).power();
             let plates = vec![vec![cell(tr("Power"), format_number(power as f64))]];
-            let card = render_pet_card_phase(&rarities()[pet], m, self.state.phase(pet, m), card_w, card_h, &plates, 0, false);
+            let card = render_pet_card_phase(&rarities()[pet], m, self.state.best_phase(pet, m), card_w, card_h, &plates, 0, false);
             self.canvas.blit(&card, r.x, r.y);
             let picked = self.battle.picks.iter().position(|p| *p == (pet, m));
             if let Some(i) = picked {

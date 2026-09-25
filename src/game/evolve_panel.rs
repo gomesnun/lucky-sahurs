@@ -19,8 +19,8 @@ use crate::ui::icons::load_icon;
 use std::rc::Rc;
 
 pub struct EvolveUi {
-    /// (pet index, mutation) being evolved, or None = page closed
-    pub target: Option<(usize, &'static str)>,
+    /// (pet index, mutation, phase) being evolved, or None = page closed
+    pub target: Option<(usize, &'static str, usize)>,
 }
 
 impl EvolveUi {
@@ -30,18 +30,21 @@ impl EvolveUi {
 }
 
 impl Game {
-    pub fn open_evolve(&mut self, rarity_index: usize, m: &'static str) {
-        self.evolve.target = Some((rarity_index, m));
+    pub fn open_evolve(&mut self, rarity_index: usize, m: &'static str, phase: usize) {
+        self.evolve.target = Some((rarity_index, m, phase));
     }
 
     pub fn close_evolve(&mut self) {
         self.evolve.target = None;
     }
 
-    /// Stacks the copies and evolves; the page stays open so you can keep going.
+    /// Stacks the copies and evolves; the page stays open (following the same stack to its new phase) so you can
+    /// keep going.
     pub fn press_evolve(&mut self) {
-        let Some((r, m)) = self.evolve.target else { return };
-        let Some(phase) = self.state.evolve(r, m) else { return };
+        let Some((r, m, phase)) = self.evolve.target else { return };
+        let Some(new_phase) = self.state.evolve(r, m, phase) else { return };
+        self.evolve.target = Some((r, m, new_phase));
+        let phase = new_phase;
         if self.state.auto_equip_unlocked() && self.state.auto_equip_best_on {
             self.state.equip_best();
         }
@@ -81,8 +84,8 @@ impl Game {
     }
 
     pub fn draw_evolve_page(&mut self, mouse_pos: (f64, f64)) {
-        let Some((r_idx, m)) = self.evolve.target else { return };
-        let owned = self.state.count_owned(r_idx, m);
+        let Some((r_idx, m, phase)) = self.evolve.target else { return };
+        let owned = self.state.count_owned_at(r_idx, m, phase);
         if owned <= 0 {
             self.close_evolve();
             return;
@@ -112,8 +115,7 @@ impl Game {
         self.button(Rect::new(rect.right() - 46, rect.y + 20, 28, 28), "X", &sb, mouse_pos, panel_light(), BAD, WHITE, cb(|g| g.close_evolve()), Bo::r(8));
 
         // ---- now -> next ----
-        let phase = self.state.phase(r_idx, m);
-        let cost = self.state.evolve_cost(r_idx, m);
+        let cost = self.state.evolve_cost(r_idx, m, phase);
         let top = rect.y + 72;
         let (card_w, card_h) = (150, 170);
         let rarity = &rarities()[r_idx];
@@ -133,7 +135,7 @@ impl Game {
 
         // ---- details ----
         let mut y = top + card_h + 14;
-        let income_now = self.state.pet_income(r_idx, m);
+        let income_now = self.state.pet_income(r_idx, m, phase);
         let mut rows: Vec<(String, String, Color)> = vec![(tr("Pet"), sell_pet_label(r_idx, m), WHITE)];
         match cost {
             Some(c) => {

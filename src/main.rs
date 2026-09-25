@@ -545,8 +545,7 @@ fn battle_video(dir: &str) {
     g.start_slot(1);
     let team = [(tier_first_pet(6), "normal", 3usize), (tier_first_pet(9) + 1, "rainbow", 1), (tier_first_pet(5) + 1, "golden", 2)];
     for (p, m, ph) in team {
-        g.state.owned.insert(format!("{}_{}", p, m), 5);
-        g.state.phases.insert(format!("{}_{}", p, m), ph);
+        g.state.owned.insert(core::data::owned_key(p, m, ph), 5);
     }
     g.state.battle_items.insert("potion".into(), 2);
     g.state.battle_items.insert("power".into(), 1);
@@ -728,8 +727,8 @@ fn shots(dir: &str) {
     g.left_panel.update(5.0);
     g.draw(m);
     save(&g, "g_bag");
-    if let Some((li, lm)) = g.inventory_entries().first().copied() {
-        g.state.toggle_lock(li, lm); // v3.0.4: a locked verity
+    if let Some((li, lm, lp)) = g.inventory_entries().first().copied() {
+        g.state.toggle_lock(li, lm, lp); // v3.0.4: a locked verity
     }
     g.toggle_bag_view();
     g.draw(m);
@@ -881,20 +880,19 @@ fn shots(dir: &str) {
     g.left_panel.open("bag");
     g.left_panel.update(5.0);
     g.bag_view = "inventory";
-    g.open_sell(0, "normal");
+    g.open_sell(0, "normal", 0);
     g.sell.field.set_text("3");
     g.draw(m);
     save(&g, "n_sell");
     g.close_overlays();
     // phases (stacking): one verity in each phase, then the Evolve page ready / maxed
     {
-        let (owned0, phases0, equipped0) = (g.state.owned.clone(), g.state.phases.clone(), g.state.equipped.clone());
+        let (owned0, equipped0) = (g.state.owned.clone(), g.state.equipped.clone());
         let pets = [(0usize, 60i64, 0usize), (1, 20, 1), (2, 3, 2), (3, 2, 3)];
         g.state.equipped.clear();
         for (i, n, ph) in pets {
-            g.state.owned.insert(format!("{}_normal", i), n);
-            g.state.phases.insert(format!("{}_normal", i), ph);
-            g.state.equip_add(i, "normal");
+            g.state.owned.insert(core::data::owned_key(i, "normal", ph), n);
+            g.state.equip_add(i, "normal", ph);
         }
         g.inv_sort = "rarity";
         g.draw(m);
@@ -903,16 +901,16 @@ fn shots(dir: &str) {
         g.draw(m);
         save(&g, "n_phases_equipped");
         g.bag_view = "inventory";
-        g.open_evolve(0, "normal");
+        g.open_evolve(0, "normal", 0);
         g.draw(m);
         save(&g, "n_evolve");
         g.press_evolve();
         g.draw(m);
         save(&g, "n_evolve_done");
-        g.open_evolve(2, "normal");
+        g.open_evolve(2, "normal", 2);
         g.draw(m);
         save(&g, "n_evolve_short");
-        g.open_evolve(3, "normal");
+        g.open_evolve(3, "normal", 3);
         g.draw(m);
         save(&g, "n_evolve_monster");
         g.close_overlays();
@@ -1107,7 +1105,6 @@ fn shots(dir: &str) {
         g.left_panel.update(5.0);
         g.inv_sort = "money";
         g.state.owned = owned0;
-        g.state.phases = phases0;
         g.state.equipped = equipped0;
     }
     g.left_panel.close();
@@ -1428,8 +1425,8 @@ fn statetest(seed: u64, n: usize) {
         kv.sort();
         log.push(format!("tb {} {}", kv.iter().map(|(k, v)| format!("{}:{}", k, v)).collect::<Vec<_>>().join(" "), s.trait_charges));
     }
-    let (s1, g1) = s.sell_pets(0, "normal", 5);
-    let (s2, g2) = s.sell_pets(1, "golden", 1_000_000_000);
+    let (s1, g1) = s.sell_pets(0, "normal", 0, 5);
+    let (s2, g2) = s.sell_pets(1, "golden", 0, 1_000_000_000);
     log.push(format!("sell ({}, {}) ({}, {})", s1, r(g1), s2, r(g2)));
     s.tick_potions(700.0);
     s.coins = 1e20;

@@ -252,7 +252,8 @@ impl Game {
             for m in MUT_ORDER {
                 let n = self.state.count_owned(r, m);
                 if n > 0 {
-                    pets.push((self.state.pet_income(r, m), (r, m), n));
+                    // the phase it keeps is whichever's best (do_prestige does the same)
+                    pets.push((self.state.pet_income(r, m, self.state.best_phase(r, m)), (r, m), n));
                 }
             }
         }
