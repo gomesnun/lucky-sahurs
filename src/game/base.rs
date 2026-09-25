@@ -588,7 +588,8 @@ impl Game {
     /// and the ripple where it was clicked.
     pub fn draw_button_fx(&mut self, rect: Rect, radius: i32, hovering: bool) {
         let t = crate::core::state::now_ts();
-        if rect.w >= 40 && rect.h >= 20 {
+        // Potato Mode: skip the sweeping glare (never the text/labels themselves - just this overlay)
+        if self.animations() && rect.w >= 40 && rect.h >= 20 {
             let (period, sweep, alpha) = if hovering { (2.4, 0.7, 60) } else { (7.0, 0.9, 34) };
             if let Some(phase) = crate::ui::fx::glare_phase(t, rect, period, sweep) {
                 if let Some(g) = crate::ui::fx::glare_band(rect.w, rect.h, radius, phase, alpha) {

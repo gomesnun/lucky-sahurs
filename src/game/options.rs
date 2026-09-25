@@ -160,13 +160,15 @@ impl Game {
         let (x0, mut y, w) = (bx.x, bx.y, bx.w);
         let med = self.f.med.clone();
         let sb = self.f.small_b.clone();
+        // "Potato Mode": the same switch as before ("animations"), just framed the other way round - strips
+        // particles, cutscene bursts and the shine that sweeps across buttons/cards; text is never touched.
         let anim = self.animations();
         self.button(
             Rect::new(x0, y, w, 44),
-            &tr!("Animations: %s", on_off(anim)),
+            &tr!("Potato Mode: %s", on_off(!anim)),
             &med,
             mouse_pos,
-            if anim { panel_light() } else { OFF_COLOR },
+            if !anim { panel_light() } else { OFF_COLOR },
             panel_lighter(),
             WHITE,
             cb(|g| {
@@ -174,7 +176,7 @@ impl Game {
                 g.settings.set_bool("animations", v);
                 g.particles.clear();
                 save_settings(&g.settings);
-                g.show_toast(&if g.animations() { tr("Animations on") } else { tr("Animations off") }, 1.8);
+                g.show_toast(&if g.animations() { tr("Potato Mode off") } else { tr("Potato Mode on - lighter, same text") }, 1.8);
             }),
             Bo::r(10),
         );

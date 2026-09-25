@@ -99,7 +99,8 @@ impl Game {
             self.trigger_cutscene(best_r as usize, best_m);
         }
         self.roll_anim_start = now_ts();
-        if self.animations() {
+        // nothing to see while Battle/Explore covers the roll screen - skip the particles nobody can see
+        if self.animations() && !self.battle.open {
             if let Some((r, _)) = self.state.last_roll {
                 self.spawn_roll_particles(r);
             }
