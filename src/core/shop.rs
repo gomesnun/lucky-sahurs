@@ -36,7 +36,7 @@ pub struct Dice {
     /// chance of showing up in each period's stock
     pub chance: f64,
     pub luck: f64,
-    /// v3.0.4: chance that a ROLL (the button) rolls twice
+    /// v3.0.4: chance that a roll (the button or the Auto Roller) rolls twice
     pub double: f64,
     pub style: DiceStyle,
 }

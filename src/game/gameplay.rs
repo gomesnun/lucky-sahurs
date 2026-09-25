@@ -49,19 +49,30 @@ impl Game {
         let mut gained_charges = 0;
         let (mut best_r, mut best_m): (i64, &'static str) = (-1, "normal");
         let rank_of = |r: i64| if r < 0 { -1 } else { pet_rank(r as usize) };
+        // v3.0.4: the equipped dice's Double Roll works for the Auto Roller too (each roll may roll again)
+        let double = self.state.dice_double_chance();
         for _ in 0..exact {
-            let (r, m, gained, _b) = self.state.roll();
-            if pet_rank(r) > rank_of(best_r) {
-                best_r = r as i64;
-                best_m = m;
+            let twice = double > 0.0 && crate::core::state::rand_random() < double;
+            for _ in 0..if twice { 2 } else { 1 } {
+                let (r, m, gained, _b) = self.state.roll();
+                if pet_rank(r) > rank_of(best_r) {
+                    best_r = r as i64;
+                    best_m = m;
+                }
+                if gained {
+                    gained_charges += 1;
+                }
             }
-            if gained {
-                gained_charges += 1;
+            if twice {
+                self.state.total_double_rolls += 1;
             }
         }
         self.state.probs_cache = None;
         if n > exact {
-            let (best, charges) = self.state.roll_bulk(n - exact);
+            // the bulk part: the extra rolls by statistics (n x chance, the fraction rounded at random)
+            let extra = ((n - exact) as f64 * double + crate::core::state::rand_random()).floor() as i64;
+            self.state.total_double_rolls += extra;
+            let (best, charges) = self.state.roll_bulk(n - exact + extra);
             gained_charges += charges;
             if let Some((r, m)) = best {
                 if pet_rank(r) > rank_of(best_r) {

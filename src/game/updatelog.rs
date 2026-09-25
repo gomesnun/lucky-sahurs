@@ -13,7 +13,7 @@ use std::rc::Rc;
 pub const UPDATE_LOG: &[(&str, &str, &[&str])] = &[
     ("v3.0.4", "2026-09-24", &[
         "You can lock verities in the Bag's Inventory (the lock under the $ button): a locked verity can't be sold.",
-        "Dice now also give a chance of a Double Roll: a ROLL click can roll twice (Wooden 2% up to Prism 40%).",
+        "Dice now also give a chance of a Double Roll: a roll (yours or the Auto Roller's) can roll twice (Wooden 2% up to Prism 40%).",
         "From Prestige II there's an Auto Rebirth switch next to the Rebirth button: it rebirths by itself as soon as you can afford it.",
         "Auto Trait Roller: a new trait now shows a \"New trait!\" card in the corner, and if it's better than the one you have equipped, it's equipped by itself.",
         "Upgrades that a Rebirth doesn't reset now show a \"Kept on Rebirth\" badge next to their name (instead of a line in the description).",
