@@ -98,6 +98,7 @@ impl Game {
             self.begin_modal();
             self.draw_rebirth_page(mouse_pos);
         }
+        self.draw_trait_popup();
         self.draw_toast();
     }
 

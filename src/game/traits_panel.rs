@@ -1,9 +1,9 @@
 //! Traits page (ui/traits_panel.py).
 
-use super::base::Bo;
+use super::base::{Bo, blit_center};
 use super::{Game, cb};
 use crate::config::{TOPBAR_H, VIRTUAL_H};
-use crate::core::data::TRAITS;
+use crate::core::data::{TRAITS, TRAIT_POPUP_SECS};
 use crate::core::formatting::{format_number, format_one_in};
 use crate::gfx::{Color, Rect, Surf, draw, ti};
 use crate::i18n::tr;
@@ -46,6 +46,28 @@ impl Game {
         self.toast_kind = Some("trait");
         self.toast_text = Some(if self.trait_toast_count == 1 { tr("You gained a Trait Roll!") } else { tr!("You gained a Trait Roll!  x%d", self.trait_toast_count) });
         self.toast_timer = 1.8;
+    }
+
+    /// v3.0.4: the Auto Trait Roller's notification - a "New trait!" card in the bottom right corner for a few
+    /// seconds (a toast was easy to miss: any other message replaced it).
+    pub fn draw_trait_popup(&mut self) {
+        let Some((idx, left, equipped)) = self.trait_popup else { return };
+        let (card_w, card_h) = (150, 190);
+        let w = card_w + 40;
+        let head = self.f.med.render(&tr("New trait!"), WHITE);
+        let foot = self.f.tiny_b.render(&if equipped { tr("Equipped automatically") } else { tr("You have a better one equipped") }, if equipped { GOOD } else { grey() });
+        let h = 14 + head.h + 8 + card_h + 8 + foot.h + 14;
+        // slides in from the right, then out
+        let t = (TRAIT_POPUP_SECS - left).min(left).clamp(0.0, 0.25) / 0.25;
+        let x = self.vw - 16 - ti(w as f64 * t);
+        let y = VIRTUAL_H - h - 16;
+        let rect = Rect::new(x, y, w, h);
+        draw_panel(&mut self.canvas, rect, Some(panel()), 14, true, None);
+        draw::rect(&mut self.canvas, TRAITS[idx].color, rect, 3, 14);
+        blit_center(&mut self.canvas, &head, (rect.centerx(), y + 14 + head.h / 2));
+        let card = self.trait_card(idx, card_w, card_h, true, equipped);
+        self.canvas.blit(&card, rect.x + 20, y + 14 + head.h + 8);
+        blit_center(&mut self.canvas, &foot, (rect.centerx(), rect.bottom() - 14 - foot.h / 2));
     }
 
     /// Game.render_trait_card: the card with the chance plate filled in.

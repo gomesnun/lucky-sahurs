@@ -440,11 +440,12 @@ fn shots(dir: &str) {
     g.state.coins = 1e9;
     g.draw(m);
     save(&g, "g_main");
-    let right: [(&str, &str, Option<&str>); 7] = [
+    let right: [(&str, &str, Option<&str>); 8] = [
         ("g_index", "index", None),
         ("g_index_golden", "index", Some("golden")),
         ("g_tree", "tree", None),
         ("g_tree_luck", "tree", Some("luck")),
+        ("g_tree_misc", "tree", Some("misc")),
         ("g_milestones", "milestones", None),
         ("g_milestones_rolls", "milestones", Some("rolls")),
         ("g_daily", "daily", None),
@@ -454,7 +455,7 @@ fn shots(dir: &str) {
         g.right_panel.open(content);
         match (content, sub) {
             ("index", Some(t)) => g.index_tab = if t == "golden" { "golden" } else { "normal" },
-            ("tree", s) => g.tree_selected_category = s.map(|_| "luck"),
+            ("tree", s) => g.tree_selected_category = s.map(|c| if c == "misc" { "misc" } else { "luck" }),
             ("milestones", s) => g.milestones_selected_category = s.map(|_| "rolls"),
             _ => {}
         }
@@ -601,6 +602,16 @@ fn shots(dir: &str) {
     g.bag_view = "equipped"; // few slots: the cards sit in the middle
     g.draw(m);
     save(&g, "n_bag_equipped");
+    // v3.0.4: the Auto Trait Roller's "New trait!" card
+    g.close_overlays();
+    g.left_panel.close();
+    g.left_panel.update(5.0);
+    g.trait_popup = Some((6, 2.0, true));
+    g.draw(m);
+    save(&g, "n_trait_popup");
+    g.trait_popup = None;
+    g.left_panel.open("bag");
+    g.left_panel.update(5.0);
     g.bag_view = "inventory";
     g.open_sell(0, "normal");
     g.sell.field.set_text("3");

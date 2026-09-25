@@ -2,11 +2,9 @@
 
 use super::Game;
 use super::audio::AUTO_QUIET_RPS;
-use crate::core::data::{AUTO_TRAIT_EVERY, AUTO_UPGRADE_EVERY, MAX_MANUAL_CPS, TRAITS, TIER_COSMIC, TIER_ETHEREAL, pet_order, rarities};
+use crate::core::data::{AUTO_TRAIT_EVERY, AUTO_UPGRADE_EVERY, MAX_MANUAL_CPS, TRAIT_POPUP_SECS, TIER_COSMIC, TIER_ETHEREAL, pet_order, rarities};
 use crate::core::state::now_ts;
 use crate::gfx::Color;
-use crate::i18n::tr;
-use crate::tr;
 use crate::ui::cards::rarity_glow_color;
 use crate::ui::widgets::Particle;
 
@@ -142,17 +140,25 @@ impl Game {
         // only a trait you didn't have yet is worth a message
         let new: Vec<usize> = self.state.owned_traits.difference(&before).copied().collect();
         if let Some(&best) = new.iter().max() {
+            // the traits go from worst to best: a better one than the equipped one is equipped by itself
+            let equip = self.state.equipped_trait.is_none_or(|e| best > e);
+            if equip {
+                self.state.equipped_trait = Some(best);
+            }
             self.play("trait_roll", 0.0);
-            let msg = if new.len() == 1 {
-                tr!("Auto Trait Roller: new trait \"%s\"!", tr(TRAITS[best].name))
-            } else {
-                tr!("Auto Trait Roller: %d new traits! The best: \"%s\"", new.len() as i64, tr(TRAITS[best].name))
-            };
-            self.show_toast(&msg, 3.5);
+            if self.settings.get_bool("trait_notifications", true) {
+                self.trait_popup = Some((best, TRAIT_POPUP_SECS, equip));
+            }
         }
     }
 
     pub fn update_animations(&mut self, dt: f64) {
+        if let Some(p) = self.trait_popup.as_mut() {
+            p.1 -= dt;
+            if p.1 <= 0.0 {
+                self.trait_popup = None;
+            }
+        }
         self.update_verity_fx(dt);
         // the top bar's coins count up smoothly (spending shows at once)
         let target = self.state.coins;

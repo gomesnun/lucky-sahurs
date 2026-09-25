@@ -15,6 +15,17 @@ use crate::ui::icons::load_icon;
 use serde_json::{Value, json};
 use std::rc::Rc;
 
+/// The badge of an upgrade a Rebirth (or a Prestige too) never resets: (label, fill, border).
+fn keep_badge(key: &str) -> Option<(String, Color, Color)> {
+    if KEEP_ON_PRESTIGE.contains(&key) {
+        Some((tr("Kept on Rebirth & Prestige"), Color::rgb(70, 36, 110), super::prestige_panel::PRESTIGE_COLOR))
+    } else if KEEP_ON_REBIRTH.contains(&key) {
+        Some((tr("Kept on Rebirth"), Color::rgb(34, 84, 58), GOOD))
+    } else {
+        None
+    }
+}
+
 /// Buy mode as the state wants it: 1, 10 or 0 (= "max").
 fn mode_of(v: Option<&Value>) -> i64 {
     match v {
@@ -283,10 +294,20 @@ impl Game {
                     self.canvas.blit_with_alpha(&icon, nx, row_rect.y + 6, if dim { 120 } else { 255 });
                     nx += 32;
                 }
-                let name_txt = med.render(&fit_text(&med, &tr(d.name), row_rect.right() - 90 - nx), if !dim { WHITE } else { grey() });
-                self.canvas.blit(&name_txt, nx, row_rect.y + 9);
                 let lvl_txt = small.render(&tr!("Lv %d/%d", lvl, d.max_level), if maxed { GOOD } else { grey() });
                 self.canvas.blit(&lvl_txt, row_rect.right() - lvl_txt.w - 14, row_rect.y + 13);
+                // a badge (like a title) for the upgrades a Rebirth / Prestige doesn't reset
+                let mut name_right = row_rect.right() - lvl_txt.w - 28;
+                if let Some((label, fill, edge)) = keep_badge(key) {
+                    let t = self.f.tiny_b.render(&label, WHITE);
+                    let r = Rect::new(name_right - t.w - 16, row_rect.y + 11, t.w + 16, t.h + 6);
+                    draw::rect(&mut self.canvas, fill, r, 0, r.h / 2);
+                    draw::rect(&mut self.canvas, edge, r, 2, r.h / 2);
+                    self.canvas.blit(&t, r.x + 8, r.y + 3);
+                    name_right = r.x - 8;
+                }
+                let name_txt = med.render(&fit_text(&med, &tr(d.name), name_right - nx), if !dim { WHITE } else { grey() });
+                self.canvas.blit(&name_txt, nx, row_rect.y + 9);
 
                 let mut ly = row_rect.y + 34;
                 for line in &desc_lines {

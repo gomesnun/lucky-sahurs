@@ -354,7 +354,7 @@ pub fn upgrade_defs() -> &'static [UpgradeDef] {
             u("money_ultra", "Ultimate Money", l("+%g%% money/sec per level (multiplies with the other Money upgrades).", a![25.0]), 40, 100000000000000.0, 1.479, Some("money_prism"), 25, 0),
             u("slots", "Equip Slots", p("+1 slot to equip pets."), 20, 300.0, 2.448, None, 1, 0),
             u("slots_plus", "Extra Slots", p("+1 slot to equip pets, once your Slots are maxed out."), 15, 20000000000.0, 2.652, Some("slots"), 20, 0),
-            u("auto_unlock", "Auto Roller", l("Unlocks the Auto Roller (needs Rebirth %d): rolls by itself while turned on. Never resets on Rebirth.", a![2i64]), 1, 120000.0, 1.0, None, 1, 2),
+            u("auto_unlock", "Auto Roller", l("Unlocks the Auto Roller (needs Rebirth %d): rolls by itself while turned on.", a![2i64]), 1, 120000.0, 1.0, None, 1, 2),
             u("auto_speed", "Auto Speed", l("+%g%% Auto Roller speed per level.", a![22.0]), 40, 25000.0, 1.4484, Some("auto_unlock"), 1, 0),
             u("auto_turbo", "Auto Turbo", l("+%g%% Auto Roller speed per level (multiplies).", a![28.000000000000004]), 25, 50000000000.0, 1.53, Some("auto_speed"), 20, 0),
             u("golden_unlock", "Unlock Golden", p("Allows Golden mutations to appear on rolls (x3 money)."), 1, 2000.0, 1.0, None, 1, 0),
@@ -370,7 +370,7 @@ pub fn upgrade_defs() -> &'static [UpgradeDef] {
             u("trait_charge_luck_2", "Trait Charge Luck II", p("+10% extra (relative) chance of getting 1 trait charge per roll, per level."), 15, 1000000000.0, 1.887, Some("trait_charge_luck"), 18, 0),
             u("trait_rarity_luck", "Trait Luck", p("+9% weight to traits from Instinctive (the 3rd) upward when you roll a trait, per level."), 20, 20000.0, 1.836, None, 1, 0),
             u("trait_rarity_luck_2", "Trait Luck II", p("+15% weight to traits from Instinctive upward when you roll a trait, per level."), 15, 8000000000.0, 1.938, Some("trait_rarity_luck"), 20, 0),
-            u("golden_roll_unlock", "Unlock Golden Roll", p("Unlocks the Golden Roll cycle: every so many rolls, the next roll gets x10 luck. Never resets on Rebirth."), 1, 25000.0, 1.0, None, 1, 0),
+            u("golden_roll_unlock", "Unlock Golden Roll", p("Unlocks the Golden Roll cycle: every so many rolls, the next roll gets x10 luck."), 1, 25000.0, 1.0, None, 1, 0),
             u("cyclic_every", "Short Cycle", l("-1 roll in the Golden Roll cycle per level (minimum %d rolls).", a![10i64]), 4, 50000000.0, 5.1, Some("golden_roll_unlock"), 1, 0),
             u("cyclic_power", "Strong Golden Roll", p("+1 to the Golden Roll multiplier per level."), 10, 1000000000.0, 2.448, Some("cyclic_every"), 3, 0),
             u("diamond_roll_unlock", "Unlock Diamond Roll", p("Unlocks the Diamond Roll cycle: every so many rolls, the next roll gets a massive luck boost."), 1, 20000000000.0, 1.0, Some("cyclic_power"), 5, 0),
@@ -383,9 +383,9 @@ pub fn upgrade_defs() -> &'static [UpgradeDef] {
             u("offline_rate_2", "Offline Earnings II", l("+%g%% offline earnings per level, once Offline Earnings is maxed out.", a![2.0]), 5, 4000000000.0, 1.938, Some("offline_rate"), 15, 0),
             u("offline_time", "Offline Time", l("+%d hour of max offline time per level (you start at %d hours).", a![1i64, 8i64]), 12, 15000.0, 1.683, None, 1, 0),
             u("offline_time_2", "Offline Time II", l("+%d hour of max offline time per level, once Offline Time is maxed out.", a![1i64]), 4, 8000000000.0, 2.04, Some("offline_time"), 12, 0),
-            u("auto_upgrade_unlock", "Auto Upgrader", p("Buys the cheapest upgrade you can afford by itself while turned on (toggle at the top of Upgrades). Never resets on Rebirth."), 1, 250000.0, 1.0, None, 1, 0),
-            u("auto_trait_unlock", "Auto Trait Roller", p("Rolls your trait charges by itself while turned on (toggle on the Traits page). Never resets on Rebirth or Prestige."), 1, 2000000.0, 1.0, None, 1, 0),
-            u("auto_equip_unlock", "Auto Equip Best", p("Unlocks the Auto Equip Best toggle in the Bag: automatically keeps your highest-earning pets equipped as you roll. Never resets on Rebirth."), 1, 750000.0, 1.0, None, 1, 0),
+            u("auto_upgrade_unlock", "Auto Upgrader", p("Buys the cheapest upgrade you can afford by itself while turned on (toggle at the top of Upgrades)."), 1, 250000.0, 1.0, None, 1, 0),
+            u("auto_trait_unlock", "Auto Trait Roller", p("Rolls your trait charges by itself while turned on (toggle on the Traits page)."), 1, 2000000.0, 1.0, None, 1, 0),
+            u("auto_equip_unlock", "Auto Equip Best", p("Unlocks the Auto Equip Best toggle in the Bag: automatically keeps your highest-earning pets equipped as you roll."), 1, 750000.0, 1.0, None, 1, 0),
         ]
     })
 }
@@ -427,6 +427,8 @@ pub const KEEP_ON_REBIRTH: [&str; 5] = ["auto_upgrade_unlock", "auto_trait_unloc
 pub const KEEP_ON_PRESTIGE: [&str; 2] = ["auto_upgrade_unlock", "auto_trait_unlock"];
 /// how often the Auto Trait Roller spends your charges
 pub const AUTO_TRAIT_EVERY: f64 = 1.0;
+/// how long the "New trait!" card stays up
+pub const TRAIT_POPUP_SECS: f64 = 4.5;
 
 // ---------------------------------------------------------------- prestige (v3.0)
 /// One Prestige. The multipliers are the TOTAL you have once you reach it (not stacked on the previous ones), and

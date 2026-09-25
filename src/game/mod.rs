@@ -193,6 +193,8 @@ pub struct Game {
     pub toast_timer: f64,
     pub toast_kind: Option<&'static str>,
     pub trait_toast_count: i64,
+    /// v3.0.4: the Auto Trait Roller's "New trait!" card (trait, time left, equipped by it)
+    pub trait_popup: Option<(usize, f64, bool)>,
 
     pub frame_dt: f64,
     pub roll_rate: f64,
@@ -390,6 +392,7 @@ impl Game {
             toast_timer: 0.0,
             toast_kind: None,
             trait_toast_count: 0,
+            trait_popup: None,
             frame_dt: 1.0 / FPS as f64,
             roll_rate: 0.0,
             rate_prev: None,
