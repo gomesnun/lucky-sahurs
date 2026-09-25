@@ -17,5 +17,7 @@ build/
 dist/
 .venv/
 *.exe
+
+!backend/apps_script/appsscript.json
 # local art tools for the verity phase images (not part of the game)
 tools/phases/

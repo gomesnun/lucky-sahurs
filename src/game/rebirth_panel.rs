@@ -18,6 +18,8 @@ use std::rc::Rc;
 const REWARD_ROW_H: i32 = 68;
 const TAB_W: i32 = 150;
 const TAB_H: i32 = 56;
+/// the Rebirth tab, and the Prestige tab under it level with the page's Rebirth button
+const TAB_TOP: i32 = 209;
 const REWARD_GAP: i32 = 8;
 
 /// core/rebirths.format_rebirth_reward
@@ -54,7 +56,7 @@ impl Game {
         for (i, (key, label, icon, color)) in tabs.into_iter().enumerate() {
             let active = self.rebirth_tab == key;
             // the active tab tucks under the panel's edge so it looks attached
-            let r = Rect::new(rect.right() - if active { 16 } else { 8 }, rect.y + 96 + i as i32 * (TAB_H + 10), tab_w + if active { 16 } else { 8 }, TAB_H);
+            let r = Rect::new(rect.right() - if active { 16 } else { 8 }, rect.y + TAB_TOP + i as i32 * (TAB_H + 10), tab_w + if active { 16 } else { 8 }, TAB_H);
             let alert = key == "prestige" && self.state.prestige_available();
             self.button(
                 r,
@@ -176,19 +178,46 @@ impl Game {
 
         let cost = self.state.rebirth_cost();
         let can = self.state.rebirth_available();
-        let cost_txt = med.render(&tr!("Next rebirth costs $%s  (you have $%s)", format_number(cost), format_number(self.state.coins)), if can { WHITE } else { grey() });
+        let locked = self.state.rebirth_locked();
+        let next_p = super::prestige_panel::roman(self.state.prestige + 1);
+        let cost_txt = if locked {
+            med.render(&tr!("%d Rebirths reached: do Prestige %s to keep rebirthing.", self.state.rebirths, next_p), PRESTIGE_COLOR)
+        } else {
+            med.render(&tr!("Next rebirth costs $%s  (you have $%s)", format_number(cost), format_number(self.state.coins)), if can { WHITE } else { grey() })
+        };
         let r = Rect::with_center(cost_txt.w, cost_txt.h, (rect.centerx(), y));
         self.canvas.blit(&cost_txt, r.x, r.y);
         y += 24;
 
-        let btn_w = 420.min(rect.w - 60);
-        let (label, color) = if self.rebirth_confirm {
+        let btn_w = (if self.state.auto_rebirth_unlocked() { 600 } else { 420 }).min(rect.w - 60);
+        let (label, color) = if locked {
+            (tr!("Locked - do Prestige %s first", next_p), Color::rgb(70, 73, 88))
+        } else if self.rebirth_confirm {
             (if keep_all { tr("Click again to confirm!") } else if keep { tr("Click again to confirm - resets your coins!") } else { tr("Click again to confirm - resets coins & upgrades!") }, BAD)
         } else {
             (tr!("Rebirth  (+%.0f%% Money, +%.0f%% Luck)", REBIRTH_MONEY_PER * 100.0, REBIRTH_LUCK_PER * 100.0), if can { accent() } else { Color::rgb(70, 73, 88) })
         };
+        // v3.0.4: from Prestige II the Auto Rebirth switch sits next to the button
+        let auto = self.state.auto_rebirth_unlocked();
+        let auto_w = if auto { 200 } else { 0 };
+        let main_w = if auto { btn_w - auto_w - 10 } else { btn_w };
+        let row_x = rect.centerx() - btn_w / 2;
+        if auto {
+            let on = self.state.auto_rebirth_on;
+            self.button(
+                Rect::new(row_x + main_w + 10, y, auto_w, 50),
+                &tr!("Auto Rebirth: %s", if on { tr("ON") } else { tr("OFF") }),
+                &sb,
+                mouse_pos,
+                if on { Color::rgb(52, 120, 80) } else { panel_light() },
+                panel_lighter(),
+                WHITE,
+                cb(|g| g.state.auto_rebirth_on = !g.state.auto_rebirth_on),
+                Bo::r(10).icon("rebirth"),
+            );
+        }
         self.button(
-            Rect::new(rect.centerx() - btn_w / 2, y, btn_w, 50),
+            Rect::new(row_x, y, main_w, 50),
             &label,
             &sb,
             mouse_pos,

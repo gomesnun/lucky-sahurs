@@ -28,6 +28,8 @@ pub const BAN_REASON_MAX: usize = 300;
 pub struct AdminUi {
     pub menu_open: bool,
     pub ban_open: bool,
+    /// v3.0.1: the Bans page also works as the Resets page ("ban" / "reset"), sharing the player search
+    pub page: &'static str,
     pub search: TextField,
     pub reason: TextField,
     /// "search" | "reason" | None
@@ -60,6 +62,7 @@ impl AdminUi {
         AdminUi {
             menu_open: false,
             ban_open: false,
+            page: "ban",
             search: TextField::new("username"),
             reason,
             focus: None,
@@ -102,9 +105,22 @@ impl Game {
         self.ev.msg = None;
     }
 
+    /// v3.0.1: Resets (one player, or everyone).
+    pub fn open_reset_admin(&mut self) {
+        self.adm.menu_open = false;
+        self.adm.ban_open = true;
+        self.adm.page = "reset";
+        self.adm.msg = None;
+        self.adm.found = None;
+        self.season.player_confirm = false;
+        self.season.confirm = false;
+        self.set_ban_focus(Some("search"));
+    }
+
     pub fn open_ban_admin(&mut self) {
         self.adm.menu_open = false;
         self.adm.ban_open = true;
+        self.adm.page = "ban";
         self.adm.msg = None;
         self.adm.confirm = false;
         self.adm.scroll = 0.0;
@@ -175,6 +191,8 @@ impl Game {
         }
         let Some(focus) = self.adm.focus else { return false };
         match ev.key {
+            K::Tab if self.adm.page == "reset" => {}
+            K::Return | K::KpEnter if self.adm.page == "reset" => self.search_ban_player(),
             K::Return | K::KpEnter => {
                 if focus == "search" {
                     self.search_ban_player();
@@ -224,7 +242,8 @@ impl Game {
                     None => g.adm.msg = Some((tr("No player with that name."), BAD)),
                     Some(p) => {
                         g.adm.found = Some(p);
-                        g.set_ban_focus(Some("reason"));
+                        g.season.player_confirm = false;
+                        g.set_ban_focus(if g.adm.page == "reset" { None } else { Some("reason") });
                     }
                 }
             },
@@ -379,7 +398,7 @@ impl Game {
     pub fn draw_admin_menu(&mut self, mouse_pos: (f64, f64)) {
         let ov = dim_overlay(self.vw, VIRTUAL_H, 170);
         self.canvas.blit(&ov, 0, 0);
-        let (panel_w, panel_h) = (460.min(self.vw - 40), 270);
+        let (panel_w, panel_h) = (460.min(self.vw - 40), 336);
         let rect = Rect::new(self.vw / 2 - panel_w / 2, VIRTUAL_H / 2 - panel_h / 2, panel_w, panel_h);
         draw_panel(&mut self.canvas, rect, Some(panel()), 16, true, None);
         self.register_blocker(rect);
@@ -397,6 +416,72 @@ impl Game {
         self.button(Rect::new(x0, y, w, 54), &tr("Admin Abuse"), &med, mouse_pos, panel_light(), panel_lighter(), accent(), cb(|g| g.open_admin_abuse()), Bo::r(12).icon("admin_event"));
         y += 66;
         self.button(Rect::new(x0, y, w, 54), &tr("Bans"), &med, mouse_pos, panel_light(), panel_lighter(), BAD, cb(|g| g.open_ban_admin()), Bo::r(12).icon("ban"));
+        y += 66;
+        self.button(Rect::new(x0, y, w, 54), &tr("Resets"), &med, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.open_reset_admin()), Bo::r(12).icon("rebirth"));
+    }
+
+    /// v3.0.1 Resets page: reset one player (search) or everyone (new season).
+    pub fn draw_reset_admin(&mut self, mouse_pos: (f64, f64)) {
+        let ov = dim_overlay(self.vw, VIRTUAL_H, 170);
+        self.canvas.blit(&ov, 0, 0);
+        let panel_w = 640.min(self.vw - 40);
+        let panel_h = 520.min(VIRTUAL_H - 40);
+        let rect = Rect::new(self.vw / 2 - panel_w / 2, VIRTUAL_H / 2 - panel_h / 2, panel_w, panel_h);
+        draw_panel(&mut self.canvas, rect, Some(panel()), 16, true, None);
+        self.register_button(rect, Rc::new(|g: &mut Game| g.set_ban_focus(None)), None);
+        let sb = self.f.small_b.clone();
+        let small = self.f.small.clone();
+        let med = self.f.med.clone();
+        let title = self.f.big.render(&tr("Resets"), WHITE);
+        self.canvas.blit(&title, rect.x + 24, rect.y + 18);
+        self.button(Rect::new(rect.right() - 46, rect.y + 20, 28, 28), "X", &sb, mouse_pos, panel_light(), BAD, WHITE, cb(|g| g.close_ban_admin()), Bo::r(8));
+        self.draw_back_button(rect, mouse_pos);
+        let (x0, w) = (rect.x + 24, panel_w - 48);
+        let mut y = rect.y + 30 + title.h;
+
+        // ---- 1. one player ----
+        let t = med.render(&tr("Reset one player"), accent());
+        self.canvas.blit(&t, x0, y);
+        y += t.h + 4;
+        for line in wrap_text(&tr("Wipes only their saves (cloud and every PC) and takes them off the leaderboard. Their account and friends stay."), &small, w) {
+            let l = small.render(&line, grey());
+            self.canvas.blit(&l, x0, y);
+            y += l.h + 2;
+        }
+        y += 8;
+        let field = Rect::new(x0, y, w - 130, 44);
+        let display = self.adm.search.text.clone();
+        let focused = self.adm.focus == Some("search");
+        self.draw_text_field(field, FieldRef::BanSearch, &display, &tr("Username..."), focused, Rc::new(|g: &mut Game| g.set_ban_focus(Some("search"))));
+        let busy = self.adm.busy || self.season.busy;
+        self.button(Rect::new(field.right() + 10, y, 120, 44), &tr("Search"), &med, mouse_pos, accent(), accent_hover(), BLACK, cb(|g| g.search_ban_player()), Bo::r(10).enabled(!busy));
+        y += 44 + 10;
+        if let Some(found) = self.adm.found.clone() {
+            let label = if self.season.player_confirm {
+                tr!("Sure? Reset %s to 0", found.username.clone())
+            } else {
+                tr!("Reset %s's saves", found.username.clone())
+            };
+            let base = if self.season.player_confirm { BAD } else { Color::rgb(150, 60, 60) };
+            self.button(Rect::new(x0, y, w, 44), &label, &med, mouse_pos, base, Color::rgb(235, 90, 90), WHITE, cb(|g| g.press_reset_player()), Bo::r(10).enabled(!busy).icon("rebirth"));
+            y += 44 + 8;
+        }
+        if let Some((msg, color)) = self.adm.msg.clone() {
+            for line in wrap_text(&msg, &small, w) {
+                let l = small.render(&line, color);
+                self.canvas.blit(&l, x0, y);
+                y += l.h + 2;
+            }
+        }
+
+        // ---- 2. everyone ----
+        let y2 = rect.bottom() - 24 - 54 - 26 - 40;
+        draw::line(&mut self.canvas, panel_light(), (x0, y2 - 14), (x0 + w, y2 - 14), 2);
+        let t = med.render(&tr("Reset everyone"), BAD);
+        self.canvas.blit(&t, x0, y2);
+        let l = small.render(&fit_text(&small, &tr("A new season: every player's saves start again from 0 and the leaderboard is emptied."), w), grey());
+        self.canvas.blit(&l, x0, y2 + t.h + 4);
+        self.draw_reset_everyone_button(Rect::new(x0, rect.bottom() - 24 - 54, w, 54), mouse_pos);
     }
 
     /// The Back button (to the admin menu) in the top corner of an admin page, next to the X.
@@ -406,6 +491,10 @@ impl Game {
     }
 
     pub fn draw_ban_admin(&mut self, mouse_pos: (f64, f64)) {
+        if self.adm.page == "reset" {
+            self.draw_reset_admin(mouse_pos);
+            return;
+        }
         let ov = dim_overlay(self.vw, VIRTUAL_H, 170);
         self.canvas.blit(&ov, 0, 0);
         let panel_w = 640.min(self.vw - 40);

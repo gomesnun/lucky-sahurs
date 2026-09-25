@@ -39,6 +39,8 @@ pub struct Pop {
     life: f64,
     pet: usize,
     m: &'static str,
+    /// the extra verity of a Double Roll
+    double: bool,
 }
 
 #[derive(Default)]
@@ -101,6 +103,10 @@ impl Game {
         pets
     }
 
+    pub fn vfx_drop_count(&self) -> usize {
+        self.vfx.drops.len()
+    }
+
     pub fn update_verity_fx(&mut self, dt: f64) {
         if !self.animations() || self.screen_mode != "game" {
             self.vfx.drops.clear();
@@ -161,6 +167,10 @@ impl Game {
 
     /// Like a click in Cookie Clicker: the verity you got pops up from the click, with its name.
     pub fn spawn_roll_pop(&mut self, pet: usize, m: &'static str) {
+        self.spawn_roll_pop_ex(pet, m, false);
+    }
+
+    pub fn spawn_roll_pop_ex(&mut self, pet: usize, m: &'static str, double: bool) {
         if !self.animations() {
             return;
         }
@@ -171,7 +181,7 @@ impl Game {
         if self.vfx.pops.len() >= MAX_POPS {
             self.vfx.pops.remove(0);
         }
-        self.vfx.pops.push(Pop { x: at.0 + rand_uniform(-14.0, 14.0), y: at.1 - 10.0, vy: -150.0, life: POP_LIFE, pet, m });
+        self.vfx.pops.push(Pop { x: at.0 + rand_uniform(-14.0, 14.0), y: at.1 - 10.0 - if double { 38.0 } else { 0.0 }, vy: -150.0, life: POP_LIFE, pet, m, double });
     }
 
     pub fn draw_roll_pops(&mut self) {
@@ -182,7 +192,7 @@ impl Game {
             let r = &rarities()[p.pet];
             let label = mutation(p.m).map(|x| x.label).unwrap_or("");
             let name = if label.is_empty() { r.pet.to_string() } else { format!("{} {}", crate::i18n::tr(label), r.pet) };
-            let text = format!("+1 {}", name);
+            let text = if p.double { format!("{}  +1 {}", crate::i18n::tr("DOUBLE ROLL!"), name) } else { format!("+1 {}", name) };
             let txt = font.render(&text, rarity_glow_color(r.key));
             let shadow = font.render(&text, Color::rgb(0, 0, 0));
             let img = sprite(p.pet, 40, 0.0);

@@ -2,11 +2,9 @@
 
 use super::Game;
 use super::audio::AUTO_QUIET_RPS;
-use crate::core::data::{AUTO_TRAIT_EVERY, AUTO_UPGRADE_EVERY, MAX_MANUAL_CPS, TRAITS, TIER_COSMIC, TIER_ETHEREAL, pet_order, rarities};
+use crate::core::data::{AUTO_REBIRTH_EVERY, AUTO_TRAIT_EVERY, AUTO_UPGRADE_EVERY, MAX_MANUAL_CPS, TRAIT_POPUP_SECS, TIER_COSMIC, TIER_ETHEREAL, pet_order, rarities};
 use crate::core::state::now_ts;
 use crate::gfx::Color;
-use crate::i18n::tr;
-use crate::tr;
 use crate::ui::cards::rarity_glow_color;
 use crate::ui::widgets::Particle;
 
@@ -51,19 +49,30 @@ impl Game {
         let mut gained_charges = 0;
         let (mut best_r, mut best_m): (i64, &'static str) = (-1, "normal");
         let rank_of = |r: i64| if r < 0 { -1 } else { pet_rank(r as usize) };
+        // v3.0.4: the equipped dice's Double Roll works for the Auto Roller too (each roll may roll again)
+        let double = self.state.dice_double_chance();
         for _ in 0..exact {
-            let (r, m, gained, _b) = self.state.roll();
-            if pet_rank(r) > rank_of(best_r) {
-                best_r = r as i64;
-                best_m = m;
+            let twice = double > 0.0 && crate::core::state::rand_random() < double;
+            for _ in 0..if twice { 2 } else { 1 } {
+                let (r, m, gained, _b) = self.state.roll();
+                if pet_rank(r) > rank_of(best_r) {
+                    best_r = r as i64;
+                    best_m = m;
+                }
+                if gained {
+                    gained_charges += 1;
+                }
             }
-            if gained {
-                gained_charges += 1;
+            if twice {
+                self.state.total_double_rolls += 1;
             }
         }
         self.state.probs_cache = None;
         if n > exact {
-            let (best, charges) = self.state.roll_bulk(n - exact);
+            // the bulk part: the extra rolls by statistics (n x chance, the fraction rounded at random)
+            let extra = ((n - exact) as f64 * double + crate::core::state::rand_random()).floor() as i64;
+            self.state.total_double_rolls += extra;
+            let (best, charges) = self.state.roll_bulk(n - exact + extra);
             gained_charges += charges;
             if let Some((r, m)) = best {
                 if pet_rank(r) > rank_of(best_r) {
@@ -79,6 +88,7 @@ impl Game {
             let now = now_ts();
             if now > self.too_fast_until {
                 self.too_fast_best = None;
+                self.particles.clear(); // the sparkles from before it got this fast
             }
             self.too_fast_until = now + 0.6;
             if best_r >= 0 && self.too_fast_best.is_none_or(|b| pet_rank(best_r as usize) > pet_rank(b.0)) {
@@ -139,13 +149,44 @@ impl Game {
         self.state.last_trait_batch = Some(results);
         self.state.dirty = true;
         // only a trait you didn't have yet is worth a message
-        if let Some(&best) = self.state.owned_traits.difference(&before).max() {
+        let new: Vec<usize> = self.state.owned_traits.difference(&before).copied().collect();
+        if let Some(&best) = new.iter().max() {
+            // the traits go from worst to best: a better one than the equipped one is equipped by itself
+            let equip = self.state.equipped_trait.is_none_or(|e| best > e);
+            if equip {
+                self.state.equipped_trait = Some(best);
+            }
             self.play("trait_roll", 0.0);
-            self.show_toast(&tr!("Auto Trait Roller: new trait \"%s\"!", tr(TRAITS[best].name)), 2.2);
+            if self.settings.get_bool("trait_notifications", true) {
+                self.trait_popup = Some((best, TRAIT_POPUP_SECS, equip));
+            }
+        }
+    }
+
+    /// v3.0.4, from Prestige II: rebirths by itself as soon as it can (it stops at each Prestige's goal).
+    pub fn update_auto_rebirth(&mut self, dt: f64) {
+        self.auto_rebirth_timer += dt;
+        if self.auto_rebirth_timer < AUTO_REBIRTH_EVERY {
+            return;
+        }
+        self.auto_rebirth_timer = 0.0;
+        if !(self.state.auto_rebirth_unlocked() && self.state.auto_rebirth_on) || !self.state.rebirth_available() {
+            return;
+        }
+        if self.state.do_rebirth() {
+            self.rebirth_confirm = false;
+            self.play("rebirth", 0.0);
+            self.show_toast(&crate::tr!("Auto Rebirth: Rebirth #%d!", self.state.rebirths), 1.8);
         }
     }
 
     pub fn update_animations(&mut self, dt: f64) {
+        if let Some(p) = self.trait_popup.as_mut() {
+            p.1 -= dt;
+            if p.1 <= 0.0 {
+                self.trait_popup = None;
+            }
+        }
         self.update_verity_fx(dt);
         // the top bar's coins count up smoothly (spending shows at once)
         let target = self.state.coins;
@@ -188,6 +229,18 @@ impl Game {
             self.notify_trait_charges(1);
             self.play("trait_charge", 0.0);
         }
+        // v3.0.4: the equipped dice can make it a Double Roll (a 2nd roll for free)
+        let p = self.state.dice_double_chance();
+        if p > 0.0 && crate::core::state::rand_random() < p {
+            let (r2, m2, gained2, _) = self.state.roll();
+            self.trigger_cutscene(r2, m2);
+            self.spawn_roll_particles(r2);
+            self.spawn_roll_pop_ex(r2, m2, true);
+            self.state.total_double_rolls += 1;
+            if gained2 {
+                self.notify_trait_charges(1);
+            }
+        }
         let st = &self.state;
         let now_r = (st.cyclic_bonus_ready, st.diamond_bonus_ready, st.rainbow_bonus_ready);
         if (now_r.0 && !was.0) || (now_r.1 && !was.1) || (now_r.2 && !was.2) {
@@ -200,7 +253,8 @@ impl Game {
 
     pub fn spawn_roll_particles(&mut self, rarity_index: usize) {
         let r = &rarities()[rarity_index];
-        if !self.animations() || r.tier < 4 {
+        // no burst while rolling is "too fast to show": one burst per frame piled up into a cloud over the card
+        if !self.animations() || r.tier < 4 || now_ts() < self.too_fast_until {
             return;
         }
         // the "bright" colour (the dark rarities glow too)

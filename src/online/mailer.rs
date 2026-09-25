@@ -4,7 +4,7 @@ use crate::config::save_dir;
 use serde_json::{Value, json};
 use std::time::Duration;
 
-pub const GAS_ENDPOINT: &str = "https://script.google.com/macros/s/AKfycbxC-aGMSLqyPJ1AWRtmRWhSxF8Vetf5H7KHmu4L0Spkoq6FIU35UwJ8ZLfSsi3SRsxVLg/exec";
+pub const GAS_ENDPOINT: &str = "https://script.google.com/macros/s/AKfycbwi1MfcFdY2k5D_KN6W2fs-8t87iypr04QkHBevQVgsWz6FeNL2T3Km2HDeH7xFuG8f/exec";
 const BREVO_ENDPOINT: &str = "https://api.brevo.com/v3/smtp/email";
 const MAIL_TIMEOUT: f64 = 12.0;
 
@@ -21,10 +21,6 @@ fn local_brevo_key() -> String {
         }
     }
     String::new()
-}
-
-pub fn mailer_ready() -> bool {
-    !GAS_ENDPOINT.trim().is_empty() || !local_brevo_key().is_empty()
 }
 
 fn agent() -> ureq::Agent {

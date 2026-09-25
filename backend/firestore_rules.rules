@@ -56,31 +56,31 @@ service cloud.firestore {
             && d.username is string
             // mesmo formato que o jogo aceita: 3 a 16 letras minúsculas, números ou _
             && d.username.matches('[a-z0-9_]{3,16}')
-            && request.auth.token.email == d.username + '@luckysahurs.invalid'
+            // NOTA: já não se compara com request.auth.token.email - depois de uma conta associar e
+            // verificar um email a sério (ver online/firebase.py change_login_email), o token passa a
+            // trazer ESSE email em vez do <username>@luckysahurs.invalid, e esta comparação bloqueava
+            // sempre a escrita. O dono já está garantido por uid == {uid} no caminho do documento.
+            // Sem anti-cheat (dinheiro / rolls / rebirths comparados com o tempo jogado): com os admin abuses as
+            // contas passavam esses limites, a publicação era recusada e a linha ficava presa no mesmo valor.
+            // Agora só se confirmam os tipos. Para tirar alguém da leaderboard, usa os Bans (Admin commands).
             && d.coins is number && d.coins >= 0
-            && d.playtime is number && d.playtime >= 0 && d.playtime < 100000000
-            // o dinheiro tem de caber no tempo jogado (folga de 1e15/s: com rebirths o rendimento passa o
-            // máximo antigo de ~5,9e13/s, e os ganhos offline dão dinheiro sem somar tempo jogado)
-            && d.coins <= d.playtime * 1000000000000000.0 + 100000000000000.0
-            // rolls: o jogo faz no máximo 50 rolls por frame (=3000/s); aqui 4000/s + folga
-            && (!('rolls' in d) || (d.rolls is int && d.rolls >= 0
-                                    && d.rolls <= d.playtime * 4000.0 + 5000.0))
-            // rebirths: o n-ésimo rebirth custa 500000 * 4^(n-1) em moedas na mão, e o total ganho nunca
-            // desce, por isso quem tem n rebirths já ganhou pelo menos 500000 * (4^n - 1) / 3 (10% de folga)
-            && (!('rebirths' in d) || (d.rebirths is int && d.rebirths >= 0 && d.rebirths <= 1000
-                                       && d.coins >= 0.9 * 500000.0 * (math.pow(4, d.rebirths) - 1) / 3.0))
+            && d.playtime is number && d.playtime >= 0
+            && (!('rolls' in d) || (d.rolls is int && d.rolls >= 0))
+            && (!('rebirths' in d) || (d.rebirths is int && d.rebirths >= 0))
             // v3.0: o Prestígio (1 a 5), opcional - só é enviado depois do primeiro
             && (!('prestige' in d) || (d.prestige is int && d.prestige >= 1 && d.prestige <= 5))
             // a hora tem de ser a do servidor (não dá para falsificar)
             && d.updated_at == request.time;
       }
       allow read: if true;
-      allow create: if request.auth != null && request.auth.uid == uid && validEntry();
-      // no máximo uma atualização de 5 em 5 minutos por conta (o jogo publica de 10 em 10 minutos,
-      // com um mínimo de 6 entre publicações: a regra tem de pedir MENOS do que isso)
+      // contas banidas (/bans/{uid}, ver em baixo) não publicam; o admin apaga a linha delas ao banir
+      allow create: if request.auth != null && request.auth.uid == uid && validEntry()
+                    && !exists(/databases/$(database)/documents/bans/$(uid));
+      // sem limite de tempo (v3.0.1): o jogo já só publica de 10 em 10 minutos, e os batoteiros resolvem-se
+      // com os Bans do menu de admin
       allow update: if request.auth != null && request.auth.uid == uid && validEntry()
-                    && request.time > resource.data.updated_at + duration.value(5, 'm');
-      allow delete: if false;
+                    && !exists(/databases/$(database)/documents/bans/$(uid));
+      allow delete: if isAdmin();
     }
     // ---- Perfil da conta: email por confirmar/confirmado + código de 6 dígitos pendente ----
     match /users/{uid}/account/profile {
@@ -122,10 +122,42 @@ service cloud.firestore {
     // escrever, só o dono. Fica à parte de /usernames/{username}, que guarda o email de login.
     match /profiles/{uid} {
       allow read: if request.auth != null;
+      // last_seen = "está a jogar agora" (o jogo renova-o de 2 em 2 min; os amigos veem quem está online).
+      // Tem de ser a hora do servidor, para ninguém ficar "online" para sempre.
       allow write: if request.auth != null && request.auth.uid == uid
-                   && request.resource.data.keys().hasOnly(['username', 'avatar_pet', 'avatar_mut', 'updated_at'])
+                   && request.resource.data.keys().hasOnly(['username', 'avatar_pet', 'avatar_mut', 'updated_at', 'last_seen'])
                    && request.resource.data.avatar_pet is int
-                   && request.resource.data.avatar_mut in ['normal', 'golden', 'diamond'];
+                   && request.resource.data.avatar_mut in ['normal', 'golden', 'diamond', 'rainbow']
+                   && (!('last_seen' in request.resource.data) || request.resource.data.last_seen == request.time);
+    }
+
+    // ---- Leaderboard partilhada: uma fotografia por período, para toda a gente ----
+    // Só o script (backend/apps_script/Leaderboard.gs, com a conta dona do projeto) escreve aqui; essa
+    // conta passa por cima destas regras. Os jogadores só leem (1 leitura em vez de até 200).
+    match /public/leaderboard {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // v3.0.1: a temporada. Um admin sobe o número (menu de admin > "Reset everyone") e cada jogo apaga os
+    // saves de temporadas anteriores. Só pode subir de 1 em 1.
+    match /public/season {
+      allow read: if true;
+      allow create: if isAdmin() && request.resource.data.keys().hasOnly(['season'])
+                    && request.resource.data.season == 1;
+      allow update: if isAdmin() && request.resource.data.keys().hasOnly(['season'])
+                    && request.resource.data.season == resource.data.season + 1;
+      allow delete: if false;
+    }
+
+    // v3.0.1: recomeçar UM jogador. O admin sobe o número em /resets/{uid}; o jogo desse jogador apaga os saves
+    // com um número mais baixo. Só o próprio (e os admins) o leem; só os admins o escrevem, de 1 em 1.
+    match /resets/{uid} {
+      allow read: if (request.auth != null && request.auth.uid == uid) || isAdmin();
+      allow create: if isAdmin() && request.resource.data.keys().hasOnly(['n']) && request.resource.data.n == 1;
+      allow update: if isAdmin() && request.resource.data.keys().hasOnly(['n'])
+                    && request.resource.data.n == resource.data.n + 1;
+      allow delete: if false;
     }
 
     // Pedidos de amizade. O id é "<uid de destino>__<uid de origem>": assim o mesmo pedido
@@ -161,8 +193,12 @@ service cloud.firestore {
                             && request.resource.data.keys().hasOnly(['username', 'text', 'updated_at'])
                             && request.resource.data.username is string
                             && request.resource.data.username.matches('[a-z0-9_]{3,16}')
-                            // o nome tem de ser o da própria conta (o email interno é <username>@luckysahurs.invalid)
-                            && request.auth.token.email == request.resource.data.username + '@luckysahurs.invalid'
+                            // NOTA: já não se compara com request.auth.token.email - depois de uma conta
+                            // associar e verificar um email a sério (ver online/firebase.py
+                            // change_login_email), o token passa a trazer ESSE email em vez do
+                            // <username>@luckysahurs.invalid, e esta comparação bloqueava sempre a escrita
+                            // (é exatamente o "The server refused this" no Feedback). O dono já está
+                            // garantido por uid == {uid} no caminho do documento (/feedback/{uid}).
                             && request.resource.data.text is string
                             && request.resource.data.text.size() >= 4
                             && request.resource.data.text.size() <= 280
@@ -216,19 +252,127 @@ service cloud.firestore {
       allow list, write: if false;
     }
 
-    match /events/current {
-      // toda a gente le: e' assim que o bonus chega a todos os jogadores online
+    // ---- Bans: só os admins banem / desbanem / veem a lista; cada conta pode ler o SEU (para saber que
+    // está banida e porquê). Desbanir = apagar o documento: a conta volta a jogar normalmente.
+    match /bans/{uid} {
+      allow get: if request.auth != null && (request.auth.uid == uid || isAdmin());
+      allow list: if isAdmin();
+      allow create, update: if isAdmin()
+          && request.resource.data.keys().hasOnly(['username', 'reason', 'by', 'at'])
+          && request.resource.data.username is string
+          && request.resource.data.reason is string && request.resource.data.reason.size() <= 300
+          && request.resource.data.by is string
+          && request.resource.data.at == request.time;
+      allow delete: if isAdmin();
+    }
+
+    match /events/{kind} {
+      // toda a gente le (get e list): e' assim que o bonus chega a todos os jogadores online.
+      // cada tipo (luck/money/speed) e' o SEU PROPRIO documento, por isso os tres podem estar
+      // a decorrer ao mesmo tempo - comecar ou parar um nunca toca nos outros.
       allow read: if true;
       allow create, update: if isAdmin()
-          && request.resource.data.keys().hasOnly(['kind', 'mult', 'ends_at', 'by'])
-          && request.resource.data.kind in ['luck', 'money', 'speed']
+          && kind in ['luck', 'money', 'speed']
+          // o tipo ja vem no caminho do documento (/events/luck, /events/money, /events/speed);
+          // o cliente ja nao envia um campo "kind" repetido, por isso a regra tambem nao o pode exigir
+          && request.resource.data.keys().hasOnly(['mult', 'ends_at', 'by'])
           && request.resource.data.mult is number
-          && request.resource.data.mult >= 1 && request.resource.data.mult <= 100
+          && request.resource.data.mult >= 1 && request.resource.data.mult <= 1000000
           && request.resource.data.ends_at is timestamp
-          // no maximo uma hora de cada vez (um evento esquecido acaba sozinho)
+          // no maximo 24 horas de cada vez (um evento esquecido acaba sozinho); +2 min de folga para o
+          // relogio do PC (o jogo usa a hora do servidor, mas pode falhar por uns segundos)
           && request.resource.data.ends_at > request.time
-          && request.resource.data.ends_at < request.time + duration.value(3600, 's');
+          && request.resource.data.ends_at < request.time + duration.value(86520, 's');
       allow delete: if isAdmin();
+    }
+
+    // ================= Trocas de pets (entre amigos) =================
+    // Sem Cloud Functions: quem valida tudo é a própria regra, lendo outros documentos com get()/exists().
+    // Três peças:
+    //   /users/{uid}/wallet/pets   - a carteira online (cópia do "owned" do save, só para as trocas)
+    //   /trades/{tradeId}          - um pedido de troca pendente
+    //   /users/{uid}/incoming/{id} - o "recibo" que fica à espera de ser aplicado do lado de quem propôs
+
+    function tradeItemKeys(prefix) {
+      return [prefix + '_key1', prefix + '_qty1', prefix + '_key2', prefix + '_qty2',
+              prefix + '_key3', prefix + '_qty3'];
+    }
+
+    function tradeItemTypesOk(data, prefix) {
+      return data[prefix + '_key1'] is string && data[prefix + '_qty1'] is int && data[prefix + '_qty1'] >= 0
+          && data[prefix + '_key2'] is string && data[prefix + '_qty2'] is int && data[prefix + '_qty2'] >= 0
+          && data[prefix + '_key3'] is string && data[prefix + '_qty3'] is int && data[prefix + '_qty3'] >= 0;
+    }
+
+    function tradeItemNotEmpty(data, prefix) {
+      return data[prefix + '_qty1'] > 0 || data[prefix + '_qty2'] > 0 || data[prefix + '_qty3'] > 0;
+    }
+
+    // "tenho mesmo o que estou a oferecer" - lê a MINHA carteira e confirma slot a slot.
+    function walletCovers(wallet, data, prefix) {
+      return (data[prefix + '_qty1'] == 0 || wallet.get(data[prefix + '_key1'], 0) >= data[prefix + '_qty1'])
+          && (data[prefix + '_qty2'] == 0 || wallet.get(data[prefix + '_key2'], 0) >= data[prefix + '_qty2'])
+          && (data[prefix + '_qty3'] == 0 || wallet.get(data[prefix + '_key3'], 0) >= data[prefix + '_qty3']);
+    }
+
+    match /users/{uid}/wallet/pets {
+      // "read" e "write" à parte: request.resource só existe em pedidos de escrita (create/update),
+      // por isso juntar as duas condições numa só fazia toda a leitura dar erro na regra (e uma regra
+      // com erro conta sempre como recusada).
+      // leitura: QUALQUER conta autenticada, não só o dono - para propores uma troca é preciso ver a
+      // carteira do teu amigo (get_wallet(uid_dele) em online/firebase.py). Só tem contagens de pets,
+      // nada sensível.
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['owned'])
+          && request.resource.data.owned is map;
+    }
+
+    match /trades/{tradeId} {
+      allow read, delete: if request.auth != null
+          && (resource.data.from_uid == request.auth.uid || resource.data.to_uid == request.auth.uid);
+
+      allow create: if request.auth != null
+          && request.resource.data.from_uid == request.auth.uid
+          && request.resource.data.to_uid != request.auth.uid
+          && request.resource.data.keys().hasOnly(
+               ['from_uid', 'to_uid'].concat(tradeItemKeys('offer')).concat(tradeItemKeys('request')))
+          && tradeItemTypesOk(request.resource.data, 'offer')
+          && tradeItemTypesOk(request.resource.data, 'request')
+          && tradeItemNotEmpty(request.resource.data, 'offer')
+          && tradeItemNotEmpty(request.resource.data, 'request')
+          // só amigos: tens de ter o outro na tua lista de amigos
+          && exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(request.resource.data.to_uid))
+          // confirma, pela carteira, que tens mesmo o que estás a oferecer
+          && walletCovers(get(/databases/$(database)/documents/users/$(request.auth.uid)/wallet/pets).data.owned,
+                           request.resource.data, 'offer');
+
+      // uma troca nunca se atualiza: ou é aceite (apaga-se + cria-se um recibo), ou é cancelada/recusada
+      allow update: if false;
+    }
+
+    match /users/{uid}/incoming/{tradeId} {
+      allow read, delete: if request.auth != null && request.auth.uid == uid;
+
+      // só pode ser criado por quem aceitou a troca (to_uid), copiando EXATAMENTE a troca que existia
+      allow create: if request.auth != null && request.auth.uid != uid
+          && get(/databases/$(database)/documents/trades/$(tradeId)).data.from_uid == uid
+          && get(/databases/$(database)/documents/trades/$(tradeId)).data.to_uid == request.auth.uid
+          && request.resource.data.keys().hasOnly(tradeItemKeys('give').concat(tradeItemKeys('take')))
+          && request.resource.data.give_key1 == get(/databases/$(database)/documents/trades/$(tradeId)).data.offer_key1
+          && request.resource.data.give_qty1 == get(/databases/$(database)/documents/trades/$(tradeId)).data.offer_qty1
+          && request.resource.data.give_key2 == get(/databases/$(database)/documents/trades/$(tradeId)).data.offer_key2
+          && request.resource.data.give_qty2 == get(/databases/$(database)/documents/trades/$(tradeId)).data.offer_qty2
+          && request.resource.data.give_key3 == get(/databases/$(database)/documents/trades/$(tradeId)).data.offer_key3
+          && request.resource.data.give_qty3 == get(/databases/$(database)/documents/trades/$(tradeId)).data.offer_qty3
+          && request.resource.data.take_key1 == get(/databases/$(database)/documents/trades/$(tradeId)).data.request_key1
+          && request.resource.data.take_qty1 == get(/databases/$(database)/documents/trades/$(tradeId)).data.request_qty1
+          && request.resource.data.take_key2 == get(/databases/$(database)/documents/trades/$(tradeId)).data.request_key2
+          && request.resource.data.take_qty2 == get(/databases/$(database)/documents/trades/$(tradeId)).data.request_qty2
+          && request.resource.data.take_key3 == get(/databases/$(database)/documents/trades/$(tradeId)).data.request_key3
+          && request.resource.data.take_qty3 == get(/databases/$(database)/documents/trades/$(tradeId)).data.request_qty3;
+
+      allow update: if false;
     }
 
     // ---- Títulos (v3.0): o título que cada jogador equipou; só o dono escreve, "owner" só para admins ----

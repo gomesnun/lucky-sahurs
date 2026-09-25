@@ -2,8 +2,8 @@
 
 use crate::config::{asset_roots, game_dir};
 use crate::gfx::text::RawFont;
-use crate::gfx::{Color, Rect, Surf, Surface};
-use crate::theme::{BLACK, WHITE, outline};
+use crate::gfx::{Color, Surf, Surface};
+use crate::theme::outline;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -45,11 +45,6 @@ pub fn fit_text(font: &StyledFont, text: &str, max_width: i32) -> String {
     }
     let s: String = t.iter().collect();
     s.trim_end().to_string() + "..."
-}
-
-pub fn outline_color_for(c: Color) -> Color {
-    let lum = 0.299 * c.r as f64 + 0.587 * c.g as f64 + 0.114 * c.b as f64;
-    if lum < 128.0 { WHITE } else { BLACK }
 }
 
 pub fn is_light(c: Color) -> bool {
@@ -158,9 +153,6 @@ impl StyledFont {
     pub fn get_height(&self) -> i32 {
         self.raw.get_height()
     }
-    pub fn get_linesize(&self) -> i32 {
-        self.raw.get_linesize()
-    }
 
     pub fn render(&self, text: &str, color: Color) -> Surf {
         let color = Color::rgb(color.r, color.g, color.b);
@@ -252,53 +244,4 @@ pub fn font_at(size: i32, heavy: bool, outline: Option<i32>) -> Font {
 pub fn clear_font_caches() {
     FONT_AT.with(|c| c.borrow_mut().clear());
     RCACHE.with(|c| c.borrow_mut().map.clear());
-}
-
-/// Text with an outline all around (8 directions).
-pub fn render_outlined(font: &StyledFont, text: &str, color: Color, outline_color: Option<Color>, thickness: i32) -> Surface {
-    let oc = outline_color.unwrap_or_else(|| outline_color_for(color));
-    let base = font.raw.render(text, color);
-    let (w, h) = base.get_size();
-    let pad = thickness + 1;
-    let mut s = Surface::new_alpha(w + pad * 2, h + pad * 2);
-    let o = font.raw.render(text, oc);
-    for dx in -thickness..=thickness {
-        for dy in -thickness..=thickness {
-            if dx == 0 && dy == 0 {
-                continue;
-            }
-            s.blit(&o, pad + dx, pad + dy);
-        }
-    }
-    s.blit(&base, pad, pad);
-    s
-}
-
-pub enum Anchor {
-    Center((i32, i32)),
-    TopLeft((i32, i32)),
-}
-
-/// Writes text with a 1px contrast shadow (dark text only; light text already has its outline).
-pub fn blit_text(surf: &mut Surface, font: &StyledFont, text: &str, color: Color, at: Anchor, shadow: bool) -> Rect {
-    let t = font.render(text, color);
-    let (w, h) = t.get_size();
-    let r = match at {
-        Anchor::Center(c) => Rect::with_center(w, h, c),
-        Anchor::TopLeft((x, y)) => Rect::new(x, y, w, h),
-    };
-    if shadow && !is_light(color) {
-        let s = font.raw.render(text, outline_color_for(color));
-        surf.blit_with_alpha(&s, r.x + 1, r.y + 1, 150);
-    }
-    surf.blit(&t, r.x, r.y);
-    r
-}
-
-pub fn blit_text_c(surf: &mut Surface, font: &StyledFont, text: &str, color: Color, center: (i32, i32)) -> Rect {
-    blit_text(surf, font, text, color, Anchor::Center(center), true)
-}
-
-pub fn blit_text_tl(surf: &mut Surface, font: &StyledFont, text: &str, color: Color, topleft: (i32, i32)) -> Rect {
-    blit_text(surf, font, text, color, Anchor::TopLeft(topleft), true)
 }

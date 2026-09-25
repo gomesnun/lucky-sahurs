@@ -46,7 +46,7 @@ impl Game {
     }
 
     pub fn main_center_x(&self) -> i32 {
-        let left = if self.left_panel.visible() { self.left_panel.shown_width(self.left_w) } else { 0 };
+        let left = 0; // the Bag is a page now (v3.0.1), it doesn't push the game over
         let right = self.vw - if self.right_panel.visible() { self.right_panel.shown_width(self.right_w) } else { 0 };
         (left + right).div_euclid(2)
     }
@@ -59,8 +59,8 @@ impl Game {
         let label_h = 26;
         let top = |n: i32| VIRTUAL_H / 2 - ((n - 1) * step + size + label_h) / 2;
         let shown_r = if self.right_panel.visible() { self.right_panel.shown_width(self.right_w) } else { 0 };
-        let shown_l = if self.left_panel.visible() { self.left_panel.shown_width(self.left_w) } else { 0 };
-        let (rx, lx) = (self.vw - shown_r - size - 18, shown_l + 18);
+        // the Bag is a full page now: the left column never moves
+        let (rx, lx) = (self.vw - shown_r - size - 18, 18);
         std::array::from_fn(|i| {
             if i < 4 { Rect::new(rx, top(4) + i as i32 * step, size, size) } else { Rect::new(lx, top(5) + (i as i32 - 4) * step, size, size) }
         })
@@ -102,12 +102,6 @@ impl Game {
         self.left_rect = Rect::ZERO;
         let panel_top = TOPBAR_H;
         let panel_h = VIRTUAL_H - TOPBAR_H - HINT_H;
-        if self.left_panel.visible() {
-            let shown = self.left_panel.shown_width(self.left_w);
-            let rect = Rect::new(shown - self.left_w, panel_top, self.left_w, panel_h);
-            self.left_rect = rect;
-            self.draw_bag_panel(rect, mouse_pos);
-        }
         if self.right_panel.visible() {
             let shown = self.right_panel.shown_width(self.right_w);
             let rect = Rect::new(self.vw - shown, panel_top, self.right_w, panel_h);
@@ -120,6 +114,10 @@ impl Game {
             }
         }
         self.draw_side_buttons(mouse_pos);
+        if self.left_panel.is_open() {
+            self.begin_modal();
+            self.draw_bag_page(mouse_pos);
+        }
         if self.traits_open {
             self.begin_modal();
             self.draw_traits_page(mouse_pos);
@@ -136,6 +134,7 @@ impl Game {
             self.begin_modal();
             self.draw_rebirth_page(mouse_pos);
         }
+        self.draw_trait_popup();
         self.draw_toast();
     }
 
@@ -279,7 +278,7 @@ impl Game {
         let st = &self.state;
         let (mut total, mut top) = (0.0, None);
         for (key, unlocked, ready, mult) in [
-            ("golden", true, st.cyclic_bonus_ready, st.golden_roll_mult()),
+            ("golden", st.golden_roll_unlocked(), st.cyclic_bonus_ready, st.golden_roll_mult()),
             ("diamond", st.diamond_roll_unlocked(), st.diamond_bonus_ready, st.diamond_roll_mult()),
             ("rainbow", st.rainbow_roll_unlocked(), st.rainbow_bonus_ready, st.rainbow_roll_mult()),
         ] {
@@ -511,8 +510,10 @@ impl Game {
 
         let mut y = roll_rect.bottom() + 16;
         let st = &self.state;
-        let golden = (st.cyclic_bonus_ready, st.golden_roll_mult(), st.rolls_until_golden_roll(), st.golden_roll_every());
-        y = self.draw_cycle_line("golden", y, golden.0, "Golden Roll", golden.1, golden.2, golden.3, GOLD_BORDER, center_x, mouse_pos);
+        if st.golden_roll_unlocked() {
+            let golden = (st.cyclic_bonus_ready, st.golden_roll_mult(), st.rolls_until_golden_roll(), st.golden_roll_every());
+            y = self.draw_cycle_line("golden", y, golden.0, "Golden Roll", golden.1, golden.2, golden.3, GOLD_BORDER, center_x, mouse_pos);
+        }
         if self.state.diamond_roll_unlocked() {
             let st = &self.state;
             let d = (st.diamond_bonus_ready, st.diamond_roll_mult(), st.rolls_until_diamond_roll().unwrap_or(0), st.diamond_roll_every());

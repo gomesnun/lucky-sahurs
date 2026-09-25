@@ -135,6 +135,12 @@ pub struct GameState {
     pub auto_upgrade_on: bool,
     /// v3.0: the Auto Trait Roller switch
     pub auto_trait_on: bool,
+    /// v3.0.4: Auto Rebirth (from Prestige II)
+    pub auto_rebirth_on: bool,
+    /// v3.0.4: Double Rolls from the dice
+    pub total_double_rolls: i64,
+    /// v3.0.4: verities locked in the Bag ("<rarity>_<mutation>"): they can't be sold
+    pub locked_pets: std::collections::BTreeSet<String>,
     /// dice, potions and what was bought this period (core/shop.rs)
     pub shop: crate::core::shop::ShopState,
     /// with no bonus roll, the chances are the same for every roll of a frame: the Auto Roller keeps them here
@@ -159,6 +165,12 @@ pub struct GameState {
     pub daily_missions: Vec<DailyMission>,
     pub daily_counts: IndexMap<String, i64>,
     pub daily_claimed: BTreeSet<usize>,
+    /// v3.0: your settings (all but fullscreen), saved with the save so they follow your account to other PCs
+    pub prefs: Option<Map<String, Value>>,
+    /// v3.0.1: the season this save belongs to (a reset of everyone's progress starts a new one)
+    pub season: i64,
+    /// v3.0.1: this account's reset number when the save was made (an admin can reset one player)
+    pub player_reset: i64,
     /// v3.0 weekly quests (reset Monday 00:00, Lisbon)
     pub weekly_week: Option<String>,
     pub weekly_missions: Vec<DailyMission>,
@@ -323,6 +335,9 @@ impl GameState {
             auto_equip_best_on: true,
             auto_upgrade_on: true,
             auto_trait_on: true,
+            auto_rebirth_on: false,
+            total_double_rolls: 0,
+            locked_pets: Default::default(),
             shop: Default::default(),
             probs_cache: None,
             cloud_uid: None,
@@ -339,6 +354,9 @@ impl GameState {
             daily_missions: Vec::new(),
             daily_counts: IndexMap::new(),
             daily_claimed: BTreeSet::new(),
+            prefs: None,
+            season: 0,
+            player_reset: 0,
             weekly_week: None,
             weekly_missions: Vec::new(),
             weekly_counts: IndexMap::new(),
@@ -484,10 +502,6 @@ impl GameState {
     pub fn upgrade_level(&self, key: &str) -> i64 {
         self.upgrades[upgrade_index(key)]
     }
-    pub fn set_upgrade_level(&mut self, key: &str, v: i64) {
-        let i = upgrade_index(key);
-        self.upgrades[i] = v;
-    }
 
     /// Cost of going from level `lvl` to `lvl + 1` (Python int(base * mult ** lvl)).
     pub fn upgrade_cost_at(&self, key: &str, lvl: i64) -> i128 {
@@ -584,6 +598,10 @@ impl GameState {
         n
     }
 
+    /// v3.0.1: the Golden Roll is an upgrade now (like the Diamond and Rainbow ones)
+    pub fn golden_roll_unlocked(&self) -> bool {
+        self.upgrade_level("golden_roll_unlock") >= 1
+    }
     pub fn golden_roll_every(&self) -> i64 {
         GOLDEN_ROLL_MIN.max(GOLDEN_ROLL_EVERY - self.upgrade_level("cyclic_every"))
     }
@@ -862,12 +880,6 @@ impl GameState {
             .collect()
     }
 
-    pub fn roll_chance(&self, rarity_index: usize, with_luck: bool) -> f64 {
-        let w = self.roll_weights(with_luck);
-        let total: f64 = w.iter().sum();
-        if total != 0.0 { w[rarity_index] / total } else { 0.0 }
-    }
-
     /// (Golden, Diamond, Rainbow): the REAL chance of each mutation per roll.
     pub fn mutation_chances(&self) -> (f64, f64, f64) {
         let mut g = 0.0;
@@ -919,7 +931,7 @@ impl GameState {
         let golden_paused = self.is_cycle_paused("golden");
         let diamond_paused = self.is_cycle_paused("diamond");
         let rainbow_paused = self.is_cycle_paused("rainbow");
-        let golden_active = self.cyclic_bonus_ready && !golden_paused;
+        let golden_active = self.cyclic_bonus_ready && self.golden_roll_unlocked() && !golden_paused;
         let diamond_active = self.diamond_bonus_ready && self.diamond_roll_unlocked() && !diamond_paused;
         let rainbow_active = self.rainbow_bonus_ready && self.rainbow_roll_unlocked() && !rainbow_paused;
         let bonus_active = golden_active || diamond_active || rainbow_active;
@@ -975,7 +987,7 @@ impl GameState {
         if golden_active {
             self.cyclic_bonus_ready = false;
             self.cyclic_roll_count = 0;
-        } else if !golden_paused {
+        } else if !golden_paused && self.golden_roll_unlocked() {
             self.cyclic_roll_count += 1;
             if self.cyclic_roll_count >= self.golden_roll_every() {
                 self.cyclic_roll_count = 0;
@@ -1093,7 +1105,8 @@ impl GameState {
                 *count = total;
             }
         };
-        adv(true, paused.0, &mut self.cyclic_roll_count, &mut self.cyclic_bonus_ready, golden_every);
+        let golden_on = self.golden_roll_unlocked();
+        adv(golden_on, paused.0, &mut self.cyclic_roll_count, &mut self.cyclic_bonus_ready, golden_every);
         adv(diamond_on, paused.1, &mut self.diamond_roll_count, &mut self.diamond_bonus_ready, diamond_every);
         adv(rainbow_on, paused.2, &mut self.rainbow_roll_count, &mut self.rainbow_bonus_ready, rainbow_every);
         let charges = poisson(n as f64 * self.trait_charge_chance());
@@ -1160,6 +1173,19 @@ impl GameState {
         false
     }
 
+    // ---------------- locking (v3.0.4) ----------------
+    pub fn is_locked(&self, rarity_index: usize, m: &str) -> bool {
+        self.locked_pets.contains(&format!("{}_{}", rarity_index, m))
+    }
+
+    pub fn toggle_lock(&mut self, rarity_index: usize, m: &str) {
+        let key = format!("{}_{}", rarity_index, m);
+        if !self.locked_pets.remove(&key) {
+            self.locked_pets.insert(key);
+        }
+        self.dirty = true;
+    }
+
     // ---------------- selling ----------------
     /// What ONE pet sells for: a few seconds of its money/sec (see PET_SELL_SECONDS).
     pub fn sell_price(&self, rarity_index: usize, m: &str) -> f64 {
@@ -1169,6 +1195,9 @@ impl GameState {
     /// Sells 'amount' pets of this kind (asking for more than you have sells them all). If you end up with fewer
     /// than you have equipped, the extra ones are unequipped. Returns (how many were sold, money earned).
     pub fn sell_pets(&mut self, rarity_index: usize, m: &str, amount: i64) -> (i64, f64) {
+        if self.is_locked(rarity_index, m) {
+            return (0, 0.0);
+        }
         let key = format!("{}_{}", rarity_index, m);
         let sold = amount.min(self.count_owned(rarity_index, m)).max(0);
         if sold <= 0 {
@@ -1380,7 +1409,13 @@ impl GameState {
         self.rebirth_cost_n(self.rebirths)
     }
     pub fn rebirth_available(&self) -> bool {
-        self.coins >= self.rebirth_cost()
+        self.coins >= self.rebirth_cost() && !self.rebirth_locked()
+    }
+
+    /// v3.0.1: at 10 / 15 / 20 / 30 / 40 Rebirths you have to Prestige before rebirthing again (after Prestige V
+    /// there's no limit).
+    pub fn rebirth_locked(&self) -> bool {
+        self.next_prestige().is_some_and(|p| self.rebirths >= p.need)
     }
     pub fn rebirth_money_mult(&self) -> f64 {
         1.0 + REBIRTH_MONEY_PER * self.rebirths as f64
@@ -1513,6 +1548,11 @@ impl GameState {
         self.probs_cache = None;
         self.dirty = true;
         true
+    }
+
+    // ---------------- auto rebirth (v3.0.4) ----------------
+    pub fn auto_rebirth_unlocked(&self) -> bool {
+        self.prestige >= AUTO_REBIRTH_PRESTIGE
     }
 
     // ---------------- auto trait roller ----------------
@@ -1722,6 +1762,9 @@ impl GameState {
         st.insert("auto_equip_best_on".into(), json!(self.auto_equip_best_on));
         st.insert("auto_upgrade_on".into(), json!(self.auto_upgrade_on));
         st.insert("auto_trait_on".into(), json!(self.auto_trait_on));
+        st.insert("auto_rebirth_on".into(), json!(self.auto_rebirth_on));
+        st.insert("total_double_rolls".into(), json!(self.total_double_rolls));
+        st.insert("locked_pets".into(), json!(self.locked_pets.iter().collect::<Vec<_>>()));
         d.insert("settings".into(), Value::Object(st));
         let mut tr = Map::new();
         tr.insert("charges".into(), json!(self.trait_charges));
@@ -1794,6 +1837,15 @@ impl GameState {
         weekly.insert("counts".into(), Value::Object(self.weekly_counts.iter().map(|(k, v)| (k.clone(), json!(v))).collect()));
         weekly.insert("claimed".into(), Value::Array(self.weekly_claimed.iter().map(|i| json!(i)).collect()));
         d.insert("weekly".into(), Value::Object(weekly));
+        if let Some(p) = &self.prefs {
+            d.insert("prefs".into(), Value::Object(p.clone()));
+        }
+        if self.season > 0 {
+            d.insert("season".into(), json!(self.season));
+        }
+        if self.player_reset > 0 {
+            d.insert("player_reset".into(), json!(self.player_reset));
+        }
         Value::Object(d)
     }
 
@@ -1921,6 +1973,10 @@ impl GameState {
             };
             self.upgrades[i] = lvl.min(u.max_level).max(0);
         }
+        // v3.0.1: saves from before the Golden Roll needed unlocking keep it if they already upgraded it
+        if self.upgrade_level("cyclic_every") > 0 || self.upgrade_level("cyclic_power") > 0 {
+            self.upgrades[upgrade_index("golden_roll_unlock")] = 1;
+        }
         self.total_rolls = get_i("total_rolls", 0)?;
         let st = match d.get("settings") {
             Some(Value::Object(o)) => o.clone(),
@@ -1931,6 +1987,9 @@ impl GameState {
         self.auto_equip_best_on = st.get("auto_equip_best_on").map(value_truthy).unwrap_or(true);
         self.auto_upgrade_on = st.get("auto_upgrade_on").map(value_truthy).unwrap_or(true);
         self.auto_trait_on = st.get("auto_trait_on").map(value_truthy).unwrap_or(true);
+        self.auto_rebirth_on = st.get("auto_rebirth_on").map(value_truthy).unwrap_or(false);
+        self.total_double_rolls = get_i("total_double_rolls", 0)?.max(0);
+        self.locked_pets = st.get("locked_pets").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
         let ms = self.max_slots().max(0) as usize;
         self.equipped.truncate(ms);
 
@@ -2083,6 +2142,12 @@ impl GameState {
             .map(|a| a.iter().filter_map(value_i64).filter(|i| *i >= 0 && (*i as usize) < self.weekly_missions.len()).map(|i| i as usize).collect())
             .unwrap_or_default();
         self.ensure_weekly_missions();
+        self.season = d.get("season").and_then(value_i64).unwrap_or(0).max(0);
+        self.player_reset = d.get("player_reset").and_then(value_i64).unwrap_or(0).max(0);
+        self.prefs = match d.get("prefs") {
+            Some(Value::Object(p)) => Some(p.clone()),
+            _ => None,
+        };
         Ok(())
     }
 
@@ -2206,6 +2271,90 @@ mod prestige_tests {
         let mut t = GameState::new();
         t.load_dict(&d).unwrap();
         assert_eq!(t.prestige, 1);
+    }
+
+    #[test]
+    fn rebirths_lock_until_the_next_prestige() {
+        let mut s = GameState::new();
+        s.rebirths = 9;
+        s.coins = 1e300;
+        assert!(s.rebirth_available());
+        assert!(s.do_rebirth());
+        assert_eq!(s.rebirths, 10);
+        assert!(s.rebirth_locked() && !s.rebirth_available() && !s.do_rebirth()); // stuck at 10 until Prestige I
+        assert!(s.do_prestige(None));
+        s.coins = 1e300;
+        assert!(s.rebirth_available()); // Prestige I: rebirths again, up to 15
+        s.rebirths = 15;
+        assert!(s.rebirth_locked());
+        s.prestige = 5;
+        s.rebirths = 400;
+        assert!(!s.rebirth_locked()); // after Prestige V: no limit
+    }
+
+    #[test]
+    fn rebirth_keeps_the_unlocks_not_their_levels() {
+        let mut s = GameState::new();
+        s.rebirths = 3;
+        s.coins = 1e300;
+        for k in ["auto_unlock", "golden_roll_unlock", "auto_upgrade_unlock", "auto_equip_unlock", "auto_speed", "cyclic_every", "luck"] {
+            s.upgrades[upgrade_index(k)] = 1;
+        }
+        assert!(s.do_rebirth());
+        for k in ["auto_unlock", "golden_roll_unlock", "auto_upgrade_unlock", "auto_equip_unlock"] {
+            assert_eq!(s.upgrade_level(k), 1, "{k} should stay");
+        }
+        for k in ["auto_speed", "cyclic_every", "luck"] {
+            assert_eq!(s.upgrade_level(k), 0, "{k} should reset");
+        }
+    }
+
+    #[test]
+    fn auto_rebirth_needs_prestige_two_and_saves() {
+        let mut s = GameState::new();
+        s.prestige = 1;
+        assert!(!s.auto_rebirth_unlocked());
+        s.prestige = 2;
+        s.auto_rebirth_on = true;
+        assert!(s.auto_rebirth_unlocked());
+        let mut t = GameState::new();
+        t.load_dict(&s.to_dict()).unwrap();
+        assert!(t.auto_rebirth_on);
+    }
+
+    #[test]
+    fn a_locked_verity_cant_be_sold() {
+        let mut s = GameState::new();
+        s.owned.insert("3_golden".into(), 5);
+        s.toggle_lock(3, "golden");
+        assert_eq!(s.sell_pets(3, "golden", 5), (0, 0.0));
+        assert_eq!(s.count_owned(3, "golden"), 5);
+        let mut t = GameState::new();
+        t.load_dict(&s.to_dict()).unwrap();
+        assert!(t.is_locked(3, "golden"));
+        t.toggle_lock(3, "golden");
+        assert_eq!(t.sell_pets(3, "golden", 2).0, 2);
+    }
+
+    #[test]
+    fn golden_roll_needs_its_unlock() {
+        let mut s = GameState::new();
+        for _ in 0..50 {
+            s.roll();
+        }
+        assert!(!s.cyclic_bonus_ready && s.cyclic_roll_count == 0); // locked: the cycle doesn't run
+        s.upgrades[upgrade_index("golden_roll_unlock")] = 1;
+        for _ in 0..GOLDEN_ROLL_EVERY {
+            s.roll();
+        }
+        assert!(s.cyclic_bonus_ready);
+        assert_eq!(s.golden_roll_mult(), 10.0);
+        // a save from before the unlock existed, with Golden Roll upgrades: it stays unlocked
+        let mut old = GameState::new();
+        old.upgrades[upgrade_index("cyclic_every")] = 2;
+        let mut t = GameState::new();
+        t.load_dict(&old.to_dict()).unwrap();
+        assert!(t.golden_roll_unlocked());
     }
 
     #[test]
@@ -2344,5 +2493,18 @@ mod quest_tests {
         t.load_dict(&s.to_dict()).unwrap();
         assert_eq!(t.weekly_week, s.weekly_week);
         assert!(t.weekly_claimed.contains(&0));
+    }
+
+    #[test]
+    fn settings_travel_with_the_save() {
+        let mut s = GameState::new();
+        assert!(!s.to_dict().as_object().unwrap().contains_key("prefs")); // old-style save until there are some
+        let mut p = Map::new();
+        p.insert("animations".into(), json!(false));
+        p.insert("cutscenes_secreto".into(), json!(false));
+        s.prefs = Some(p.clone());
+        let mut t = GameState::new();
+        t.load_dict(&s.to_dict()).unwrap();
+        assert_eq!(t.prefs, Some(p));
     }
 }

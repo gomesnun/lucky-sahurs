@@ -67,6 +67,12 @@ fn main() {
                 let ico = assets_dir().join("icons").join("verity.ico");
                 let mut res = winresource::WindowsResource::new();
                 res.set_icon(ico.to_str().unwrap());
+                // name / description on the .exe: a file with none looks more suspicious to antivirus
+                res.set("ProductName", "Lucky Verities");
+                res.set("FileDescription", "Lucky Verities");
+                res.set("CompanyName", "gomesnun");
+                res.set("OriginalFilename", "Lucky Verities.exe");
+                res.set("LegalCopyright", "gomesnun");
                 res.compile().expect("could not embed the .exe icon");
             }
         }

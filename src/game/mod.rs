@@ -20,6 +20,7 @@ pub mod milestones_panel;
 pub mod options;
 pub mod pets_panel;
 pub mod rebirth_panel;
+pub mod season;
 pub mod prestige_panel;
 pub mod sell_panel;
 pub mod evolve_panel;
@@ -191,7 +192,9 @@ pub struct Game {
     pub particles: Vec<Particle>,
     pub auto_accum: f64,
     pub auto_upgrade_timer: f64,
+    pub prefs_timer: f64,
     pub auto_trait_timer: f64,
+    pub auto_rebirth_timer: f64,
     /// the Auto Roller rolls faster than the card can show until this time (see draw_too_fast_card)
     pub too_fast_until: f64,
     /// the best pet since it got that fast
@@ -203,6 +206,8 @@ pub struct Game {
     pub toast_timer: f64,
     pub toast_kind: Option<&'static str>,
     pub trait_toast_count: i64,
+    /// v3.0.4: the Auto Trait Roller's "New trait!" card (trait, time left, equipped by it)
+    pub trait_popup: Option<(usize, f64, bool)>,
 
     pub frame_dt: f64,
     pub roll_rate: f64,
@@ -290,6 +295,8 @@ pub struct Game {
     pub evolve: evolve_panel::EvolveUi,
     pub battle: battle_panel::BattleUi,
     pub titles: titles_panel::TitlesUi,
+    /// v3.0.1: season resets (see season.rs)
+    pub season: season::SeasonUi,
     pub text_input_on: bool,
 }
 
@@ -393,7 +400,9 @@ impl Game {
             particles: Vec::new(),
             auto_accum: 0.0,
             auto_upgrade_timer: 0.0,
+            prefs_timer: 0.0,
             auto_trait_timer: 0.0,
+            auto_rebirth_timer: 0.0,
             too_fast_until: 0.0,
             too_fast_best: None,
             right_rect: Rect::ZERO,
@@ -402,6 +411,7 @@ impl Game {
             toast_timer: 0.0,
             toast_kind: None,
             trait_toast_count: 0,
+            trait_popup: None,
             frame_dt: 1.0 / FPS as f64,
             roll_rate: 0.0,
             rate_prev: None,
@@ -477,6 +487,7 @@ impl Game {
             evolve: evolve_panel::EvolveUi::new(),
             battle: battle_panel::BattleUi::new(),
             titles: titles_panel::TitlesUi::new(),
+            season: Default::default(),
             text_input_on: true,
         };
         if let Some(sdl) = sdl {
@@ -566,6 +577,39 @@ impl Game {
         let old = std::mem::replace(&mut self.state, st);
         if self.upload_inflight {
             self.orphan_states.insert(old.obj_id, old);
+        }
+        self.apply_save_prefs();
+        self.enforce_season_state(); // a save from before a reset of everyone starts again from 0
+    }
+
+    /// v3.0: the settings kept in the save (from any PC) become this PC's settings. Fullscreen stays per PC.
+    pub fn apply_save_prefs(&mut self) {
+        let Some(prefs) = self.state.prefs.clone() else { return };
+        let mut changed = false;
+        for (k, v) in prefs {
+            if k == "fullscreen" || !self.settings.map.contains_key(&k) {
+                continue;
+            }
+            if self.settings.map.get(&k) != Some(&v) {
+                self.settings.map.insert(k, v);
+                changed = true;
+            }
+        }
+        if changed {
+            save_settings(&self.settings);
+            set_language(&self.settings.get_str("language", "en"));
+            theme::set_dark(theme::resolve_dark(&self.settings.get_str("theme_mode", theme::DEFAULT_THEME_MODE)));
+            self.apply_music_volume();
+        }
+    }
+
+    /// The other way: this PC's settings go into the save (and so to the cloud) when they change.
+    pub fn store_save_prefs(&mut self) {
+        let mut prefs = self.settings.map.clone();
+        prefs.remove("fullscreen");
+        if self.state.prefs.as_ref() != Some(&prefs) {
+            self.state.prefs = Some(prefs);
+            self.state.dirty = true;
         }
     }
 
@@ -834,6 +878,8 @@ impl Game {
             self.close_shop();
         } else if self.rebirth_open && self.screen_mode == "game" {
             self.close_rebirth();
+        } else if self.left_panel.is_open() && self.screen_mode == "game" {
+            self.left_panel.close(); // the Bag page
         } else {
             return;
         }
@@ -852,6 +898,7 @@ impl Game {
             self.update_auto(dt);
             self.update_auto_upgrade(dt);
             self.update_auto_trait(dt);
+            self.update_auto_rebirth(dt);
             self.state.tick_potions(dt); // active potions only use up time with the game open
             self.update_cutscenes(dt);
             self.update_roll_rate(dt);
@@ -860,6 +907,11 @@ impl Game {
             self.right_panel.update(dt);
             self.left_panel.update(dt);
             self.autosave_timer += dt;
+            self.prefs_timer += dt;
+            if self.prefs_timer >= 1.0 {
+                self.prefs_timer = 0.0;
+                self.store_save_prefs();
+            }
             if self.autosave_timer >= AUTOSAVE_INTERVAL {
                 self.autosave_timer = 0.0;
                 self.state.save();
@@ -910,6 +962,7 @@ impl Game {
             self.poll_worker();
             self.tick_updater(); // now and then checks GitHub for a new version
             self.tick_ban(now_ts()); // was this account banned? (see admin.rs)
+            self.tick_season(dt); // did an admin reset everyone's progress? (see season.rs)
             self.tick_theme(dt);
             running = self.handle_events(&mut pump);
             if self.quit_requested {
@@ -1386,4 +1439,119 @@ impl Game {
 
 pub fn color_dim(c: Color, d: i32) -> Color {
     Color::rgb((c.r as i32 - d).max(0) as u8, (c.g as i32 - d).max(0) as u8, (c.b as i32 - d).max(0) as u8)
+}
+
+#[cfg(test)]
+mod prefs_tests {
+    use super::*;
+
+    /// One temporary save folder for the whole test run (the save folder is read once).
+    fn test_save_dir() -> std::path::PathBuf {
+        static DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+        DIR.get_or_init(|| {
+            let dir = std::env::temp_dir().join(format!("lv-game-test-{}", std::process::id()));
+            // SAFETY: set once, before anything reads the save folder
+            unsafe { std::env::set_var("LUCKY_VERITIES_SAVE_DIR", &dir) };
+            dir
+        })
+        .clone()
+    }
+
+    #[test]
+    fn a_new_season_wipes_only_older_saves() {
+        test_save_dir();
+        let mut g = Game::headless(1422, 800);
+        g.season.server = Some(1);
+        // the save being played, from before the reset: back to 0, same slot, settings kept
+        let mut st = GameState::new();
+        st.slot = Some(1);
+        st.total_rolls = 5000;
+        st.coins = 1e9;
+        st.rebirths = 7;
+        st.playtime = 3600.0;
+        let mut p = serde_json::Map::new();
+        p.insert("animations".into(), serde_json::json!(false));
+        st.prefs = Some(p.clone());
+        g.replace_state(st);
+        assert_eq!((g.state.total_rolls, g.state.coins, g.state.rebirths, g.state.season), (0, 0.0, 0, 1));
+        assert_eq!((g.state.slot, g.state.prefs.clone()), (Some(1), Some(p)));
+        assert_eq!(g.state.playtime, 3600.0); // the playtime stays
+        // progress made after the reset is never touched
+        let mut st = GameState::new();
+        st.slot = Some(2);
+        st.season = 1;
+        st.total_rolls = 42;
+        g.replace_state(st);
+        assert_eq!(g.state.total_rolls, 42);
+        // the other slots on this PC: the old one goes, the new-season one stays
+        let mut old = GameState::new();
+        old.slot = Some(2);
+        old.total_rolls = 99;
+        old.save();
+        let mut new = GameState::new();
+        new.slot = Some(3);
+        new.season = 1;
+        new.total_rolls = 7;
+        new.save();
+        g.replace_state(GameState::new()); // playing nothing
+        g.on_season_known();
+        assert!(!crate::storage::save_slot_path(2).exists());
+        assert!(crate::storage::save_slot_path(3).exists());
+        // no season yet (0): nothing happens
+        let mut g2 = Game::headless(1422, 800);
+        g2.season.server = Some(0);
+        let mut st = GameState::new();
+        st.slot = Some(1);
+        st.total_rolls = 10;
+        g2.replace_state(st);
+        assert_eq!(g2.state.total_rolls, 10);
+    }
+
+    #[test]
+    fn a_personal_reset_wipes_only_that_accounts_saves() {
+        test_save_dir();
+        let mut g = Game::headless(1422, 800);
+        g.account = Some(Account { uid: "u1".into(), username: "tommy".into(), email: None, email_verified: false });
+        g.season.server = Some(0);
+        g.season.my_reset = Some(1);
+        let cloud = |uid: &str, rolls: i64, reset: i64| {
+            let mut st = GameState::new();
+            st.slot = Some(1);
+            st.cloud_uid = Some(uid.into());
+            st.total_rolls = rolls;
+            st.player_reset = reset;
+            st
+        };
+        g.replace_state(cloud("u1", 800, 0)); // this account's save from before the reset: wiped
+        assert_eq!((g.state.total_rolls, g.state.player_reset, g.state.cloud_uid.as_deref()), (0, 1, Some("u1")));
+        g.replace_state(cloud("u1", 30, 1)); // made after the reset: kept
+        assert_eq!(g.state.total_rolls, 30);
+        let mut offline = GameState::new(); // an offline save on this PC: not this account's, kept
+        offline.slot = Some(2);
+        offline.total_rolls = 55;
+        g.replace_state(offline);
+        assert_eq!(g.state.total_rolls, 55);
+    }
+
+    #[test]
+    fn settings_follow_the_save_to_another_pc() {
+        let dir = test_save_dir();
+        // PC 1: turns animations and Secret cutscenes off; the settings go into the save
+        let mut pc1 = Game::headless(1422, 800);
+        pc1.settings.set_bool("animations", false);
+        pc1.settings.set_bool("cutscenes_secreto", false);
+        pc1.settings.set_bool("fullscreen", false);
+        pc1.store_save_prefs();
+        let save = pc1.state.to_dict();
+        // PC 2: default settings, loads that save (as if from the cloud)
+        let mut pc2 = Game::headless(1422, 800);
+        pc2.settings = Settings::defaults();
+        let mut st = GameState::new();
+        st.load_dict(&save).unwrap();
+        pc2.replace_state(st);
+        assert!(!pc2.settings.get_bool("animations", true));
+        assert!(!pc2.settings.get_bool("cutscenes_secreto", true));
+        assert!(pc2.settings.get_bool("fullscreen", false)); // fullscreen stays per PC
+        let _ = dir;
+    }
 }

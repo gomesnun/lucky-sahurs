@@ -194,11 +194,6 @@ pub fn draw_panel(canvas: &mut Surface, rect: Rect, color: Option<Color>, radius
     canvas.blit(&b, rect.x, rect.y);
 }
 
-/// draw_panel with the defaults (PANEL colour, radius 14, shadow).
-pub fn panel_box(canvas: &mut Surface, rect: Rect) {
-    draw_panel(canvas, rect, None, 14, true, None);
-}
-
 pub const VSHIFT_STEPS: i32 = 8;
 
 fn vshift_variants(surf: &Surface, steps: i32) -> Vec<Surface> {

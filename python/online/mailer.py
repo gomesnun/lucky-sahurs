@@ -32,7 +32,7 @@ from config import SAVE_DIR
 from online.tls import ssl_context
 
 # Cola aqui o URL do teu Web App depois do deploy (ver EMAIL_SETUP.md). Fica vazio até lá.
-GAS_ENDPOINT = "https://script.google.com/macros/s/AKfycbxC-aGMSLqyPJ1AWRtmRWhSxF8Vetf5H7KHmu4L0Spkoq6FIU35UwJ8ZLfSsi3SRsxVLg/exec"     # ex.: "https://script.google.com/macros/s/AKfycb.../exec"
+GAS_ENDPOINT = "https://script.google.com/macros/s/AKfycbwi1MfcFdY2k5D_KN6W2fs-8t87iypr04QkHBevQVgsWz6FeNL2T3Km2HDeH7xFuG8f/exec"     # ex.: "https://script.google.com/macros/s/AKfycb.../exec"
 
 # Só para testes locais no teu próprio PC — ver aviso no docstring acima.
 BREVO_ENDPOINT = "https://api.brevo.com/v3/smtp/email"

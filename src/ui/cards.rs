@@ -63,9 +63,6 @@ impl<K: Hash + Eq + Clone, V: Clone> Lru<K, V> {
             e.0.clone()
         })
     }
-    pub fn peek(&self, k: &K) -> Option<V> {
-        self.map.get(k).map(|e| e.0.clone())
-    }
     pub fn put(&mut self, k: K, v: V) {
         self.tick += 1;
         self.map.insert(k, (v, self.tick));
@@ -81,9 +78,6 @@ impl<K: Hash + Eq + Clone, V: Clone> Lru<K, V> {
     }
     pub fn clear(&mut self) {
         self.map.clear();
-    }
-    pub fn len(&self) -> usize {
-        self.map.len()
     }
 }
 

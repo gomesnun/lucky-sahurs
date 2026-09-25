@@ -188,6 +188,7 @@ impl Game {
             };
             let lines = [
                 (tr!("+%d%% Luck", py_round(d.luck * 100.0) as i64), LUCK_GREEN),
+                (tr!("%d%% Double Roll", py_round(d.double * 100.0) as i64), accent()),
                 (tr!("%d%% stock chance", py_round(d.chance * 100.0) as i64), grey()),
             ];
             let highlight = if !equipped {

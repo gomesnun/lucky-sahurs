@@ -36,6 +36,8 @@ pub struct Dice {
     /// chance of showing up in each period's stock
     pub chance: f64,
     pub luck: f64,
+    /// v3.0.4: chance that a roll (the button or the Auto Roller) rolls twice
+    pub double: f64,
     pub style: DiceStyle,
 }
 
@@ -49,17 +51,18 @@ const fn st(base: (u8, u8, u8), hover: (u8, u8, u8), border: (u8, u8, u8), text:
     }
 }
 
+/// v3.0.1: the stock chances about halved (the dice showed up too often)
 pub const DICE: [Dice; 10] = [
-    Dice { key: "wood", name: "Wooden Dice", price: 25000.0, chance: 1.0, luck: 0.10, style: st((150, 98, 58), (176, 118, 72), (96, 60, 32), (255, 240, 220), None) },
-    Dice { key: "stone", name: "Stone Dice", price: 1000000.0, chance: 0.60, luck: 0.20, style: st((118, 122, 132), (140, 145, 156), (70, 74, 84), (255, 255, 255), None) },
-    Dice { key: "iron", name: "Iron Dice", price: 50000000.0, chance: 0.45, luck: 0.35, style: st((84, 96, 116), (104, 118, 140), (190, 200, 215), (235, 242, 255), None) },
-    Dice { key: "gold", name: "Golden Dice", price: 2500000000.0, chance: 0.35, luck: 0.55, style: st((232, 180, 40), (250, 200, 70), (150, 100, 10), (70, 40, 0), None) },
-    Dice { key: "emerald", name: "Emerald Dice", price: 150000000000.0, chance: 0.25, luck: 0.80, style: st((30, 150, 90), (44, 176, 108), (150, 255, 190), (230, 255, 240), None) },
-    Dice { key: "ruby", name: "Ruby Dice", price: 10000000000000.0, chance: 0.18, luck: 1.10, style: st((190, 30, 60), (215, 48, 80), (255, 150, 170), (255, 235, 240), None) },
-    Dice { key: "sapphire", name: "Sapphire Dice", price: 750000000000000.0, chance: 0.12, luck: 1.50, style: st((36, 70, 190), (52, 92, 220), (150, 190, 255), (235, 245, 255), None) },
-    Dice { key: "amethyst", name: "Amethyst Dice", price: 60000000000000000.0, chance: 0.08, luck: 2.00, style: st((120, 50, 190), (142, 66, 220), (220, 170, 255), (250, 240, 255), None) },
-    Dice { key: "cosmic", name: "Cosmic Dice", price: 5000000000000000000.0, chance: 0.05, luck: 2.75, style: st((22, 16, 60), (36, 26, 90), (150, 120, 255), (220, 210, 255), Some("stars")) },
-    Dice { key: "prism", name: "Prism Dice", price: 500000000000000000000.0, chance: 0.03, luck: 4.00, style: st((250, 250, 255), (255, 255, 255), (255, 255, 255), (60, 40, 90), Some("rainbow")) },
+    Dice { key: "wood", name: "Wooden Dice", price: 25000.0, chance: 0.7, luck: 0.10, double: 0.02, style: st((150, 98, 58), (176, 118, 72), (96, 60, 32), (255, 240, 220), None) },
+    Dice { key: "stone", name: "Stone Dice", price: 1000000.0, chance: 0.4, luck: 0.20, double: 0.04, style: st((118, 122, 132), (140, 145, 156), (70, 74, 84), (255, 255, 255), None) },
+    Dice { key: "iron", name: "Iron Dice", price: 50000000.0, chance: 0.25, luck: 0.35, double: 0.06, style: st((84, 96, 116), (104, 118, 140), (190, 200, 215), (235, 242, 255), None) },
+    Dice { key: "gold", name: "Golden Dice", price: 2500000000.0, chance: 0.15, luck: 0.55, double: 0.09, style: st((232, 180, 40), (250, 200, 70), (150, 100, 10), (70, 40, 0), None) },
+    Dice { key: "emerald", name: "Emerald Dice", price: 150000000000.0, chance: 0.1, luck: 0.80, double: 0.12, style: st((30, 150, 90), (44, 176, 108), (150, 255, 190), (230, 255, 240), None) },
+    Dice { key: "ruby", name: "Ruby Dice", price: 10000000000000.0, chance: 0.06, luck: 1.10, double: 0.16, style: st((190, 30, 60), (215, 48, 80), (255, 150, 170), (255, 235, 240), None) },
+    Dice { key: "sapphire", name: "Sapphire Dice", price: 750000000000000.0, chance: 0.04, luck: 1.50, double: 0.2, style: st((36, 70, 190), (52, 92, 220), (150, 190, 255), (235, 245, 255), None) },
+    Dice { key: "amethyst", name: "Amethyst Dice", price: 60000000000000000.0, chance: 0.025, luck: 2.00, double: 0.25, style: st((120, 50, 190), (142, 66, 220), (220, 170, 255), (250, 240, 255), None) },
+    Dice { key: "cosmic", name: "Cosmic Dice", price: 5000000000000000000.0, chance: 0.015, luck: 2.75, double: 0.32, style: st((22, 16, 60), (36, 26, 90), (150, 120, 255), (220, 210, 255), Some("stars")) },
+    Dice { key: "prism", name: "Prism Dice", price: 500000000000000000000.0, chance: 0.008, luck: 4.00, double: 0.4, style: st((250, 250, 255), (255, 255, 255), (255, 255, 255), (60, 40, 90), Some("rainbow")) },
 ];
 
 pub fn dice_by_key(key: &str) -> Option<&'static Dice> {
@@ -287,6 +290,11 @@ impl GameState {
             Some(d) => 1.0 + d.luck,
             None => 1.0,
         }
+    }
+
+    /// v3.0.4: the equipped dice's chance of a double roll
+    pub fn dice_double_chance(&self) -> f64 {
+        self.shop.dice_equipped.and_then(dice_by_key).map_or(0.0, |d| d.double)
     }
 
     pub fn roll_button_style(&self) -> Option<&'static DiceStyle> {
