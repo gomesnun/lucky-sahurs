@@ -961,6 +961,8 @@ pub struct ExploreUi {
     stride: f64,
     moving: f64,
     t: f64,
+    /// v4.0.1: the camera orbits Steve by this much (radians); Steve's own facing/movement never depends on it
+    pub cam_yaw: f64,
     /// where a click sent Steve, and the pet he's going to catch there
     pub target: Option<(f64, f64)>,
     target_pet: Option<usize>,
@@ -993,6 +995,7 @@ impl ExploreUi {
             stride: 0.0,
             moving: 0.0,
             t: 0.0,
+            cam_yaw: 0.0,
             target: None,
             target_pet: None,
             wild: Vec::new(),
@@ -1124,6 +1127,15 @@ impl Game {
             }
             if held(&[S::D, S::Right]) {
                 dir.0 += 1.0;
+            }
+            // v4.0.1: turn the camera around Steve (left/right only - never pitch) so you can see what's behind
+            // you without it changing where WASD walks you
+            const CAM_ROT_SPEED: f64 = 2.4;
+            if held(&[S::LeftBracket, S::Q]) {
+                self.explore.cam_yaw -= CAM_ROT_SPEED * dt;
+            }
+            if held(&[S::RightBracket, S::R]) {
+                self.explore.cam_yaw += CAM_ROT_SPEED * dt;
             }
         }
         if dir != (0.0, 0.0) {
@@ -1467,6 +1479,22 @@ pub struct Scene<'a> {
 }
 
 /// Draws a world at w x h; returns the frame and its view.
+/// v4.0.1: view-frustum culling - is this face's quad even possibly on screen? A cheap bounding-sphere test
+/// around its center (every face here is one block, ~0.87 across corner to corner, so radius 0.6 covers it with
+/// slack) against the camera's near plane and its left/right/top/bottom planes, at the sphere's own depth.
+fn face_in_view(view: &View, corners: &[V3; 4]) -> bool {
+    const R: f64 = 0.6;
+    const NEAR: f64 = 0.1; // r3d.rs's own NEAR isn't public; this only needs to be a small, safe margin
+    let center = (corners[0] + corners[1] + corners[2] + corners[3]) * 0.25;
+    let c = view.to_cam(center);
+    if c.z + R < NEAR {
+        return false; // entirely behind the camera
+    }
+    let d = c.z.max(NEAR);
+    let (hw, hh) = (view.cx / view.focal, view.cy / view.focal);
+    c.x.abs() <= d * hw + R && c.y.abs() <= d * hh + R
+}
+
 fn draw_world(sc: &Scene, w: usize, h: usize) -> (Frame, View) {
     let world = world(sc.dim);
     let mut fr = Frame::new(w, h);
@@ -1480,14 +1508,17 @@ fn draw_world(sc: &Scene, w: usize, h: usize) -> (Frame, View) {
     }
     let view = View::new(&sc.cam, w, h);
     let fog = Fog { color: world.fog, start: 26.0, end: 44.0 };
-    // the blocks near Steve, on all the cores
+    // the blocks near Steve, on all the cores. Steve's box is a cheap first reject (a face further than the fog
+    // could ever draw is never worth even frustum-testing); it's symmetric in every direction now that the
+    // camera can turn around Steve - a fixed box behind-vs-ahead would go wrong the moment you looked backward.
     let (sx, sz) = (sc.steve.x.floor() as i64, sc.steve.z.floor() as i64);
     // (tree tops between the camera and Steve are left out; behind anything else he shows through, see below)
     let cut = sc.steve.y + 2.2;
     let faces: Vec<&Face> = world
         .faces
         .iter()
-        .filter(|f| (f.x - sx).abs() <= 17 && f.z - sz >= -15 && f.z - sz <= 8)
+        .filter(|f| (f.x - sx).abs() <= 20 && (f.z - sz).abs() <= 20)
+        .filter(|f| face_in_view(&view, &f.corners))
         .filter(|f| !(sc.cut_front && f.leafy && f.z > sz - 2 && f.corners[0].y.min(f.corners[1].y) >= cut))
         .collect();
     let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1).clamp(1, 8);
@@ -1562,9 +1593,11 @@ fn draw_world(sc: &Scene, w: usize, h: usize) -> (Frame, View) {
     (fr, view)
 }
 
-/// The camera: above and behind Steve.
-fn follow_cam(steve: V3) -> Camera {
-    Camera { pos: steve + v3(0.0, 13.5, 7.0), target: steve + v3(0.0, 0.6, -0.8), fov: 44.0 }
+/// The camera: above and behind Steve, orbited around him by `cam_yaw` (0 = the usual view, straight behind).
+fn follow_cam(steve: V3, cam_yaw: f64) -> Camera {
+    let (s, c) = cam_yaw.sin_cos();
+    let rot = |v: V3| v3(v.x * c + v.z * s, v.y, -v.x * s + v.z * c);
+    Camera { pos: steve + rot(v3(0.0, 13.5, 7.0)), target: steve + rot(v3(0.0, 0.6, -0.8)), fov: 44.0 }
 }
 
 impl Game {
@@ -1598,7 +1631,7 @@ impl Game {
             t: e.t,
             equipped,
             wild: &[],
-            cam: follow_cam(steve),
+            cam: follow_cam(steve, e.cam_yaw),
             cut_front: true,
         };
         (sc, wild)
@@ -1738,7 +1771,7 @@ impl Game {
                 self.canvas.blit(&lock, r.centerx() - lock.w / 2, r.y - lock.h - 2);
             }
         }
-        let hint = small.render(&tr("WASD / arrows or click to walk  ·  E to catch"), WHITE);
+        let hint = small.render(&tr("WASD / arrows or click to walk  ·  E to catch  ·  [ ] turn camera"), WHITE);
         let hb = Rect::new(area.centerx() - hint.w / 2 - 10, by - hint.h - 16, hint.w + 20, hint.h + 8);
         draw::rect(&mut self.canvas, Color::rgba(0, 0, 0, 110), hb, 0, 8);
         self.canvas.blit(&hint, hb.x + 10, hb.y + 4);
@@ -1746,6 +1779,14 @@ impl Game {
         if self.explore.overlay.is_empty() && self.explore_nearest().is_some() {
             let r = Rect::new(area.right() - 16 - 170, by - 70, 170, 56);
             self.button(r, &tr("Catch!"), &self.f.med.clone(), mouse_pos, GOOD, Color::rgb(140, 245, 160), BLACK, cb(|g| g.explore_catch_nearest()), Bo::r(12).sfx(None));
+        }
+        // turn-camera buttons (mouse / touch): tap to swing the view a quarter turn around Steve
+        if self.explore.overlay.is_empty() {
+            let cy = area.centery();
+            let l = Rect::new(area.x + 16, cy - 26, 52, 52);
+            self.button(l, "<", &self.f.big.clone(), mouse_pos, Color::rgba(10, 12, 22, 170), Color::rgba(30, 34, 52, 200), WHITE, cb(|g| g.explore.cam_yaw -= std::f64::consts::FRAC_PI_2), Bo::r(26).sfx(Some("click")));
+            let r = Rect::new(area.right() - 16 - 52, cy - 26, 52, 52);
+            self.button(r, ">", &self.f.big.clone(), mouse_pos, Color::rgba(10, 12, 22, 170), Color::rgba(30, 34, 52, 200), WHITE, cb(|g| g.explore.cam_yaw += std::f64::consts::FRAC_PI_2), Bo::r(26).sfx(Some("click")));
         }
     }
 

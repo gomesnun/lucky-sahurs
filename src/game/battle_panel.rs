@@ -647,8 +647,12 @@ impl Game {
                 }
             }
             K::Escape => {
+                let waiting_for_friend = self.battle.online.is_some() && !self.battle.busy() && !self.online_my_turn() && self.battle.battle.as_ref().is_some_and(|b| b.winner.is_none());
                 if self.battle.stage == "pick" {
                     self.battle_back_to_hub();
+                } else if waiting_for_friend {
+                    // stuck waiting on a friend's move: Escape always leaves, no minimum wait
+                    self.leave_online_battle();
                 } else if self.battle.menu == "fight" || (self.battle.menu == "switch" && !self.battle.battle.as_ref().is_some_and(|b| b.needs_switch())) {
                     self.battle.menu = "main";
                 }
@@ -1140,12 +1144,12 @@ impl Game {
         // the menu
         let menu = Rect::new(text_box.right() + 12, area.y, menu_w, area.h);
         draw_panel(&mut self.canvas, menu, Some(Color::rgb(34, 38, 56)), 12, false, None);
-        // online, waiting too long for the friend (or they left): a way out
+        // online, waiting for the friend to move: always a way out (never make the player wait to be able to
+        // leave - it just gets more insistent-looking the longer it's been, in case they left it open by mistake)
         if let (Some((_, gone, waited)), false, false) = (&waiting, self.battle.busy(), over) {
-            if *gone || *waited > PATIENCE {
-                let r = Rect::with_center(menu.w - 60, 50, menu.center());
-                self.button(r, &tr("Leave"), &med, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.leave_online_battle()), Bo::r(10));
-            }
+            let r = Rect::with_center(menu.w - 60, 50, menu.center());
+            let urgent = *gone || *waited > PATIENCE;
+            self.button(r, &tr("Leave"), &med, mouse_pos, if urgent { BAD } else { panel_light() }, if urgent { Color::rgb(250, 110, 110) } else { panel_lighter() }, WHITE, cb(|g| g.leave_online_battle()), Bo::r(10));
         }
         if busy || over {
             return;

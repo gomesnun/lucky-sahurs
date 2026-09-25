@@ -53,6 +53,19 @@ impl Game {
         self.show_toast(&t, 2.4);
     }
 
+    /// Evolves every pet you can afford to, as many times as each can afford. Bag > Inventory > "Fuse All".
+    pub fn press_fuse_all(&mut self) {
+        let n = self.state.evolve_all();
+        if n <= 0 {
+            self.show_toast(&tr("Nothing to fuse - you need more copies of a pet first."), 1.8);
+            return;
+        }
+        if self.state.auto_equip_unlocked() && self.state.auto_equip_best_on {
+            self.state.equip_best();
+        }
+        self.show_toast(&tr!("Fused %d time(s)!", n), 2.2);
+    }
+
     /// Keys with the evolve page open. Returns true if the key was used.
     pub fn handle_evolve_key(&mut self, ev: KeyEv) -> bool {
         use sdl2::keyboard::Keycode as K;

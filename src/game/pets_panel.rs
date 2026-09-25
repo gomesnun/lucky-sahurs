@@ -400,6 +400,20 @@ impl Game {
             );
             rx -= act_w + 8;
         }
+        if self.bag_view == "inventory" && rx >= x {
+            self.button(
+                Rect::new(rx, y, act_w, h),
+                &tr("Fuse All"),
+                &sb,
+                mouse_pos,
+                Color::rgb(150, 90, 210),
+                Color::rgb(178, 120, 235),
+                WHITE,
+                cb(|g| g.press_fuse_all()),
+                Bo::r(10).icon("evolve").sfx(Some("milestone")),
+            );
+            rx -= act_w + 8;
+        }
         if rx >= x && self.bag_view != "verity_pets" {
             self.button(
                 Rect::new(rx, y, act_w, h),

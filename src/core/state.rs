@@ -502,6 +502,28 @@ impl GameState {
         Some(phase)
     }
 
+    /// v4.0.1: evolves every pet you can afford to, as many times as it can afford (a pet stacked into Phase 2
+    /// with enough copies for Phase 3 too goes straight there). Returns how many evolutions happened.
+    pub fn evolve_all(&mut self) -> i64 {
+        let mut n = 0;
+        // each evolve() can make another one affordable (more copies freed up, or the same key eligible again at
+        // its new phase), so keep going until nothing's left; capped well above what any real inventory can reach
+        // (67 pets x 4 mutations x 3 evolutions each = 804) so a bug here can never hang the game.
+        for _ in 0..5000 {
+            let next = self.owned.keys().find_map(|k| {
+                let (idx_s, m) = k.split_once('_')?;
+                let idx: usize = idx_s.trim().parse().ok()?;
+                (idx < rarities().len() && is_mutation(m) && self.can_evolve(idx, m)).then(|| (idx, mut_key(m)))
+            });
+            let Some((idx, m)) = next else { break };
+            if self.evolve(idx, m).is_none() {
+                break; // can_evolve just said yes; this is only a safety net
+            }
+            n += 1;
+        }
+        n
+    }
+
     // ================================================================ upgrades
     pub fn upgrade_level(&self, key: &str) -> i64 {
         self.upgrades[upgrade_index(key)]
@@ -2385,7 +2407,7 @@ mod phase_tests {
     #[test]
     fn stacking_evolves_up_to_monster() {
         let mut s = GameState::new();
-        // pet 0 is a Common: 5 / 15 / 40 copies
+        // v4.0.1: always 5 to fuse, except into Monster form which is always 4
         s.owned.insert("0_normal".into(), 6);
         s.equipped = vec![(0, "normal"); 3];
         let base = s.pet_income(0, "normal");
@@ -2396,14 +2418,14 @@ mod phase_tests {
         assert_eq!(s.equipped, vec![(0, "normal")]);
         assert_eq!(s.wallet_pending.get("0_normal"), Some(&-5));
         assert!((s.pet_income(0, "normal") / base - 2.0).abs() < 1e-9);
-        // not enough for the next one (15 + the one that evolves)
-        s.owned.insert("0_normal".into(), 15);
+        // not enough for the next one (5 + the one that evolves)
+        s.owned.insert("0_normal".into(), 5);
         assert!(!s.can_evolve(0, "normal"));
         assert_eq!(s.evolve(0, "normal"), None);
         s.owned.insert("0_normal".into(), 100);
         assert_eq!(s.evolve(0, "normal"), Some(2));
         assert_eq!(s.evolve(0, "normal"), Some(3));
-        assert_eq!(s.count_owned(0, "normal"), 100 - 15 - 40);
+        assert_eq!(s.count_owned(0, "normal"), 100 - 5 - 4);
         assert_eq!(s.evolve_cost(0, "normal"), None); // a Monster doesn't evolve further
         assert_eq!(s.evolve(0, "normal"), None);
         assert!((s.income_per_second() / base - 10.0).abs() < 1e-9);
@@ -2422,11 +2444,28 @@ mod phase_tests {
     }
 
     #[test]
-    fn rarer_tiers_stack_fewer_copies() {
-        assert_eq!(stack_cost(0, 0), Some(5));
-        assert_eq!(stack_cost(5, 2), Some(20));
-        assert_eq!(stack_cost(15, 0), Some(2));
-        assert_eq!(stack_cost(15, MAX_PHASE), None);
+    fn stack_cost_is_flat_five_four_into_monster() {
+        // v4.0.1: always 5 to fuse, except the stack that turns it into a Monster - always 4. Every tier, no
+        // exceptions.
+        for tier in [0, 5, 15] {
+            assert_eq!(stack_cost(tier, 0), Some(5));
+            assert_eq!(stack_cost(tier, 1), Some(5));
+            assert_eq!(stack_cost(tier, MAX_PHASE - 1), Some(4));
+            assert_eq!(stack_cost(tier, MAX_PHASE), None);
+        }
+    }
+
+    #[test]
+    fn fuse_all_evolves_everything_it_can_afford() {
+        let mut s = GameState::new();
+        s.owned.insert("0_normal".into(), 100); // enough for all 3 evolutions (5 + 5 + 4 = 14)
+        s.owned.insert("1_normal".into(), 6); // exactly enough for one evolution, no more (needs cost + 1)
+        s.owned.insert("2_normal".into(), 3); // never enough
+        assert_eq!(s.evolve_all(), 4); // 3 for pet 0, 1 for pet 1
+        assert_eq!(s.phase(0, "normal"), MAX_PHASE);
+        assert_eq!(s.phase(1, "normal"), 1);
+        assert_eq!(s.phase(2, "normal"), 0);
+        assert_eq!(s.evolve_all(), 0); // nothing left to fuse
     }
 
     #[test]

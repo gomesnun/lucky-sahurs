@@ -955,6 +955,12 @@ fn shots(dir: &str) {
             }
             g.draw(m);
             save(&g, "n_explore_walk");
+            // v4.0.1: turning the camera around (frustum culling must still draw the world correctly looking
+            // any direction, not just the default "behind Steve")
+            g.explore.cam_yaw = std::f64::consts::PI; // looking back the way Steve came from
+            g.draw(m);
+            save(&g, "n_explore_cam_turned");
+            g.explore.cam_yaw = 0.0;
             g.explore.overlay = "wardrobe";
             g.draw(m);
             save(&g, "n_explore_wardrobe");

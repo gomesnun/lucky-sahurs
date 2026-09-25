@@ -12,7 +12,7 @@ use crate::config::VIRTUAL_H;
 use crate::core::state::now_ts;
 use crate::gfx::{Color, Rect, Surface, draw};
 use crate::i18n::tr;
-use crate::online::firebase::{Ban, Person, online_error_text, username_ok};
+use crate::online::firebase::{Ban, LogEntry, Person, online_error_text, username_ok};
 use crate::theme::*;
 use crate::tr;
 use crate::ui::drawing::{dim_overlay, draw_panel};
@@ -46,6 +46,10 @@ pub struct AdminUi {
     pub scroll: f64,
     pub max_scroll: f64,
     pub list_rect: Rect,
+    /// v4.0.1: the audit log page ("log") - who did a reset or a ban, and when
+    pub log: Vec<LogEntry>,
+    pub log_loading: bool,
+    pub log_loaded: bool,
 
     /// THIS account's ban - None = can play
     pub info: Option<Ban>,
@@ -76,6 +80,9 @@ impl AdminUi {
             scroll: 0.0,
             max_scroll: 0.0,
             list_rect: Rect::ZERO,
+            log: Vec::new(),
+            log_loading: false,
+            log_loaded: false,
             info: None,
             check_at: 0.0,
             checking: false,
@@ -126,6 +133,38 @@ impl Game {
         self.adm.scroll = 0.0;
         self.set_ban_focus(Some("search"));
         self.refresh_ban_list();
+    }
+
+    /// v4.0.1: the audit log - every reset and ban, who did it and when.
+    pub fn open_admin_log(&mut self) {
+        self.adm.menu_open = false;
+        self.adm.ban_open = true;
+        self.adm.page = "log";
+        self.adm.msg = None;
+        self.adm.scroll = 0.0;
+        self.set_ban_focus(None);
+        self.refresh_admin_log();
+    }
+
+    pub fn refresh_admin_log(&mut self) {
+        if !self.friends_ready() || self.adm.log_loading {
+            return;
+        }
+        self.adm.log_loading = true;
+        let client = self.client.clone().unwrap();
+        self.run_job(
+            move || client.list_admin_log(300),
+            |g, log: Vec<LogEntry>| {
+                g.adm.log_loading = false;
+                g.adm.log_loaded = true;
+                g.adm.log = log;
+            },
+            |g, e| {
+                g.adm.log_loading = false;
+                g.adm.log_loaded = true;
+                g.adm.msg = Some((online_error_text(&e), BAD));
+            },
+        );
     }
 
     pub fn close_ban_admin(&mut self) {
@@ -398,7 +437,7 @@ impl Game {
     pub fn draw_admin_menu(&mut self, mouse_pos: (f64, f64)) {
         let ov = dim_overlay(self.vw, VIRTUAL_H, 170);
         self.canvas.blit(&ov, 0, 0);
-        let (panel_w, panel_h) = (460.min(self.vw - 40), 336);
+        let (panel_w, panel_h) = (460.min(self.vw - 40), 402); // 3 buttons + v4.0.1's "Log"
         let rect = Rect::new(self.vw / 2 - panel_w / 2, VIRTUAL_H / 2 - panel_h / 2, panel_w, panel_h);
         draw_panel(&mut self.canvas, rect, Some(panel()), 16, true, None);
         self.register_blocker(rect);
@@ -418,6 +457,8 @@ impl Game {
         self.button(Rect::new(x0, y, w, 54), &tr("Bans"), &med, mouse_pos, panel_light(), panel_lighter(), BAD, cb(|g| g.open_ban_admin()), Bo::r(12).icon("ban"));
         y += 66;
         self.button(Rect::new(x0, y, w, 54), &tr("Resets"), &med, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.open_reset_admin()), Bo::r(12).icon("rebirth"));
+        y += 66;
+        self.button(Rect::new(x0, y, w, 54), &tr("Log"), &med, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.open_admin_log()), Bo::r(12).icon("index"));
     }
 
     /// v3.0.1 Resets page: reset one player (search) or everyone (new season).
@@ -495,6 +536,10 @@ impl Game {
             self.draw_reset_admin(mouse_pos);
             return;
         }
+        if self.adm.page == "log" {
+            self.draw_admin_log(mouse_pos);
+            return;
+        }
         let ov = dim_overlay(self.vw, VIRTUAL_H, 170);
         self.canvas.blit(&ov, 0, 0);
         let panel_w = 640.min(self.vw - 40);
@@ -568,6 +613,85 @@ impl Game {
         let list_rect = Rect::new(x0, y, w, rect.bottom() - 20 - y);
         self.adm.list_rect = list_rect;
         self.draw_ban_list(list_rect, mouse_pos);
+    }
+
+    /// v4.0.1: the audit log - every season reset, player reset, ban and unban, who did it and when. Read-only.
+    fn draw_admin_log(&mut self, mouse_pos: (f64, f64)) {
+        let ov = dim_overlay(self.vw, VIRTUAL_H, 170);
+        self.canvas.blit(&ov, 0, 0);
+        let panel_w = 640.min(self.vw - 40);
+        let panel_h = (VIRTUAL_H - 40).min(740);
+        let rect = Rect::new(self.vw / 2 - panel_w / 2, 20.max(VIRTUAL_H / 2 - panel_h / 2), panel_w, panel_h);
+        draw_panel(&mut self.canvas, rect, Some(panel()), 16, true, None);
+        self.register_blocker(rect);
+        let sb = self.f.small_b.clone();
+        let small = self.f.small.clone();
+        let title = self.f.big.render(&tr("Log"), WHITE);
+        self.canvas.blit(&title, rect.x + 24, rect.y + 18);
+        self.button(Rect::new(rect.right() - 46, rect.y + 20, 28, 28), "X", &sb, mouse_pos, panel_light(), BAD, WHITE, cb(|g| g.close_ban_admin()), Bo::r(8));
+        self.draw_back_button(rect, mouse_pos);
+        let (x0, w) = (rect.x + 24, panel_w - 48);
+        let mut y = rect.y + 30 + title.h;
+        for line in wrap_text(&tr("Season and player resets, bans and unbans - who did them and when. The newest 300."), &small, w) {
+            let l = small.render(&line, grey());
+            self.canvas.blit(&l, x0, y);
+            y += l.h + 2;
+        }
+        y += 10;
+        draw::line(&mut self.canvas, panel_light(), (x0, y), (x0 + w, y), 2);
+        y += 8;
+        let head = sb.render(&tr!("Entries (%d)", self.adm.log.len() as i64), grey_dim());
+        self.canvas.blit(&head, x0, y + 6);
+        let loading = self.adm.log_loading;
+        self.button(Rect::new(x0 + w - 110, y, 110, 30), &tr("Refresh"), &sb, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.refresh_admin_log()), Bo::r(8).enabled(!loading));
+        y += 38;
+        let list_rect = Rect::new(x0, y, w, rect.bottom() - 20 - y);
+        self.adm.list_rect = list_rect;
+        self.draw_admin_log_list(list_rect, mouse_pos);
+    }
+
+    fn draw_admin_log_list(&mut self, rect: Rect, mouse_pos: (f64, f64)) {
+        let small = self.f.small.clone();
+        if self.adm.log.is_empty() {
+            let msg = if self.adm.log_loading || !self.adm.log_loaded { tr("Loading...") } else { tr("Nothing logged yet.") };
+            let t = small.render(&msg, grey());
+            let r = Rect::with_center(t.w, t.h, rect.center());
+            self.canvas.blit(&t, r.x, r.y);
+            self.adm.max_scroll = 0.0;
+            return;
+        }
+        let (row_h, gap) = (56, 6);
+        let content_h = self.adm.log.len() as i32 * (row_h + gap);
+        self.adm.max_scroll = (content_h - rect.h).max(0) as f64;
+        self.adm.scroll = self.adm.scroll.clamp(0.0, self.adm.max_scroll);
+        let (sb, tiny) = (self.f.small_b.clone(), self.f.tiny.clone());
+        self.push_clip(rect);
+        let mut y = rect.y - self.adm.scroll as i32;
+        for entry in &self.adm.log {
+            let row = Rect::new(rect.x, y, rect.w - 16, row_h);
+            y += row_h + gap;
+            if row.bottom() < rect.top() || row.top() > rect.bottom() {
+                continue;
+            }
+            draw::rect(&mut self.canvas, panel_light(), row, 0, 10);
+            draw::rect(&mut self.canvas, outline(), row, 2, 10);
+            let when = entry
+                .at
+                .filter(|a| *a != 0.0)
+                .and_then(|at| {
+                    use chrono::TimeZone;
+                    chrono::Local.timestamp_opt(at as i64, 0).single()
+                })
+                .map(|d| d.format("%Y-%m-%d %H:%M").to_string())
+                .unwrap_or_else(|| tr("(unknown time)"));
+            let head_line = format!("{}  -  {}  -  {}", entry.action, entry.who, when);
+            let t = sb.render(&fit_text(&sb, &head_line, row.w - 24), WHITE);
+            self.canvas.blit(&t, row.x + 12, row.y + 6);
+            let d = tiny.render(&fit_text(&tiny, &entry.detail, row.w - 24), grey());
+            self.canvas.blit(&d, row.x + 12, row.y + 8 + t.h);
+        }
+        self.pop_clip();
+        self.draw_scrollbar(rect, self.adm.scroll, content_h as f64, None, Some(mouse_pos));
     }
 
     fn draw_ban_list(&mut self, rect: Rect, mouse_pos: (f64, f64)) {

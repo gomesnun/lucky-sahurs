@@ -576,6 +576,20 @@ fn ban_from_doc(doc: &Value) -> Ban {
     Ban { uid: doc_id(doc), username: f.str_or("username", "?"), reason: f.str_or("reason", ""), by: f.str_or("by", ""), at: parse_timestamp(f.get("at")) }
 }
 
+/// v4.0.1: one entry of /admin_log (reset_player, set_season, ban_player, unban_player) - who did it and when.
+#[derive(Clone, Debug)]
+pub struct LogEntry {
+    pub who: String,
+    pub action: String,
+    pub detail: String,
+    pub at: Option<f64>,
+}
+
+fn log_entry_from_doc(doc: &Value) -> LogEntry {
+    let f = fs_fields(doc);
+    LogEntry { who: f.str_or("who", "?"), action: f.str_or("action", ""), detail: f.str_or("detail", ""), at: parse_timestamp(f.get("at")) }
+}
+
 /// A pet trade between friends (only exists while it's pending).
 #[derive(Clone, Debug, Default)]
 pub struct Trade {
@@ -1542,14 +1556,17 @@ impl FirebaseClient {
         self.fs("POST", ":commit", Some(body), &[])?;
         // old rules (no "delete: if isAdmin()") - the ban counts anyway
         let _ = self.fs("DELETE", &format!("/leaderboard/{}", uid), None, &[]);
+        self.log_admin_action("ban_player", &format!("uid={} username={} reason={}", uid, username, reason));
         Ok(())
     }
 
     pub fn unban_player(&self, uid: &str) -> Res<()> {
         match self.fs("DELETE", &format!("/bans/{}", uid), None, &[]) {
-            Err(e) if e.code != "not_found" => Err(e),
-            _ => Ok(()),
+            Err(e) if e.code != "not_found" => return Err(e),
+            _ => {}
         }
+        self.log_admin_action("unban_player", &format!("uid={}", uid));
+        Ok(())
     }
 
     // ---- pet trades (between friends) ----
@@ -1977,8 +1994,23 @@ impl FirebaseClient {
     fn log_admin_action(&self, action: &str, detail: &str) {
         let who = self.username().or_else(|| self.uid()).unwrap_or_else(|| "?".into());
         let id = format!("{}_{}", who, now() as i64);
-        let fields = json!({"who": fs_str(&who), "action": fs_str(action), "detail": fs_str(detail)});
-        let _ = self.fs("PATCH", &format!("/admin_log/{}", id), Some(json!({"fields": fields})), &[]);
+        let name = format!("{}/admin_log/{}", self.docs_root, id);
+        let body = json!({"writes": [{
+            "update": {"name": name, "fields": {"who": fs_str(&who), "action": fs_str(action), "detail": fs_str(detail)}},
+            "updateTransforms": [{"fieldPath": "at", "setToServerValue": "REQUEST_TIME"}],
+        }]});
+        let _ = self.fs("POST", ":commit", Some(body), &[]);
+    }
+
+    /// Admins only (rules): the audit log (season/player resets, bans/unbans - see log_admin_action), newest first.
+    pub fn list_admin_log(&self, limit: usize) -> Res<Vec<LogEntry>> {
+        let res = self.fs("GET", "/admin_log", None, &[("pageSize".into(), limit.to_string())])?;
+        let mut out: Vec<LogEntry> = match res.get("documents") {
+            Some(Value::Array(docs)) => docs.iter().map(log_entry_from_doc).collect(),
+            _ => Vec::new(),
+        };
+        out.sort_by(|a, b| b.at.unwrap_or(0.0).partial_cmp(&a.at.unwrap_or(0.0)).unwrap_or(std::cmp::Ordering::Equal));
+        Ok(out)
     }
 
     /// Admins only (rules): empties the leaderboard (every /leaderboard/{uid}). Returns how many were removed.

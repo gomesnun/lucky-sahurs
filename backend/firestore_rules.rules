@@ -165,7 +165,8 @@ service cloud.firestore {
     // nunca editado nem apagado depois.
     match /admin_log/{id} {
       allow read: if isAdmin();
-      allow create: if isAdmin() && request.resource.data.keys().hasOnly(['who', 'action', 'detail']);
+      allow create: if isAdmin() && request.resource.data.keys().hasOnly(['who', 'action', 'detail', 'at'])
+          && request.resource.data.at == request.time;
       allow update, delete: if false;
     }
 

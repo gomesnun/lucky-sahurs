@@ -1021,6 +1021,17 @@ pub const PT: &[(&str, &str)] = &[
     ("Every Verity keeps its own look in each phase, and its Monster wears its colours, accessories and glow.", "Cada Verity mantém o seu estilo em cada fase, e o seu Monstro usa as suas cores, acessórios e brilho."),
     ("New players get a quick tutorial (skippable, and you can replay it from Options > Game).", "Os novos jogadores têm um tutorial rápido (dá para saltar e para repetir em Opções > Jogo)."),
     ("After an update, a \"What's new\" window shows what changed.", "Depois de uma atualização, a janela \"Novidades\" mostra o que mudou."),
+    // v4.0.1: fuse-all, the camera turn hint, the wild-battle "Continue", the admin log
+    ("Log", "Registo"),
+    ("Season and player resets, bans and unbans - who did them and when. The newest 300.", "Resets de temporada e de jogadores, banimentos e desbanimentos - quem os fez e quando. Os 300 mais recentes."),
+    ("Entries (%d)", "Entradas (%d)"),
+    ("Nothing logged yet.", "Ainda nada registado."),
+    ("(unknown time)", "(hora desconhecida)"),
+    ("Fuse All", "Fundir Tudo"),
+    ("Nothing to fuse - you need more copies of a pet first.", "Nada para fundir - precisas de mais cópias de um pet primeiro."),
+    ("Fused %d time(s)!", "Fundido %d vez(es)!"),
+    ("WASD / arrows or click to walk  ·  E to catch  ·  [ ] turn camera", "WASD / setas ou clica para andar  ·  E para apanhar  ·  [ ] rodar câmara"),
+    ("Continue", "Continuar"),
     // v4.0.1: catching a Verity Pet fights it first
     ("Wild", "Selvagem"),
     ("Caught it!", "Apanhaste-o!"),

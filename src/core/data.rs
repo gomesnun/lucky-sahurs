@@ -272,15 +272,13 @@ pub const PHASES: [PhaseDef; 4] = [
 ];
 pub const MAX_PHASE: usize = PHASES.len() - 1;
 
-/// Copies used up to go from `phase` to `phase + 1` (None once it's a Monster). Rarer tiers need fewer copies:
-/// Common-Legendary 5 / 15 / 40, Mythic-Divine 3 / 8 / 20, Cosmic and up 2 / 4 / 8.
-pub fn stack_cost(tier: usize, phase: usize) -> Option<i64> {
-    const COSTS: [[i64; 3]; 3] = [[5, 15, 40], [3, 8, 20], [2, 4, 8]];
+/// Copies used up to go from `phase` to `phase + 1` (None once it's a Monster). v4.0.1: a flat cost, the same for
+/// every rarity - always 5, except the last stack (into Monster form), which is always 4. No exceptions.
+pub fn stack_cost(_tier: usize, phase: usize) -> Option<i64> {
     if phase >= MAX_PHASE {
         return None;
     }
-    let band = if tier <= 4 { 0 } else if tier <= 8 { 1 } else { 2 };
-    Some(COSTS[band][phase])
+    Some(if phase == MAX_PHASE - 1 { 4 } else { 5 })
 }
 
 pub fn mutation(key: &str) -> Option<&'static Mutation> {
