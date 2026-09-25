@@ -1116,25 +1116,31 @@ impl Game {
         let mut dir = (0.0, 0.0);
         if self.explore.overlay.is_empty() && self.explore.travel.is_none() {
             use sdl2::keyboard::Scancode as S;
+            let mut raw = (0.0, 0.0);
             if held(&[S::W, S::Up]) {
-                dir.1 -= 1.0;
+                raw.1 -= 1.0;
             }
             if held(&[S::S, S::Down]) {
-                dir.1 += 1.0;
+                raw.1 += 1.0;
             }
             if held(&[S::A, S::Left]) {
-                dir.0 -= 1.0;
+                raw.0 -= 1.0;
             }
             if held(&[S::D, S::Right]) {
-                dir.0 += 1.0;
+                raw.0 += 1.0;
             }
-            // v4.0.1: turn the camera around Steve (left/right only - never pitch) so you can see what's behind
+            // WASD is relative to what's on screen, not the world: "forward" is always the top of the
+            // screen even after the camera's been turned around Steve, so rotate the input by cam_yaw.
+            let cy = self.explore.cam_yaw;
+            dir.0 = raw.0 * cy.cos() + raw.1 * cy.sin();
+            dir.1 = raw.1 * cy.cos() - raw.0 * cy.sin();
+            // turn the camera around Steve (left/right only - never pitch) so you can see what's behind
             // you without it changing where WASD walks you
             const CAM_ROT_SPEED: f64 = 2.4;
-            if held(&[S::LeftBracket, S::Q]) {
+            if held(&[S::LeftBracket, S::Q, S::I]) {
                 self.explore.cam_yaw -= CAM_ROT_SPEED * dt;
             }
-            if held(&[S::RightBracket, S::R]) {
+            if held(&[S::RightBracket, S::R, S::O]) {
                 self.explore.cam_yaw += CAM_ROT_SPEED * dt;
             }
         }
@@ -1771,7 +1777,7 @@ impl Game {
                 self.canvas.blit(&lock, r.centerx() - lock.w / 2, r.y - lock.h - 2);
             }
         }
-        let hint = small.render(&tr("WASD / arrows or click to walk  ·  E to catch  ·  [ ] turn camera"), WHITE);
+        let hint = small.render(&tr("WASD / arrows or click to walk  ·  E to catch  ·  I / O to turn camera"), WHITE);
         let hb = Rect::new(area.centerx() - hint.w / 2 - 10, by - hint.h - 16, hint.w + 20, hint.h + 8);
         draw::rect(&mut self.canvas, Color::rgba(0, 0, 0, 110), hb, 0, 8);
         self.canvas.blit(&hint, hb.x + 10, hb.y + 4);

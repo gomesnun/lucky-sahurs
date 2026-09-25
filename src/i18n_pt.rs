@@ -1030,7 +1030,7 @@ pub const PT: &[(&str, &str)] = &[
     ("Fuse All", "Fundir Tudo"),
     ("Nothing to fuse - you need more copies of a pet first.", "Nada para fundir - precisas de mais cópias de um pet primeiro."),
     ("Fused %d time(s)!", "Fundido %d vez(es)!"),
-    ("WASD / arrows or click to walk  ·  E to catch  ·  [ ] turn camera", "WASD / setas ou clica para andar  ·  E para apanhar  ·  [ ] rodar câmara"),
+    ("WASD / arrows or click to walk  ·  E to catch  ·  I / O to turn camera", "WASD / setas ou clica para andar  ·  E para apanhar  ·  I / O para rodar câmara"),
     ("Continue", "Continuar"),
     // v4.0.1: catching a Verity Pet fights it first
     ("Wild", "Selvagem"),
