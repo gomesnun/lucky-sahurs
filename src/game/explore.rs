@@ -2079,7 +2079,7 @@ mod tests {
     fn wild_battle_catches_on_win() {
         let mut g = Game::headless(1200, 700);
         // a high-tier team so the fight is a lopsided, quick win regardless of RNG
-        g.state.owned.insert("8_normal".into(), 1);
+        g.state.owned.insert(crate::core::data::owned_key(8, "normal", 0), 1);
         g.open_explore();
         assert!(g.explore.open);
         let at = g.explore.pos;

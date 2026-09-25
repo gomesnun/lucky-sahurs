@@ -967,7 +967,7 @@ fn shots(dir: &str) {
             save(&g, "n_explore_pets");
             g.explore.overlay = "";
             // E on a wild pet: it fights back now, instead of an instant catch
-            g.state.owned.insert("8_normal".into(), 1);
+            g.state.owned.insert(core::data::owned_key(8, "normal", 0), 1);
             game::explore::debug_place_wild(&mut g, core::explore::VerityPet::roll(0, [0.9, 0.05, 0.0, 0.0]));
             g.explore_catch(0);
             g.draw(m);

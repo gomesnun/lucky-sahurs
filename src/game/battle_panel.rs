@@ -9,7 +9,7 @@ use super::battle_online::{OnlineMatch, PATIENCE, RankedUi, letter_of, tier_of};
 use crate::online::firebase::BattleDoc;
 use super::battle3d::{TRANSFORM_FLASH, TRANSFORM_TIME, SEND_FALL, SPECIAL_ARRIVE, STRIKE_ARRIVE, Shot, Shown, Stage, draw_arena_3d};
 use crate::core::battle::{Action, Battle, Ev, Fighter, MOVES, Move, TEAM_SIZE, move_info, move_name, rival_team};
-use crate::core::data::{PHASES, is_mutation, mut_key, rarities};
+use crate::core::data::{PHASES, rarities};
 use crate::core::formatting::format_number;
 use crate::gfx::{Color, Rect, draw, transform};
 use crate::i18n::tr;
@@ -269,14 +269,13 @@ impl Game {
         Fighter::battle(pet, m, self.state.best_phase(pet, m))
     }
 
-    /// Your verities (one entry per verity + mutation), the strongest first.
+    /// Your verities (one entry per verity + mutation, across every phase you have it at), the strongest first.
     pub fn battle_choices(&self) -> Vec<(usize, &'static str)> {
         let mut v: Vec<(usize, &'static str)> = Vec::new();
-        for (key, n) in &self.state.owned {
-            let Some((idx_s, m)) = key.split_once('_') else { continue };
-            let Ok(idx) = idx_s.trim().parse::<usize>() else { continue };
-            if *n > 0 && idx < rarities().len() && is_mutation(m) {
-                v.push((idx, mut_key(m)));
+        for key in self.state.owned.keys() {
+            let Some((idx, m, _phase)) = crate::core::data::parse_owned_key(key) else { continue };
+            if !v.contains(&(idx, m)) && self.state.count_owned(idx, m) > 0 {
+                v.push((idx, m));
             }
         }
         v.sort_by_key(|(i, m)| -self.fighter_for(*i, m).power());
