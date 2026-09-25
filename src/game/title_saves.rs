@@ -9,6 +9,9 @@ use crate::core::state::{GameState, now_ts};
 use crate::gfx::{BLEND_RGBA_MULT, Color, Rect, Surface, draw, ti, transform};
 use crate::i18n::tr;
 use crate::storage::{delete_slot, peek_slot};
+
+/// the longest name a save slot can have
+const SLOT_NAME_MAX: usize = 20;
 use crate::theme::*;
 use crate::tr;
 use crate::ui::drawing::{blit_smooth_y, draw_panel, draw_rarity_bg, draw_state_border};
@@ -42,12 +45,14 @@ impl Game {
 
     pub fn back_to_title(&mut self) {
         self.delete_confirm_slot = None;
+        self.slot_rename = None;
         self.screen_mode = "title";
     }
 
     pub fn request_delete(&mut self, slot: i64) {
         if self.delete_confirm_slot == Some(slot) {
             delete_slot(slot);
+            self.clear_slot_name(slot);
             self.delete_confirm_slot = None;
             self.refresh_slot_info();
             self.play("click", 0.0);
@@ -268,6 +273,81 @@ impl Game {
         }
     }
 
+    // ---------------------------------------------------------------- slot names (v3.0.4)
+    /// Slot names are kept on this PC, per account ("local" when logged out).
+    fn slot_name_key(&self, slot: i64) -> String {
+        let owner = self.account.as_ref().map(|a| a.uid.clone()).unwrap_or_else(|| "local".into());
+        format!("slot_name_{}_{}", owner, slot)
+    }
+
+    /// The name shown for a slot: the one you gave it, or "Slot N".
+    pub fn slot_title(&self, slot: i64) -> String {
+        let name = self.settings.get_str(&self.slot_name_key(slot), "");
+        if name.trim().is_empty() { tr!("Slot %d", slot) } else { name }
+    }
+
+    /// A deleted save loses its name too.
+    pub fn clear_slot_name(&mut self, slot: i64) {
+        let key = self.slot_name_key(slot);
+        if self.settings.map.remove(&key).is_some() {
+            crate::storage::save_settings(&self.settings);
+        }
+    }
+
+    pub fn start_slot_rename(&mut self, slot: i64) {
+        let current = self.settings.get_str(&self.slot_name_key(slot), "");
+        self.slot_rename = Some(slot);
+        self.slot_name_field.set_text(&current);
+    }
+
+    /// Saves (or drops) the name being typed. An empty name goes back to "Slot N".
+    pub fn finish_slot_rename(&mut self, keep: bool) {
+        let Some(slot) = self.slot_rename.take() else { return };
+        if !keep {
+            return;
+        }
+        let name: String = self.slot_name_field.text.trim().chars().take(SLOT_NAME_MAX).collect();
+        let key = self.slot_name_key(slot);
+        self.settings.set_str(&key, &name);
+        crate::storage::save_settings(&self.settings);
+    }
+
+    pub fn handle_slot_rename_key(&mut self, ev: super::KeyEv) -> bool {
+        use sdl2::keyboard::Keycode as K;
+        if self.slot_rename.is_none() || self.screen_mode != "saves" {
+            return false;
+        }
+        match ev.key {
+            K::Return | K::KpEnter => self.finish_slot_rename(true),
+            K::Escape => self.finish_slot_rename(false),
+            _ => {
+                self.edit_field_key(super::base::FieldRef::SlotName, ev, false);
+            }
+        }
+        true
+    }
+
+    /// The top of a save card: the name (click "Rename" to change it) or, while renaming, the text field.
+    fn draw_slot_header(&mut self, rect: Rect, slot: i64, can_rename: bool, mouse_pos: (f64, f64)) {
+        if self.slot_rename == Some(slot) {
+            let field_rect = Rect::new(rect.x + 16, rect.y + 16, rect.w - 32 - 70, 44);
+            let text = self.slot_name_field.text.clone();
+            let ph = tr!("Slot %d", slot);
+            self.draw_text_field(field_rect, super::base::FieldRef::SlotName, &text, &ph, true, Rc::new(|_: &mut Game| {}));
+            let sb = self.f.small_b.clone();
+            self.button(Rect::new(field_rect.right() + 6, field_rect.y, 64, 44), &tr("OK"), &sb, mouse_pos, accent(), accent_hover(), BLACK, cb(|g| g.finish_slot_rename(true)), Bo::r(10));
+            return;
+        }
+        let big = self.f.big.clone();
+        let title = self.slot_title(slot);
+        let head = big.render(&fit_text(&big, &title, rect.w - 40), WHITE);
+        blit_center(&mut self.canvas, &head, (rect.centerx(), rect.y + 38));
+        if can_rename {
+            let tb = self.f.tiny_b.clone();
+            self.button(Rect::new(rect.x + 12, rect.y + 10, 72, 24), &tr("Rename"), &tb, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(move |g| g.start_slot_rename(slot)), Bo::r(7));
+        }
+    }
+
     pub fn draw_saves(&mut self, mouse_pos: (f64, f64)) {
         let cx = self.vw / 2;
         let title = self.f.huge.render(&tr("Saves"), WHITE);
@@ -295,8 +375,8 @@ impl Game {
             let slot = (i + 1) as i64;
             let rect = Rect::new(x0 + i * (card_w + gap), y0, card_w, card_h);
             draw_panel(&mut self.canvas, rect, Some(panel()), 16, true, None);
-            let head = self.f.big.render(&tr!("Slot %d", slot), WHITE);
-            blit_center(&mut self.canvas, &head, (rect.centerx(), rect.y + 38));
+            let has_save = if self.account.is_none() { self.slot_info.get(&slot).cloned().flatten().is_some() } else { !matches!(self.slot_view(slot).0, "unknown" | "empty") };
+            self.draw_slot_header(rect, slot, has_save, mouse_pos);
             let play_rect = Rect::new(rect.x + 24, rect.bottom() - 118, rect.w - 48, 50);
 
             if self.account.is_none() {

@@ -280,6 +280,7 @@ impl Game {
     pub fn delete_account_slot(&mut self, slot: i64) {
         let (Some(client), Some(acc)) = (self.client.clone(), self.account.clone()) else { return };
         delete_cache(&acc.uid, slot);
+        self.clear_slot_name(slot);
         self.cache_info.remove(&slot);
         self.cloud_slots.remove(&slot);
         self.run_job(

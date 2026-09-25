@@ -191,7 +191,7 @@ impl Game {
         let st = &self.state;
         let total_ms: usize = MILESTONES.iter().map(|m| m.tiers.len()).sum();
         let lines: Vec<(String, String)> = vec![
-            (tr("Save"), tr!("Slot %d", st.slot.unwrap_or(0))),
+            (tr("Save"), self.slot_title(st.slot.unwrap_or(0))),
             (tr("Coins"), format!("${}", format_number(st.coins))),
             (tr("Income"), tr!("%s / sec", format_number(st.income_per_second()))),
             (tr("Total Coins Earned"), format!("${}", format_number(st.total_coins_earned))),

@@ -300,6 +300,9 @@ pub struct Game {
     pub battle: battle_panel::BattleUi,
     /// v4.0 Explore (game/explore.rs)
     pub explore: explore::ExploreUi,
+    /// v3.0.4: the save slot being renamed on the Saves screen, and its text field
+    pub slot_rename: Option<i64>,
+    pub slot_name_field: crate::ui::widgets::TextField,
     pub titles: titles_panel::TitlesUi,
     /// v3.0.1: season resets (see season.rs)
     pub season: season::SeasonUi,
@@ -494,6 +497,8 @@ impl Game {
             evolve: evolve_panel::EvolveUi::new(),
             battle: battle_panel::BattleUi::new(),
             explore: explore::ExploreUi::new(),
+            slot_rename: None,
+            slot_name_field: crate::ui::widgets::TextField::new("slot_name"),
             titles: titles_panel::TitlesUi::new(),
             season: Default::default(),
             text_input_on: true,
@@ -595,7 +600,8 @@ impl Game {
         let Some(prefs) = self.state.prefs.clone() else { return };
         let mut changed = false;
         for (k, v) in prefs {
-            if k == "fullscreen" || !self.settings.map.contains_key(&k) {
+            // slot names are per PC (an older save would bring back an old name)
+            if k == "fullscreen" || k.starts_with("slot_name_") || !self.settings.map.contains_key(&k) {
                 continue;
             }
             if self.settings.map.get(&k) != Some(&v) {
@@ -615,6 +621,7 @@ impl Game {
     pub fn store_save_prefs(&mut self) {
         let mut prefs = self.settings.map.clone();
         prefs.remove("fullscreen");
+        prefs.retain(|k, _| !k.starts_with("slot_name_"));
         if self.state.prefs.as_ref() != Some(&prefs) {
             self.state.prefs = Some(prefs);
             self.state.dirty = true;
@@ -1088,6 +1095,8 @@ impl Game {
         if self.ban_screen_active() {
         } else if self.adm.ban_open && self.adm.focus.is_some() && !self.update_modal_active() {
             self.ban_type(text);
+        } else if self.slot_rename.is_some() && self.screen_mode == "saves" && !self.update_modal_active() {
+            self.slot_name_field.add(text);
         } else if self.sell.target.is_some() && self.sell.focus && !self.update_modal_active() {
             self.sell_type(text);
         } else if self.fr.open && self.fr.focus && !self.update_modal_active() {
@@ -1118,7 +1127,8 @@ impl Game {
             self.skip_cutscene();
         } else if self.screen_mode == "account" && self.handle_account_key(ev) {
         } else if self.screen_mode == "game" && (self.handle_teaser_key(ev) || self.handle_tutorial_key(ev) || self.handle_whats_new_key(ev) || self.handle_battle_key(ev)) {
-        } else if self.handle_sell_key(ev)
+        } else if self.handle_slot_rename_key(ev)
+            || self.handle_sell_key(ev)
             || self.handle_evolve_key(ev)
             || self.handle_ban_key(ev)
             || self.handle_chat_key(ev)

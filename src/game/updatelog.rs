@@ -27,6 +27,7 @@ pub const UPDATE_LOG: &[(&str, &str, &[&str])] = &[
         "Teams of up to 5: when one faints the next one comes in. Battle items in the Shop (Battle tab). Ranked matches with a rating and tiers from Bronze to Master.",
     ]),
     ("v3.0.4", "2026-09-24", &[
+        "Save slots can be renamed: \"Rename\" on the slot's card in Saves (Enter to save, Esc to cancel).",
         "You can lock verities in the Bag's Inventory (the lock under the $ button): a locked verity can't be sold.",
         "Dice now also give a chance of a Double Roll: a roll (yours or the Auto Roller's) can roll twice (Wooden 2% up to Prism 40%).",
         "From Prestige II there's an Auto Rebirth switch next to the Rebirth button: it rebirths by itself as soon as you can afford it.",
