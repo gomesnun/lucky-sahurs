@@ -93,7 +93,7 @@ impl Game {
 
         let ty = rect.y + 26 + title.h + sub.h;
         let tab_w = 180;
-        for (n, (key, label, icon)) in [("dice", tr("Dice"), "shop/dice_gold"), ("potions", tr("Potions"), "shop/potion_luck")].into_iter().enumerate() {
+        for (n, (key, label, icon)) in [("dice", tr("Dice"), "shop/dice_gold"), ("potions", tr("Potions"), "shop/potion_luck"), ("battle", tr("Battle"), "shop/battle_power")].into_iter().enumerate() {
             let trect = Rect::new(rect.x + 24 + n as i32 * (tab_w + 10), ty, tab_w, 38);
             let active = self.shop.tab == key;
             self.button(
@@ -118,7 +118,11 @@ impl Game {
         let content = Rect::new(rect.x + 12, ty + 50, rect.w - 24, rect.bottom() - 16 - (ty + 50));
         self.shop.list_rect = content;
         self.push_clip(content);
-        let content_h = if self.shop.tab == "dice" { self.draw_shop_dice(content, mouse_pos, now) } else { self.draw_shop_potions(content, mouse_pos, now) };
+        let content_h = match self.shop.tab {
+            "dice" => self.draw_shop_dice(content, mouse_pos, now),
+            "battle" => self.draw_shop_battle(content, mouse_pos),
+            _ => self.draw_shop_potions(content, mouse_pos, now),
+        };
         self.pop_clip();
         self.shop.max_scroll = (content_h as f64 - content.h as f64).max(0.0);
         self.shop.scroll = self.shop.scroll.clamp(0.0, self.shop.max_scroll);
@@ -235,6 +239,49 @@ impl Game {
         }
         let rows = (DICE.len() as i32 + cols - 1) / cols;
         rows * (card_h + gap) + 8
+    }
+
+    /// Battle items: always in stock, used from the BAG in a battle.
+    fn draw_shop_battle(&mut self, content: Rect, mouse_pos: (f64, f64)) -> i32 {
+        use crate::core::battle::ITEMS;
+        let gap = 12;
+        let n = ITEMS.len() as i32;
+        let card_w = (content.w - 20 - gap * (n - 1)) / n;
+        let card_h = 250;
+        let y = content.y as f64 + 4.0 - self.shop.scroll;
+        let sb = self.f.small_b.clone();
+        for (i, it) in ITEMS.iter().enumerate() {
+            let it = *it;
+            let crect = Rect::new(content.x + 4 + i as i32 * (card_w + gap), ti(y), card_w, card_h);
+            let have = self.state.battle_items.get(it.key()).copied().unwrap_or(0);
+            let lines = [(it.info(), LUCK_GREEN), (tr!("You have: %d", have), grey())];
+            let brect = self.shop_card(crect, &format!("shop/battle_{}", it.key()), &it.name(), &lines, Some((tr("ALWAYS IN STOCK"), accent())), Highlight::None);
+            let price = self.state.battle_item_price(it);
+            let can = self.state.coins >= price;
+            self.button(
+                brect,
+                &format!("${}", format_number(price)),
+                &sb,
+                mouse_pos,
+                if can { GOOD } else { panel() },
+                BUY_HOVER,
+                if can { BLACK } else { grey_dim() },
+                if can {
+                    cb(move |g| {
+                        if g.state.buy_battle_item(it) {
+                            g.play("buy", 0.0);
+                        }
+                    })
+                } else {
+                    None
+                },
+                Bo::r(8).enabled(can).sfx(None),
+            );
+        }
+        let tiny = self.f.tiny.clone();
+        let t = tiny.render(&tr("Use them in a battle from the BAG button (each use takes your turn). Prices follow your income."), grey());
+        self.canvas.blit(&t, content.x + 6, ti(y) + card_h + 12);
+        card_h + 50
     }
 
     fn draw_shop_potions(&mut self, content: Rect, mouse_pos: (f64, f64), now: f64) -> i32 {

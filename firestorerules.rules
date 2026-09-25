@@ -248,15 +248,19 @@ service cloud.firestore {
     match /battles/{id} {
       allow read: if request.auth != null
                   && (resource.data.from_uid == request.auth.uid || resource.data.to_uid == request.auth.uid);
+      // desafio a um amigo ("pending"), ou partida ranked com alguém que está na fila ("live" logo)
       allow create: if request.auth != null
                     && request.resource.data.from_uid == request.auth.uid
                     && request.resource.data.to_uid != request.auth.uid
-                    && exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(request.resource.data.to_uid))
                     && request.resource.data.keys().hasOnly(['from_uid', 'to_uid', 'from_name', 'to_name', 'from_team', 'to_team',
-                                                             'seed', 'status', 'from_moves', 'to_moves', 'created'])
-                    && request.resource.data.status == 'pending'
-                    && request.resource.data.from_team is string && request.resource.data.from_team.size() <= 64
-                    && request.resource.data.from_moves == '' && request.resource.data.to_moves == '';
+                                                             'seed', 'status', 'from_moves', 'to_moves', 'created',
+                                                             'ranked', 'from_rating', 'to_rating'])
+                    && request.resource.data.from_team is string && request.resource.data.from_team.size() <= 120
+                    && request.resource.data.from_moves == '' && request.resource.data.to_moves == ''
+                    && ((request.resource.data.status == 'pending'
+                         && exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(request.resource.data.to_uid)))
+                     || (request.resource.data.status == 'live' && request.resource.data.ranked == true
+                         && exists(/databases/$(database)/documents/queue/$(request.resource.data.to_uid))));
       // cada um só mexe no que é seu: o convidado aceita (to_team, status) e joga (to_moves);
       // o desafiante joga (from_moves); qualquer um marca o fim ("over")
       allow update: if request.auth != null
@@ -269,11 +273,30 @@ service cloud.firestore {
                     && (request.auth.uid == resource.data.to_uid || request.resource.data.to_moves == resource.data.to_moves)
                     && (request.auth.uid == resource.data.from_uid || request.resource.data.from_moves == resource.data.from_moves)
                     && request.resource.data.status in ['pending', 'live', 'over']
-                    && request.resource.data.to_team.size() <= 64
+                    && request.resource.data.to_team.size() <= 120
                     && request.resource.data.from_moves.size() <= 300
                     && request.resource.data.to_moves.size() <= 300;
       allow delete: if request.auth != null
                     && (resource.data.from_uid == request.auth.uid || resource.data.to_uid == request.auth.uid);
+    }
+
+    // ---- Fila ranked: quem está à procura de partida (cada um só escreve/apaga a sua entrada) ----
+    match /queue/{uid} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+                            && request.resource.data.keys().hasOnly(['uid', 'name', 'rating', 'team', 'at'])
+                            && request.resource.data.uid == uid
+                            && request.resource.data.rating is int
+                            && request.resource.data.team is string && request.resource.data.team.size() <= 120;
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // ---- Ranking ranked (top 10 no jogo): cada um publica o seu ----
+    match /ranks/{uid} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid
+                   && request.resource.data.keys().hasOnly(['username', 'rating', 'wins', 'losses'])
+                   && request.resource.data.rating is int && request.resource.data.rating >= 0 && request.resource.data.rating <= 5000;
     }
 
     // NOTA: as stats de um amigo vêm da /leaderboard/{uid}, que já é pública para leitura.

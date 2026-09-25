@@ -35,6 +35,8 @@ pub enum Shot {
     Guard(usize),
     Heal(usize),
     Faint(usize),
+    /// side transforms into its Monster form
+    Transform(usize),
 }
 
 pub struct Stage {
@@ -48,6 +50,10 @@ pub struct Stage {
     pub heal_t0: [f64; 2],
     pub guard_t0: [f64; 2],
     pub faint_t0: [Option<f64>; 2],
+    pub transform_t0: [f64; 2],
+    pub calm_t0: [f64; 2],
+    pub boost_t0: [f64; 2],
+    pub boost_color: [(f64, f64, f64); 2],
     pub shot: Shot,
     pub shot_t0: f64,
     pub prev_shot: Shot,
@@ -62,6 +68,9 @@ pub struct Marks {
 pub const STRIKE_ARRIVE: f64 = 0.7;
 pub const SPECIAL_ARRIVE: f64 = 1.25;
 pub const SEND_FALL: f64 = 0.6;
+/// the transformation: power gathers until the flash, then the Monster bursts out and roars
+pub const TRANSFORM_FLASH: f64 = 2.0;
+pub const TRANSFORM_TIME: f64 = 3.4;
 
 // ---------------------------------------------------------------- the world
 const PLATFORM_Y: f64 = 2.0;
@@ -382,6 +391,13 @@ fn fighter_pose(st: &Stage, side: usize) -> Pose {
     let mut p = base(side) + if monster { v3(0.0, 0.0, 0.0) } else { v3(0.0, BALL_R, 0.0) };
     // idle bob
     p.y += (t * 2.4 + side as f64 * 1.3).sin().abs() * 0.14;
+    // transforming: the ball rises, shaking, until the flash
+    let dt = t - st.transform_t0[side];
+    if !monster && (0.0..TRANSFORM_FLASH).contains(&dt) {
+        let k = ease(dt / TRANSFORM_FLASH);
+        p.y += k * 1.6;
+        p = p + v3((t * 70.0).sin(), 0.0, (t * 63.0).cos()) * (0.06 * k);
+    }
     // dropping in from the sky
     let ds = t - st.send_t0[side];
     if ds < SEND_FALL {
@@ -454,6 +470,10 @@ fn monster_move(st: &Stage, side: usize) -> (&'static str, f64) {
     if let Some(f0) = st.faint_t0[side] {
         return ("Faint", t - f0);
     }
+    let dt = t - st.transform_t0[side] - TRANSFORM_FLASH;
+    if (0.0..1.4).contains(&dt) {
+        return ("Special", 0.15 + dt * 0.5);
+    }
     let dh = t - st.hit_t0[side];
     if (0.0..0.6).contains(&dh) {
         return ("Hit", dh);
@@ -523,6 +543,16 @@ fn shot_camera(st: &Stage, shot: Shot, since: f64) -> Camera {
             let pos = base(s) + facing(s) * (3.4 * k * a.cos()) + SIDEWAYS * ((2.4 + a.sin() * 1.5) * k) + v3(0.0, 1.7 * k, 0.0);
             Camera { pos, target: base(s) + v3(0.0, 1.1 * k, 0.0), fov: 50.0 }
         }
+        Shot::Transform(s) => {
+            // a close, low orbit around it while the power builds; pulls back when the Monster bursts out
+            let a = since * 0.9;
+            let out = ease((since - TRANSFORM_FLASH) / 0.5);
+            let r = 4.2 + out * 6.0;
+            let h = 1.2 + ease(since / TRANSFORM_FLASH) * 1.4 + out * 2.6;
+            let around = facing(s) * a.cos() + SIDEWAYS * a.sin().abs().max(0.35);
+            let target = base(s) + v3(0.0, 1.6 + out * 1.8, 0.0);
+            Camera { pos: base(s) + around.norm() * r + v3(0.0, h, 0.0), target, fov: 50.0 - 8.0 * ease(since / TRANSFORM_FLASH) + 10.0 * out }
+        }
         Shot::Faint(s) => {
             let k = if tall(st, s) { 1.8 } else { 1.0 };
             let pos = base(s) + facing(s) * (4.5 * k - ease(since / 1.4)) + SIDEWAYS * 1.6 * k + v3(0.0, 0.6 * k, 0.0);
@@ -536,9 +566,19 @@ fn camera(st: &Stage) -> Camera {
     let cur = shot_camera(st, st.shot, since);
     let prev = shot_camera(st, st.prev_shot, since + 2.0);
     // impacts cut hard; everything else glides
-    let blend = if matches!(st.shot, Shot::Impact(_)) { 0.12 } else { 0.55 };
+    let blend = if matches!(st.shot, Shot::Impact(_)) { 0.12 } else if matches!(st.shot, Shot::Transform(_)) { 0.35 } else { 0.55 };
     let k = ease(since / blend);
     let mut cam = Camera { pos: prev.pos.lerp(cur.pos, k), target: prev.target.lerp(cur.target, k), fov: prev.fov + (cur.fov - prev.fov) * k };
+    // a big shake when a Monster bursts out
+    for side in 0..2 {
+        let d = st.t - st.transform_t0[side] - TRANSFORM_FLASH;
+        if (0.0..1.0).contains(&d) {
+            let amp = (-d * 4.0).exp() * 0.6;
+            let sh = v3((st.t * 57.0).sin(), (st.t * 49.0 + 1.0).sin(), (st.t * 43.0 + 2.0).sin()) * amp;
+            cam.pos = cam.pos + sh;
+            cam.target = cam.target + sh * 0.6;
+        }
+    }
     // screen shake after hits
     for side in 0..2 {
         let dh = st.t - st.hit_t0[side];
@@ -633,7 +673,12 @@ pub fn draw_arena_3d(st: &Stage, w: usize, h: usize) -> (Surface, Marks) {
                 };
                 0xff00_0000 | ((ch(16).clamp(0.0, 255.0) as u32) << 16) | ((ch(8).clamp(0.0, 255.0) as u32) << 8) | ch(0).clamp(0.0, 255.0) as u32
             };
-            fr.sphere(&view, pose.pos, BALL_R, fwd, &shade, &fog);
+            let spin = {
+                let d = st.t - st.transform_t0[side];
+                if (0.0..TRANSFORM_FLASH).contains(&d) { d * d * 5.0 } else { 0.0 }
+            };
+            let face = v3(fwd.x * spin.cos() - fwd.z * spin.sin(), 0.0, fwd.x * spin.sin() + fwd.z * spin.cos());
+            fr.sphere(&view, pose.pos, BALL_R, face, &shade, &fog);
             if let Some(acc) = accessories(s) {
                 fr.sprite(&view, &acc, pose.pos, (0.5, 0.542), BALL_R * 2.0 / 0.56, pose.alpha, 0.0, false, &fog);
             }
@@ -747,6 +792,92 @@ fn draw_effects(st: &Stage, fr: &mut Frame, view: &View) {
     for s in 0..2 {
         let Some(sh) = st.shown[s] else { continue };
         let c = center_of(st, s);
+        let b0 = base(s);
+        let red = (255.0, 60.0, 40.0);
+        // ---- transforming
+        let dt = t - st.transform_t0[s];
+        if (0.0..TRANSFORM_FLASH).contains(&dt) {
+            let k = ease(dt / TRANSFORM_FLASH);
+            // a pillar of light
+            for i in 0..34 {
+                let y = i as f64 * 0.35;
+                let wob = (t * 9.0 + i as f64).sin() * 0.08;
+                fr.glow(view, b0 + v3(wob, y, -wob), 0.35 + 0.25 * k, (255.0, 120.0, 90.0), 0.25 + 0.5 * k);
+            }
+            // red energy spiralling in
+            for i in 0..90 {
+                let p = ((dt * 1.3 + hash(i as i64, 21, 1)) % 1.0).clamp(0.0, 1.0);
+                let ang = hash(i as i64, 22, 2) * 2.0 * PI + p * 7.0;
+                let r = 4.5 * (1.0 - p);
+                let pos = c + v3(ang.cos() * r, (hash(i as i64, 23, 3) - 0.5) * 3.0 * (1.0 - p), ang.sin() * r);
+                fr.glow(view, pos, 0.1, if i % 4 == 0 { (255.0, 230.0, 200.0) } else { red }, 0.9 * p * (0.3 + k));
+            }
+            // rings pulsing out on the ground
+            for pulse in 0..3 {
+                let q = (dt * 1.5 + pulse as f64 / 3.0) % 1.0;
+                for i in 0..30 {
+                    let ang = i as f64 / 30.0 * 2.0 * PI;
+                    fr.glow(view, b0 + v3(ang.cos() * (0.5 + q * 4.0), 0.1, ang.sin() * (0.5 + q * 4.0)), 0.16, red, (1.0 - q) * 0.9);
+                }
+            }
+            fr.glow(view, c, 0.6 + k * 1.6, (255.0, 200.0, 170.0), 0.3 + k);
+        }
+        let da = dt - TRANSFORM_FLASH;
+        if (0.0..1.6).contains(&da) {
+            // the burst: a blast of red and white shards, and a huge shockwave
+            let mc = b0 + v3(0.0, MONSTER_H * 0.55, 0.0);
+            for i in 0..140 {
+                let d = dir(i, 31);
+                let pos = mc + d * (da * (5.0 + hash(i as i64, 32, 1) * 7.0)) + v3(0.0, -3.0 * da * da, 0.0);
+                let life = 1.0 - da / (0.8 + hash(i as i64, 33, 2) * 0.8);
+                if life > 0.0 {
+                    fr.glow(view, pos, 0.14 + 0.1 * life, if i % 3 == 0 { (255.0, 255.0, 255.0) } else { red }, life * 1.2);
+                }
+            }
+            for ring in 0..2 {
+                let r = 0.5 + da * (9.0 + ring as f64 * 4.0);
+                for i in 0..48 {
+                    let ang = i as f64 / 48.0 * 2.0 * PI;
+                    fr.glow(view, b0 + v3(ang.cos() * r, 0.15 + ring as f64 * 0.6, ang.sin() * r), 0.3, if ring == 0 { red } else { (255.0, 200.0, 120.0) }, (1.0 - da / 1.6) * 1.1);
+                }
+            }
+            fr.glow(view, mc, 3.0 + da * 4.0, red, (1.0 - da * 1.2).max(0.0) * 1.2);
+        }
+        // ---- a raging Monster burns with a red aura
+        if sh.phase >= 3 && st.faint_t0[s].is_none() && da >= 0.0 {
+            let pose = fighter_pose(st, s);
+            for i in 0..26 {
+                let q = (t * 1.1 + hash(i as i64, 41, 1)) % 1.0;
+                let ang = hash(i as i64, 42, 2) * 2.0 * PI;
+                let r = 0.7 + hash(i as i64, 43, 3) * 0.5;
+                let pos = pose.pos + v3(ang.cos() * r, q * MONSTER_H, ang.sin() * r);
+                fr.glow(view, pos, 0.18 * (1.0 - q) + 0.05, (255.0, 70.0 + 120.0 * q, 30.0), (1.0 - q) * 0.7);
+            }
+        }
+        // ---- calming down: a puff of smoke
+        let dc = t - st.calm_t0[s];
+        if (0.0..1.2).contains(&dc) {
+            for i in 0..40 {
+                let d = dir(i, 51);
+                fr.glow(view, c + d * (0.6 + dc * 2.2) + v3(0.0, dc, 0.0), 0.4, (180.0, 170.0, 180.0), (1.0 - dc / 1.2) * 0.45);
+            }
+        }
+        // ---- a boost item: sparkles of its colour rising around it
+        let db = t - st.boost_t0[s];
+        if (0.0..1.0).contains(&db) {
+            let col = st.boost_color[s];
+            for i in 0..34 {
+                let ang = hash(i as i64, 61, 1) * 2.0 * PI + db * 3.0;
+                let r = 0.9 + hash(i as i64, 62, 2) * 0.6;
+                let rise = ((db * 1.6 + hash(i as i64, 63, 3)) % 1.0) * 3.2 - 1.0;
+                fr.glow(view, c + v3(ang.cos() * r, rise, ang.sin() * r), 0.12, col, (1.0 - db) * 1.1);
+            }
+            for i in 0..28 {
+                let ang = i as f64 / 28.0 * 2.0 * PI;
+                let r = 0.4 + db * 2.5;
+                fr.glow(view, b0 + v3(ang.cos() * r, 0.1, ang.sin() * r), 0.15, col, (1.0 - db) * 0.9);
+            }
+        }
         // ---- landing: a ring of dust
         let dd = t - st.send_t0[s] - SEND_FALL;
         if (0.0..0.9).contains(&dd) {

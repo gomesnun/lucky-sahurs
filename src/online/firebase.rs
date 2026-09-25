@@ -600,6 +600,10 @@ pub struct BattleDoc {
     pub seed: i64,
     /// "pending" (waiting for the friend), "live" or "over"
     pub status: String,
+    /// a ranked match (from the queue) and both players' ratings when it started
+    pub ranked: bool,
+    pub from_rating: i64,
+    pub to_rating: i64,
     /// one letter per action: S Strike, P Special, G Guard, R Rest, 0-2 switch to that team member
     pub from_moves: String,
     pub to_moves: String,
@@ -618,10 +622,33 @@ fn battle_from_doc(doc: &Value) -> BattleDoc {
         to_team: f.str_or("to_team", ""),
         seed: f.i64_or0("seed"),
         status: f.str_or("status", "pending"),
+        ranked: f.truthy("ranked"),
+        from_rating: f.i64_or0("from_rating"),
+        to_rating: f.i64_or0("to_rating"),
         from_moves: f.str_or("from_moves", ""),
         to_moves: f.str_or("to_moves", ""),
         created: f.f64_or0("created"),
     }
+}
+
+/// Someone waiting in the ranked queue (/queue/{uid}).
+#[derive(Clone, Debug, Default)]
+pub struct QueueEntry {
+    pub uid: String,
+    pub name: String,
+    pub rating: i64,
+    pub team: String,
+    /// server time of their last "still here"
+    pub at: f64,
+}
+
+/// A line of the ranked top list (/ranks/{uid}).
+#[derive(Clone, Debug, Default)]
+pub struct RankEntry {
+    pub name: String,
+    pub rating: i64,
+    pub wins: i64,
+    pub losses: i64,
 }
 
 /// A receipt left in /users/{uid}/incoming by whoever accepted my trade: what I get and what I lose.
@@ -1700,6 +1727,102 @@ impl FirebaseClient {
             Err(e) if e.code != "not_found" => Err(e),
             _ => Ok(()),
         }
+    }
+
+    // ---- ranked queue ----
+    // /queue/{uid}: who's looking for a ranked match (their rating and team). Whoever has the smaller uid of a pair
+    // creates the battle (so two players never create two battles for each other); the other finds it in its
+    // "battles sent to me".
+    pub fn queue_join(&self, name: &str, rating: i64, team: &str) -> Res<()> {
+        let uid = self.need_uid()?;
+        let mut f = Map::new();
+        f.insert("uid".into(), fs_str(&uid));
+        f.insert("name".into(), fs_str(name));
+        f.insert("rating".into(), fs_int(rating));
+        f.insert("team".into(), fs_str(team));
+        f.insert("at".into(), fs_f64(server_now()));
+        let mut keys: Vec<String> = f.keys().cloned().collect();
+        keys.sort();
+        let params: Vec<(String, String)> = keys.into_iter().map(|k| ("updateMask.fieldPaths".to_string(), k)).collect();
+        self.fs("PATCH", &format!("/queue/{}", uid), Some(json!({"fields": f})), &params).map(|_| ())
+    }
+
+    pub fn queue_leave(&self) -> Res<()> {
+        let uid = self.need_uid()?;
+        match self.fs("DELETE", &format!("/queue/{}", uid), None, &[]) {
+            Err(e) if e.code != "not_found" => Err(e),
+            _ => Ok(()),
+        }
+    }
+
+    /// The players waiting now (the most recent first).
+    pub fn queue_list(&self) -> Res<Vec<QueueEntry>> {
+        let q = json!({
+            "from": [{"collectionId": "queue"}],
+            "orderBy": [{"field": {"fieldPath": "at"}, "direction": "DESCENDING"}],
+            "limit": 12,
+        });
+        Ok(self
+            .run_query(":runQuery", q)?
+            .iter()
+            .filter(|d| d.get("name").is_some())
+            .map(|d| {
+                let f = fs_fields(d);
+                QueueEntry { uid: f.str_or("uid", ""), name: f.str_or("name", "?"), rating: f.i64_or0("rating"), team: f.str_or("team", ""), at: f.f64_or0("at") }
+            })
+            .collect())
+    }
+
+    /// I (the smaller uid) start a ranked battle with someone from the queue: it's live right away.
+    pub fn create_ranked_battle(&self, me_name: &str, me_rating: i64, my_team: &str, other: &QueueEntry, seed: i64) -> Res<String> {
+        let uid = self.need_uid()?;
+        let id = new_doc_id();
+        let mut f = Map::new();
+        f.insert("from_uid".into(), fs_str(&uid));
+        f.insert("to_uid".into(), fs_str(&other.uid));
+        f.insert("from_name".into(), fs_str(me_name));
+        f.insert("to_name".into(), fs_str(&other.name));
+        f.insert("from_team".into(), fs_str(my_team));
+        f.insert("to_team".into(), fs_str(&other.team));
+        f.insert("seed".into(), fs_int(seed));
+        f.insert("status".into(), fs_str("live"));
+        f.insert("from_moves".into(), fs_str(""));
+        f.insert("to_moves".into(), fs_str(""));
+        f.insert("created".into(), fs_f64(server_now()));
+        f.insert("ranked".into(), fs_bool(true));
+        f.insert("from_rating".into(), fs_int(me_rating));
+        f.insert("to_rating".into(), fs_int(other.rating));
+        self.patch_fields(&format!("/battles/{}", id), f, false)?;
+        Ok(id)
+    }
+
+    /// My ranked standing, for the top list.
+    pub fn push_rank(&self, name: &str, rating: i64, wins: i64, losses: i64) -> Res<()> {
+        let uid = self.need_uid()?;
+        let mut f = Map::new();
+        f.insert("username".into(), fs_str(name));
+        f.insert("rating".into(), fs_int(rating));
+        f.insert("wins".into(), fs_int(wins));
+        f.insert("losses".into(), fs_int(losses));
+        let params: Vec<(String, String)> = ["losses", "rating", "username", "wins"].iter().map(|k| ("updateMask.fieldPaths".to_string(), k.to_string())).collect();
+        self.fs("PATCH", &format!("/ranks/{}", uid), Some(json!({"fields": f})), &params).map(|_| ())
+    }
+
+    pub fn top_ranks(&self) -> Res<Vec<RankEntry>> {
+        let q = json!({
+            "from": [{"collectionId": "ranks"}],
+            "orderBy": [{"field": {"fieldPath": "rating"}, "direction": "DESCENDING"}],
+            "limit": 10,
+        });
+        Ok(self
+            .run_query(":runQuery", q)?
+            .iter()
+            .filter(|d| d.get("name").is_some())
+            .map(|d| {
+                let f = fs_fields(d);
+                RankEntry { name: f.str_or("username", "?"), rating: f.i64_or0("rating"), wins: f.i64_or0("wins"), losses: f.i64_or0("losses") }
+            })
+            .collect())
     }
 
     /// Cancel (the challenger), decline (the friend) or clean up a finished one.

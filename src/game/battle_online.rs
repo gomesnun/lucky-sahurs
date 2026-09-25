@@ -5,11 +5,11 @@
 //! open on "vs Friends" the challenge lists are refreshed every LIST_REFRESH seconds. One write per move.
 
 use super::Game;
-use crate::core::battle::{Action, Battle, Ev, Fighter, Move};
+use crate::core::battle::{Action, Battle, Ev, Fighter, ITEMS, Item, Move};
 use crate::core::data::{MAX_PHASE, is_mutation, mut_key, rarities};
 use crate::core::state::now_ts;
 use crate::i18n::tr;
-use crate::online::firebase::{BattleDoc, online_error_text};
+use crate::online::firebase::{BattleDoc, QueueEntry, RankEntry, online_error_text, server_now};
 use crate::theme::*;
 use crate::tr;
 
@@ -19,6 +19,48 @@ pub const POLL: f64 = 2.5;
 pub const LIST_REFRESH: f64 = 15.0;
 /// after this long without a move from the friend, "Leave" shows up
 pub const PATIENCE: f64 = 90.0;
+/// ranked: seconds between looks at the queue while searching, between "still here" updates, and after which a
+/// queue entry counts as gone
+pub const QUEUE_POLL: f64 = 4.0;
+pub const QUEUE_REFRESH: f64 = 20.0;
+pub const QUEUE_STALE: f64 = 45.0;
+/// the top list is read at most this often
+pub const TOP_REFRESH: f64 = 300.0;
+
+/// The ranked tiers: (from rating, name, colour).
+pub const TIERS: [(i64, &str, (u8, u8, u8)); 6] = [
+    (0, "Bronze", (205, 127, 50)),
+    (1100, "Silver", (192, 200, 214)),
+    (1250, "Gold", (255, 200, 60)),
+    (1400, "Platinum", (90, 220, 200)),
+    (1550, "Diamond", (120, 190, 255)),
+    (1700, "Master", (200, 110, 255)),
+];
+
+pub fn tier_of(rating: i64) -> (&'static str, crate::gfx::Color) {
+    let t = TIERS.iter().rev().find(|t| rating >= t.0).unwrap_or(&TIERS[0]);
+    (t.1, crate::gfx::Color::rgb(t.2.0, t.2.1, t.2.2))
+}
+
+/// Elo: how much my rating changes after a ranked battle.
+pub fn elo_delta(me: i64, them: i64, won: bool) -> i64 {
+    let expected = 1.0 / (1.0 + 10f64.powf((them - me) as f64 / 400.0));
+    (32.0 * (if won { 1.0 } else { 0.0 } - expected)).round() as i64
+}
+
+/// The ranked queue's state on this computer.
+#[derive(Default)]
+pub struct RankedUi {
+    pub searching: bool,
+    pub since: f64,
+    next_poll: f64,
+    next_refresh: f64,
+    busy: bool,
+    pub top: Vec<RankEntry>,
+    top_at: f64,
+    top_busy: bool,
+    pub msg: Option<(String, crate::gfx::Color)>,
+}
 
 pub struct OnlineMatch {
     pub id: String,
@@ -35,6 +77,10 @@ pub struct OnlineMatch {
     unsent: bool,
     pushing: bool,
     pub waiting_since: f64,
+    /// a ranked match: the opponent's rating (and whether my rating was already updated)
+    pub ranked: bool,
+    pub their_rating: i64,
+    pub rated: bool,
     /// the friend deleted the battle (left)
     pub gone: bool,
     finished: bool,
@@ -45,7 +91,7 @@ pub fn team_code(picks: &[(usize, &'static str, usize)]) -> String {
     picks.iter().map(|(p, m, ph)| format!("{}_{}_{}", p, m, ph)).collect::<Vec<_>>().join(",")
 }
 
-/// The fighters of a team code (anything invalid is left out; at most 3).
+/// The fighters of a team code (anything invalid is left out; at most TEAM_SIZE).
 pub fn team_from_code(code: &str) -> Vec<Fighter> {
     code.split(',')
         .filter_map(|part| {
@@ -53,10 +99,15 @@ pub fn team_from_code(code: &str) -> Vec<Fighter> {
             let pet = it.next()?.parse::<usize>().ok()?;
             let m = it.next()?;
             let phase = it.next()?.parse::<usize>().ok()?;
-            (pet < rarities().len() && is_mutation(m) && phase <= MAX_PHASE).then(|| Fighter::new(pet, mut_key(m), phase))
+            (pet < rarities().len() && is_mutation(m) && phase <= MAX_PHASE).then(|| Fighter::battle(pet, mut_key(m), phase))
         })
-        .take(3)
+        .take(crate::core::battle::TEAM_SIZE)
         .collect()
+}
+
+#[allow(non_snake_case)]
+fn item_of(c: char) -> Option<Item> {
+    ITEMS.iter().copied().find(|i| i.letter() == c)
 }
 
 fn action_of(c: char) -> Option<Action> {
@@ -65,6 +116,8 @@ fn action_of(c: char) -> Option<Action> {
         'P' => Action::Use(Move::Special),
         'G' => Action::Use(Move::Guard),
         'R' => Action::Use(Move::Rest),
+        'T' => Action::Transform,
+        c if item_of(c).is_some() => Action::Item(item_of(c)?),
         d if d.is_ascii_digit() => Action::Switch(d.to_digit(10)? as usize),
         _ => return None,
     })
@@ -112,13 +165,13 @@ impl Game {
                 }
                 // a challenge I sent was accepted: the battle starts
                 if g.battle.online.is_none() && g.battle.open {
-                    if let Some(d) = sent.iter().find(|d| d.status == "live") {
+                    if let Some(d) = sent.iter().find(|d| d.status == "live" && !d.ranked) {
                         let d = d.clone();
                         g.start_online_battle(&d, 0);
                     }
                 }
                 g.battle.sent = sent.into_iter().filter(|d| d.status == "pending").collect();
-                g.battle.received = got.into_iter().filter(|d| d.status == "pending").collect();
+                g.battle.received = got.into_iter().filter(|d| d.status == "pending" && !d.ranked).collect();
             },
             |g, e| {
                 g.battle.ch_loading = false;
@@ -205,6 +258,167 @@ impl Game {
         );
     }
 
+    // ---------------------------------------------------------------- ranked queue
+    fn my_team_code(&self) -> String {
+        let picks: Vec<(usize, &'static str, usize)> = self.battle.picks.iter().map(|(p, m)| (*p, *m, self.state.phase(*p, m))).collect();
+        team_code(&picks)
+    }
+
+    pub fn start_search(&mut self) {
+        if !self.online_ready() || self.battle.picks.is_empty() || self.battle.ranked.searching {
+            return;
+        }
+        let r = &mut self.battle.ranked;
+        r.searching = true;
+        r.since = now_ts();
+        r.next_poll = now_ts() + 1.0;
+        r.next_refresh = now_ts() + QUEUE_REFRESH;
+        r.msg = None;
+        let (client, name, rating, team) = (self.client.clone().unwrap(), self.my_username(), self.state.rank_rating, self.my_team_code());
+        self.run_job(
+            move || client.queue_join(&name, rating, &team),
+            |_, _: ()| {},
+            |g, e| {
+                g.battle.ranked.searching = false;
+                g.battle.ranked.msg = Some((online_error_text(&e), BAD));
+            },
+        );
+    }
+
+    pub fn cancel_search(&mut self) {
+        if !self.battle.ranked.searching {
+            return;
+        }
+        self.battle.ranked.searching = false;
+        if let Some(client) = self.client.clone() {
+            self.worker.run::<()>(move || client.queue_leave(), None, None);
+        }
+    }
+
+    /// While searching: keep my queue entry fresh, and look for a battle made for me or someone to play.
+    fn tick_ranked(&mut self) {
+        let now = now_ts();
+        if !self.battle.ranked.searching || self.battle.online.is_some() || !self.online_ready() {
+            return;
+        }
+        if now >= self.battle.ranked.next_refresh {
+            self.battle.ranked.next_refresh = now + QUEUE_REFRESH;
+            let (client, name, rating, team) = (self.client.clone().unwrap(), self.my_username(), self.state.rank_rating, self.my_team_code());
+            self.worker.run::<()>(move || client.queue_join(&name, rating, &team), None, None);
+        }
+        if self.battle.ranked.busy || now < self.battle.ranked.next_poll {
+            return;
+        }
+        self.battle.ranked.busy = true;
+        self.battle.ranked.next_poll = now + QUEUE_POLL;
+        let client = self.client.clone().unwrap();
+        self.run_job(
+            move || Ok((client.list_battles("to_uid")?, client.queue_list()?)),
+            |g, (mine, queue): (Vec<BattleDoc>, Vec<QueueEntry>)| {
+                g.battle.ranked.busy = false;
+                if !g.battle.ranked.searching || g.battle.online.is_some() {
+                    return;
+                }
+                // someone already started a ranked battle with me
+                if let Some(d) = mine.into_iter().find(|d| d.ranked && d.status == "live" && d.from_moves.is_empty() && server_now() - d.created < 120.0) {
+                    g.cancel_search();
+                    g.start_online_battle(&d, 1);
+                    return;
+                }
+                // otherwise: the closest rating in the queue (the window grows the longer I wait); only the
+                // smaller uid of a pair starts the battle
+                let Some(my_uid) = g.client.as_ref().and_then(|c| c.uid()) else { return };
+                let waited = now_ts() - g.battle.ranked.since;
+                let window = (100.0 + waited * 10.0).min(1000.0) as i64;
+                let me = g.state.rank_rating;
+                let best = queue
+                    .into_iter()
+                    .filter(|e| e.uid != my_uid && server_now() - e.at < QUEUE_STALE && (e.rating - me).abs() <= window && !team_from_code(&e.team).is_empty())
+                    .min_by_key(|e| (e.rating - me).abs());
+                let Some(other) = best else { return };
+                if my_uid.as_str() > other.uid.as_str() {
+                    return; // they'll start it
+                }
+                g.battle.ranked.busy = true;
+                let (client, name, team) = (g.client.clone().unwrap(), g.my_username(), g.my_team_code());
+                let seed = ((now_ts() * 1000.0) as i64).rem_euclid(1 << 40);
+                let o2 = other.clone();
+                g.run_job(
+                    move || client.create_ranked_battle(&name, me, &team, &o2, seed),
+                    move |g, id: String| {
+                        g.battle.ranked.busy = false;
+                        let d = BattleDoc {
+                            id,
+                            from_uid: my_uid.clone(),
+                            to_uid: other.uid.clone(),
+                            from_name: g.my_username(),
+                            to_name: other.name.clone(),
+                            from_team: g.my_team_code(),
+                            to_team: other.team.clone(),
+                            seed,
+                            status: "live".into(),
+                            ranked: true,
+                            from_rating: me,
+                            to_rating: other.rating,
+                            ..Default::default()
+                        };
+                        g.cancel_search();
+                        g.start_online_battle(&d, 0);
+                    },
+                    |g, _e| {
+                        g.battle.ranked.busy = false;
+                    },
+                );
+            },
+            |g, _e| {
+                g.battle.ranked.busy = false;
+            },
+        );
+    }
+
+    /// The top 10 (read when the Ranked tab opens, at most every TOP_REFRESH).
+    pub fn refresh_top(&mut self, force: bool) {
+        let now = now_ts();
+        if !self.online_ready() || self.battle.ranked.top_busy || (!force && now - self.battle.ranked.top_at < TOP_REFRESH) {
+            return;
+        }
+        self.battle.ranked.top_busy = true;
+        self.battle.ranked.top_at = now;
+        let client = self.client.clone().unwrap();
+        self.run_job(
+            move || client.top_ranks(),
+            |g, top: Vec<RankEntry>| {
+                g.battle.ranked.top_busy = false;
+                g.battle.ranked.top = top;
+            },
+            |g, _e| {
+                g.battle.ranked.top_busy = false;
+            },
+        );
+    }
+
+    /// A ranked battle ended: my rating moves (Elo) and goes to the top list. Returns the change.
+    pub fn apply_ranked_result(&mut self, won: bool) -> Option<i64> {
+        let om = self.battle.online.as_mut()?;
+        if !om.ranked || om.rated {
+            return None;
+        }
+        om.rated = true;
+        let delta = elo_delta(self.state.rank_rating, om.their_rating.max(1), won);
+        self.state.rank_rating = (self.state.rank_rating + delta).clamp(0, 5000);
+        if won {
+            self.state.rank_wins += 1;
+        } else {
+            self.state.rank_losses += 1;
+        }
+        self.state.dirty = true;
+        if let Some(client) = self.client.clone() {
+            let (name, r, w, l) = (self.my_username(), self.state.rank_rating, self.state.rank_wins, self.state.rank_losses);
+            self.worker.run::<()>(move || client.push_rank(&name, r, w, l), None, None);
+        }
+        Some(delta)
+    }
+
     // ---------------------------------------------------------------- the battle itself
     pub fn start_online_battle(&mut self, d: &BattleDoc, me: usize) {
         let teams = [team_from_code(&d.from_team), team_from_code(&d.to_team)];
@@ -226,6 +440,9 @@ impl Game {
             unsent: false,
             pushing: false,
             waiting_since: now_ts(),
+            ranked: d.ranked,
+            their_rating: if me == 0 { d.to_rating } else { d.from_rating },
+            rated: false,
             gone: false,
             finished: false,
         });
@@ -325,6 +542,7 @@ impl Game {
         if self.battle.open && self.battle.mode == "online" && self.battle.online.is_none() {
             self.refresh_battles(false);
         }
+        self.tick_ranked();
         let Some(om) = self.battle.online.as_ref() else { return };
         let now = now_ts();
         if om.unsent && !om.pushing {

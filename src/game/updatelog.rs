@@ -19,6 +19,8 @@ pub const UPDATE_LOG: &[(&str, &str, &[&str])] = &[
         "New Glow effect: bright and colourful things shine softly. Turn it on or off in Options > Interface.",
         "Battles (first version): the new BATTLE button lets you pick 3 of your Verities and fight a rival team turn by turn - Strike, a Special move, Guard and Rest. Monsters and rare mutations are the strongest, and winning pays coins.",
         "Battles against friends: challenge a friend from the Battle page (vs Friends); each of you plays your own moves online.",
+        "Battles: every Verity fights in its own phase. Monsters start as Phase 3, fill a RAGE meter and TRANSFORM into their Monster form for 3 turns with a huge boost.",
+        "Teams of up to 5: when one faints the next one comes in. Battle items in the Shop (Battle tab). Ranked matches with a rating and tiers from Bronze to Master.",
     ]),
     ("v3.0.0", "2026-09-24", &[
         "New effects: buttons glow when you point at them and ripple when you click, a subtle glare sweeps across buttons and your pet card, your verities rain down behind the roll screen (more the more you earn) and every ROLL pops the verity you got up from your click, the coins count up smoothly and the title screen shows the verities.",

@@ -13,6 +13,9 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 pub type Pet = (usize, &'static str);
 
+/// ranked battles: the rating everyone starts at
+pub const RANK_START: i64 = 1000;
+
 #[derive(Clone, Debug)]
 pub struct DailyMission {
     pub mtype: &'static str,
@@ -111,6 +114,12 @@ pub struct GameState {
     pub total_absolute_rolled: i64,
     /// battles won (game/battle_panel.rs)
     pub battles_won: i64,
+    /// battle items (core/battle.rs Item keys) -> how many
+    pub battle_items: IndexMap<String, i64>,
+    /// ranked battles: rating (Elo, starts at RANK_START), wins, losses
+    pub rank_rating: i64,
+    pub rank_wins: i64,
+    pub rank_losses: i64,
     pub milestones_claimed: HashSet<String>,
     ms_bonus: HashMap<&'static str, f64>,
 
@@ -273,6 +282,10 @@ impl GameState {
             seen_pets: BTreeSet::new(),
             phases: IndexMap::new(),
             battles_won: 0,
+            battle_items: IndexMap::new(),
+            rank_rating: RANK_START,
+            rank_wins: 0,
+            rank_losses: 0,
             equipped: Vec::new(),
             avatar: None,
             title: None,
@@ -405,6 +418,29 @@ impl GameState {
             total += self.pet_base_income(*idx, m);
         }
         total * self.money_multiplier()
+    }
+
+    // ================================================================ battle items (Shop > Battle)
+    /// Always in stock; the price follows your income (it stays about the same effort all game long).
+    pub fn battle_item_price(&self, item: crate::core::battle::Item) -> f64 {
+        use crate::core::battle::Item;
+        let secs = match item {
+            Item::Potion => 60.0,
+            Item::Power | Item::Iron => 90.0,
+            Item::Feather => 75.0,
+        };
+        (self.income_per_second() * secs).max(500.0).round()
+    }
+
+    pub fn buy_battle_item(&mut self, item: crate::core::battle::Item) -> bool {
+        let price = self.battle_item_price(item);
+        if self.coins < price {
+            return false;
+        }
+        self.coins -= price;
+        *self.battle_items.entry(item.key().to_string()).or_insert(0) += 1;
+        self.dirty = true;
+        true
     }
 
     // ================================================================ phases (stacking)
@@ -1657,6 +1693,12 @@ impl GameState {
         if self.battles_won > 0 {
             d.insert("battles_won".into(), json!(self.battles_won));
         }
+        if self.battle_items.values().any(|v| *v > 0) {
+            d.insert("battle_items".into(), json!(self.battle_items));
+        }
+        if self.rank_wins + self.rank_losses > 0 {
+            d.insert("rank".into(), json!([self.rank_rating, self.rank_wins, self.rank_losses]));
+        }
         if !self.phases.is_empty() {
             // only written when there is one, so older games read the save exactly as before
             let phases: Map<String, Value> = self.phases.iter().map(|(k, v)| (k.clone(), json!(v))).collect();
@@ -1791,6 +1833,19 @@ impl GameState {
             }
         };
         self.battles_won = d.get("battles_won").and_then(|v| v.as_i64()).unwrap_or(0).max(0);
+        self.battle_items = IndexMap::new();
+        if let Some(Value::Object(items)) = d.get("battle_items") {
+            for (k, v) in items {
+                let n = v.as_i64().unwrap_or(0);
+                if n > 0 && crate::core::battle::Item::from_key(k).is_some() {
+                    self.battle_items.insert(k.clone(), n.min(9999));
+                }
+            }
+        }
+        let rank: Vec<i64> = d.get("rank").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|x| x.as_i64()).collect()).unwrap_or_default();
+        self.rank_rating = rank.first().copied().unwrap_or(RANK_START).clamp(0, 9999);
+        self.rank_wins = rank.get(1).copied().unwrap_or(0).max(0);
+        self.rank_losses = rank.get(2).copied().unwrap_or(0).max(0);
         self.phases = IndexMap::new();
         if let Some(Value::Object(ph)) = d.get("phases") {
             for (k, v) in ph {

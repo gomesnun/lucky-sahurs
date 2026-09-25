@@ -337,6 +337,12 @@ fn online_test(dir: &str) {
                 if b.needs_switch() {
                     let k = (0..b.teams[b.me].len()).find(|&k| b.can_switch_to(b.me, k)).unwrap();
                     g.battle_switch(k);
+                } else if b.fighter(b.me).can_transform() {
+                    g.battle_transform();
+                } else if turn[me] == 1 && me == 1 {
+                    turn[me] += 1;
+                    g.state.battle_items.insert("iron".into(), 1);
+                    g.battle_item(core::battle::Item::Iron);
                 } else {
                     let f = b.fighter(b.me).clone();
                     let mv = if turn[me] % 3 == 0 && f.special_pp > 0 { Move::Special } else if turn[me] % 5 == 4 { Move::Guard } else { Move::Strike };
@@ -388,6 +394,8 @@ fn battle_video(dir: &str) {
         g.state.owned.insert(format!("{}_{}", p, m), 5);
         g.state.phases.insert(format!("{}_{}", p, m), ph);
     }
+    g.state.battle_items.insert("potion".into(), 2);
+    g.state.battle_items.insert("power".into(), 1);
     g.open_battle();
     g.battle.picks = team.iter().map(|t| (t.0, t.1)).collect();
     g.start_battle();
@@ -409,6 +417,13 @@ fn battle_video(dir: &str) {
                     if let Some(k) = next {
                         g.battle_switch(k);
                     }
+                } else if me.can_transform() {
+                    g.battle_transform();
+                } else if turn == 0 && g.state.battle_items.get("power").copied().unwrap_or(0) > 0 {
+                    turn += 1;
+                    g.battle_item(core::battle::Item::Power);
+                } else if me.hp * 10 < me.max_hp * 3 && g.state.battle_items.get("potion").copied().unwrap_or(0) > 0 {
+                    g.battle_item(core::battle::Item::Potion);
                 } else {
                     use core::battle::Move;
                     let mv = if me.hp * 10 < me.max_hp * 4 && me.rest_pp > 0 {
@@ -669,6 +684,9 @@ fn shots(dir: &str) {
     g.shop.tab = "potions";
     g.draw(m);
     save(&g, "n_shop_potions");
+    g.shop.tab = "battle";
+    g.draw(m);
+    save(&g, "n_shop_battle");
     g.close_overlays();
     g.left_panel.open("bag");
     g.left_panel.update(5.0);
@@ -1006,6 +1024,19 @@ fn shots(dir: &str) {
     g.battle.sent = vec![bd("b2", "tommy", "bob")];
     g.draw(m);
     save(&g, "o_battle_friends");
+    g.battle.mode = "ranked";
+    g.state.rank_rating = 1312;
+    g.state.rank_wins = 14;
+    g.state.rank_losses = 9;
+    let re = |n: &str, r: i64| online::firebase::RankEntry { name: n.into(), rating: r, wins: 0, losses: 0 };
+    g.battle.ranked.top = vec![re("alice", 1742), re("bob", 1580), re("tommy", 1312), re("carol", 1190), re("dave", 1020)];
+    g.draw(m);
+    save(&g, "o_battle_ranked");
+    g.battle.ranked.searching = true;
+    g.battle.ranked.since = online::firebase::now() - 17.0;
+    g.draw(m);
+    save(&g, "o_battle_ranked_search");
+    g.battle.ranked.searching = false;
     g.close_battle();
     g.battle.received.clear();
     g.battle.sent.clear();
