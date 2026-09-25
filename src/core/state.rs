@@ -123,6 +123,8 @@ pub struct GameState {
     pub auto_trait_on: bool,
     /// v3.0.4: Auto Rebirth (from Prestige II)
     pub auto_rebirth_on: bool,
+    /// v3.0.4: Double Rolls from the dice
+    pub total_double_rolls: i64,
     /// dice, potions and what was bought this period (core/shop.rs)
     pub shop: crate::core::shop::ShopState,
     /// with no bonus roll, the chances are the same for every roll of a frame: the Auto Roller keeps them here
@@ -312,6 +314,7 @@ impl GameState {
             auto_upgrade_on: true,
             auto_trait_on: true,
             auto_rebirth_on: false,
+            total_double_rolls: 0,
             shop: Default::default(),
             probs_cache: None,
             cloud_uid: None,
@@ -1637,6 +1640,7 @@ impl GameState {
         st.insert("auto_upgrade_on".into(), json!(self.auto_upgrade_on));
         st.insert("auto_trait_on".into(), json!(self.auto_trait_on));
         st.insert("auto_rebirth_on".into(), json!(self.auto_rebirth_on));
+        st.insert("total_double_rolls".into(), json!(self.total_double_rolls));
         d.insert("settings".into(), Value::Object(st));
         let mut tr = Map::new();
         tr.insert("charges".into(), json!(self.trait_charges));
@@ -1837,6 +1841,7 @@ impl GameState {
         self.auto_upgrade_on = st.get("auto_upgrade_on").map(value_truthy).unwrap_or(true);
         self.auto_trait_on = st.get("auto_trait_on").map(value_truthy).unwrap_or(true);
         self.auto_rebirth_on = st.get("auto_rebirth_on").map(value_truthy).unwrap_or(false);
+        self.total_double_rolls = get_i("total_double_rolls", 0)?.max(0);
         let ms = self.max_slots().max(0) as usize;
         self.equipped.truncate(ms);
 

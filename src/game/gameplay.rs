@@ -218,6 +218,18 @@ impl Game {
             self.notify_trait_charges(1);
             self.play("trait_charge", 0.0);
         }
+        // v3.0.4: the equipped dice can make it a Double Roll (a 2nd roll for free)
+        let p = self.state.dice_double_chance();
+        if p > 0.0 && crate::core::state::rand_random() < p {
+            let (r2, m2, gained2, _) = self.state.roll();
+            self.trigger_cutscene(r2, m2);
+            self.spawn_roll_particles(r2);
+            self.spawn_roll_pop_ex(r2, m2, true);
+            self.state.total_double_rolls += 1;
+            if gained2 {
+                self.notify_trait_charges(1);
+            }
+        }
         let st = &self.state;
         let now_r = (st.cyclic_bonus_ready, st.diamond_bonus_ready, st.rainbow_bonus_ready);
         if (now_r.0 && !was.0) || (now_r.1 && !was.1) || (now_r.2 && !was.2) {
