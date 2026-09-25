@@ -109,14 +109,14 @@ struct World {
     texes: Vec<Tex>,
 }
 
-fn hash(a: i64, b: i64, c: i64) -> f64 {
+pub fn hash(a: i64, b: i64, c: i64) -> f64 {
     let mut h = (a.wrapping_mul(374761393) ^ b.wrapping_mul(668265263) ^ c.wrapping_mul(2147483647)) as u64;
     h = (h ^ (h >> 13)).wrapping_mul(1274126177);
     h ^= h >> 16;
     (h % 10000) as f64 / 10000.0
 }
 
-fn tex_from(f: impl Fn(usize, usize) -> (f64, f64, f64)) -> Tex {
+pub fn tex_from(f: impl Fn(usize, usize) -> (f64, f64, f64)) -> Tex {
     let mut px = vec![0u32; 256];
     for y in 0..16 {
         for x in 0..16 {
@@ -629,7 +629,6 @@ pub fn draw_arena_3d(st: &Stage, w: usize, h: usize) -> (Surface, Marks) {
     });
     // the verities
     let mut marks = Marks { head: [None, None] };
-    let light_dir = v3(-0.4, 0.8, 0.45).norm();
     for side in 0..2 {
         let Some(s) = st.shown[side] else { continue };
         let pose = fighter_pose(st, side);
@@ -648,45 +647,53 @@ pub fn draw_arena_3d(st: &Stage, w: usize, h: usize) -> (Surface, Marks) {
             }
             marks.head[side] = view.project(head + v3(0.0, 0.8, 0.0)).map(|(x, y, _)| (x, y));
         } else {
-            let Some(img) = load_pet_phase_image(rarities()[s.pet].pet, s.phase, IMG, false) else { continue };
-            let img: &Surface = &img;
-            let sample = |u: f64, v: f64| -> u32 {
-                let x = ((u * IMG as f64) as i32).clamp(0, IMG - 1);
-                let y = ((v * IMG as f64) as i32).clamp(0, IMG - 1);
-                img.px[(y * IMG + x) as usize]
-            };
-            let flash = pose.flash;
-            let shade = move |n: V3, l: V3| -> u32 {
-                // the front half wears the verity's picture; the back takes the colour at the ball's edge
-                let (u, v) = if l.z > 0.0 {
-                    (0.5 + l.x * 0.28, 0.542 - l.y * 0.28)
-                } else {
-                    let d = (l.x * l.x + l.y * l.y).sqrt().max(1e-6);
-                    (0.5 + l.x / d * 0.25, 0.542 - l.y / d * 0.25)
-                };
-                let p = sample(u, v);
-                let lit = 0.72 + 0.28 * n.dot(light_dir).max(0.0) + if l.z > 0.0 { 0.0 } else { -0.1 };
-                let rim = (1.0 - n.dot((cam.pos - pose.pos).norm()).abs()).powi(3) * 60.0;
-                let ch = |sh: u32| {
-                    let c = ((p >> sh) & 255) as f64 * lit + rim;
-                    c + (255.0 - c) * flash
-                };
-                0xff00_0000 | ((ch(16).clamp(0.0, 255.0) as u32) << 16) | ((ch(8).clamp(0.0, 255.0) as u32) << 8) | ch(0).clamp(0.0, 255.0) as u32
-            };
             let spin = {
                 let d = st.t - st.transform_t0[side];
                 if (0.0..TRANSFORM_FLASH).contains(&d) { d * d * 5.0 } else { 0.0 }
             };
             let face = v3(fwd.x * spin.cos() - fwd.z * spin.sin(), 0.0, fwd.x * spin.sin() + fwd.z * spin.cos());
-            fr.sphere(&view, pose.pos, BALL_R, face, &shade, &fog);
-            if let Some(acc) = accessories(s) {
-                fr.sprite(&view, &acc, pose.pos, (0.5, 0.542), BALL_R * 2.0 / 0.56, pose.alpha, 0.0, false, &fog);
-            }
+            draw_pet_ball(&mut fr, &view, &fog, s, pose.pos, BALL_R, face, pose.flash, pose.alpha);
             marks.head[side] = view.project(pose.pos + v3(0.0, BALL_R + 0.5, 0.0)).map(|(x, y, _)| (x, y));
         }
     }
     draw_effects(st, &mut fr, &view);
     (fr.to_surface(), marks)
+}
+
+/// A verity as a 3D ball: its picture on the front, the colour at its edge on the back, lit and rimmed, with its
+/// accessories (halo, wings, horns...) floating around it. Also used by Explore (game/explore.rs).
+#[allow(clippy::too_many_arguments)]
+pub fn draw_pet_ball(fr: &mut Frame, view: &View, fog: &Fog, s: Shown, pos: V3, radius: f64, face: V3, flash: f64, alpha: f64) {
+    let Some(img) = load_pet_phase_image(rarities()[s.pet].pet, s.phase, IMG, false) else { return };
+    let img: &Surface = &img;
+    let light_dir = v3(-0.4, 0.8, 0.45).norm();
+    let sample = |u: f64, v: f64| -> u32 {
+        let x = ((u * IMG as f64) as i32).clamp(0, IMG - 1);
+        let y = ((v * IMG as f64) as i32).clamp(0, IMG - 1);
+        img.px[(y * IMG + x) as usize]
+    };
+    let eye = view.pos;
+    let shade = move |n: V3, l: V3| -> u32 {
+        // the front half wears the verity's picture; the back takes the colour at the ball's edge
+        let (u, v) = if l.z > 0.0 {
+            (0.5 + l.x * 0.28, 0.542 - l.y * 0.28)
+        } else {
+            let d = (l.x * l.x + l.y * l.y).sqrt().max(1e-6);
+            (0.5 + l.x / d * 0.25, 0.542 - l.y / d * 0.25)
+        };
+        let p = sample(u, v);
+        let lit = 0.72 + 0.28 * n.dot(light_dir).max(0.0) + if l.z > 0.0 { 0.0 } else { -0.1 };
+        let rim = (1.0 - n.dot((eye - pos).norm()).abs()).powi(3) * 60.0;
+        let ch = |sh: u32| {
+            let c = ((p >> sh) & 255) as f64 * lit + rim;
+            c + (255.0 - c) * flash
+        };
+        0xff00_0000 | ((ch(16).clamp(0.0, 255.0) as u32) << 16) | ((ch(8).clamp(0.0, 255.0) as u32) << 8) | ch(0).clamp(0.0, 255.0) as u32
+    };
+    fr.sphere(view, pos, radius, face, &shade, fog);
+    if let Some(acc) = accessories(s) {
+        fr.sprite(view, &acc, pos, (0.5, 0.542), radius * 2.0 / 0.56, alpha, 0.0, false, fog);
+    }
 }
 
 /// A stable pseudo-random direction for particle i.

@@ -11,7 +11,11 @@ use crate::ui::fonts::wrap_text;
 use std::rc::Rc;
 
 pub const UPDATE_LOG: &[(&str, &str, &[&str])] = &[
-    ("v3.1.0", "2026-09-25", &[
+    ("v4.0.0", "2026-09-25", &[
+        "Verity Battle: the BATTLE button now opens a hub with three modes - Explore, Ranked and Fight a Friend.",
+        "Explore: walk Steve through 3D worlds - the Overworld, the Nether, The End, End City and Emerald City - and catch Verity Pets. Walking and catching give XP; levels open the next worlds (better worlds, better pets) and new clothes in the Wardrobe.",
+        "Verity Pets boost your money or your luck. Equip up to 3 (Bag > Verity Pets, or in Explore) and they follow Steve around, dancing.",
+        "New rarity, OG: Verity (the original), Lovity and Falsity - the rarest verities of all. They also live, rarely, in Emerald City.",
         "Phases: stack copies of one Verity into it to evolve it - Phase 2 (the grin), Phase 3 (worn out) and finally its Monster form, for x2, x4 and x10 money. Use the arrow button on a pet in Bag > Inventory.",
         "Every Verity keeps its own look in each phase, and its Monster wears its colours, accessories and glow.",
         "New players get a quick tutorial (skippable, and you can replay it from Options > Game).",

@@ -26,8 +26,10 @@ const PICK_SHOWN: usize = 18;
 
 pub struct BattleUi {
     pub open: bool,
-    /// "pick" (choosing the team) or "fight"
+    /// "hub" (the 3 modes: Explore, Ranked, Fight a friend), "pick" (choosing the team) or "fight"
     pub stage: &'static str,
+    /// the hub's clock (its previews move)
+    hub_t: f64,
     pub picks: Vec<(usize, &'static str)>,
     pub battle: Option<Battle>,
     /// the battle's clock (advanced by tick_battle), for the playback
@@ -140,6 +142,7 @@ impl BattleUi {
             bg: None,
             won: false,
             mode: "cpu",
+            hub_t: 0.0,
             online: None,
             received: Vec::new(),
             sent: Vec::new(),
@@ -209,7 +212,7 @@ impl Game {
         self.left_panel.close();
         self.right_panel.close();
         self.battle.open = true;
-        self.battle.stage = "pick";
+        self.battle.stage = "hub";
         self.battle.battle = None;
         let owned: Vec<(usize, &'static str)> = self.battle_choices();
         self.battle.picks.retain(|p| owned.contains(p));
@@ -218,7 +221,29 @@ impl Game {
         }
     }
 
+    /// From the hub: the team picker for a mode ("cpu", "online" or "ranked").
+    pub fn battle_mode(&mut self, mode: &'static str) {
+        self.battle.stage = "pick";
+        self.battle.mode = mode;
+        if mode == "online" {
+            self.refresh_battles(true);
+            self.refresh_friends(false);
+        }
+        if mode == "ranked" {
+            self.refresh_top(false);
+        }
+    }
+
+    /// Back to the hub (from the team picker).
+    pub fn battle_back_to_hub(&mut self) {
+        self.cancel_search();
+        self.battle.stage = "hub";
+    }
+
     pub fn close_battle(&mut self) {
+        if self.explore.open {
+            self.close_explore();
+        }
         self.cancel_search();
         self.battle.open = false;
         self.battle.battle = None;
@@ -402,6 +427,9 @@ impl Game {
     /// Advances the playback; the Game's tick calls it every frame.
     pub fn tick_battle(&mut self, dt: f64) {
         self.tick_battle_online();
+        if self.battle.open && self.battle.stage == "hub" {
+            self.battle.hub_t += dt;
+        }
         if !self.battle.open || self.battle.stage != "fight" {
             return;
         }
@@ -545,6 +573,15 @@ impl Game {
         if !self.battle.open {
             return false;
         }
+        if self.explore.open {
+            return self.handle_explore_key(ev);
+        }
+        if self.battle.stage == "hub" {
+            if ev.key == K::Escape {
+                self.close_battle();
+            }
+            return true;
+        }
         match ev.key {
             K::Return | K::KpEnter | K::Space => {
                 if self.battle.busy() {
@@ -555,7 +592,7 @@ impl Game {
             }
             K::Escape => {
                 if self.battle.stage == "pick" {
-                    self.close_battle();
+                    self.battle_back_to_hub();
                 } else if self.battle.menu == "fight" || (self.battle.menu == "switch" && !self.battle.battle.as_ref().is_some_and(|b| b.needs_switch())) {
                     self.battle.menu = "main";
                 }
@@ -567,6 +604,10 @@ impl Game {
 
     // ---------------------------------------------------------------- drawing
     pub fn draw_battle(&mut self, mouse_pos: (f64, f64)) {
+        if self.explore.open {
+            self.draw_explore(mouse_pos);
+            return;
+        }
         // the game isn't drawn under the battle (see draw_game_screen): a plain dark backdrop is enough, and cheap
         draw::rect(&mut self.canvas, Color::rgb(12, 13, 22), Rect::new(0, crate::config::TOPBAR_H, self.vw, VIRTUAL_H - crate::config::TOPBAR_H), 0, 0);
         // nothing behind the battle can be clicked
@@ -574,8 +615,126 @@ impl Game {
         self.register_button(Rect::new(0, 0, self.vw, VIRTUAL_H), Rc::new(|_: &mut Game| {}), None);
         if self.battle.stage == "fight" && self.battle.battle.is_some() {
             self.draw_battle_fight(mouse_pos);
+        } else if self.battle.stage == "hub" {
+            self.draw_battle_hub(mouse_pos);
         } else {
             self.draw_battle_pick(mouse_pos);
+        }
+    }
+
+    /// The hub: three big buttons, each with a live preview of its mode - Explore, Ranked, Fight a friend.
+    fn draw_battle_hub(&mut self, mouse_pos: (f64, f64)) {
+        let w = 1140.min(self.vw - 40);
+        let h = 660.min(VIRTUAL_H - crate::config::TOPBAR_H - 30);
+        let rect = Rect::with_center(w, h, (self.vw / 2, (VIRTUAL_H + crate::config::TOPBAR_H) / 2));
+        draw_panel(&mut self.canvas, rect, Some(panel()), 16, true, None);
+        let pad = 24;
+        let sb = self.f.small_b.clone();
+        let small = self.f.small.clone();
+        let title = self.f.big.render(&tr("Verity Battle"), WHITE);
+        self.canvas.blit(&title, rect.x + pad, rect.y + 18);
+        let sub = small.render(&tr("Pick a mode"), grey());
+        self.canvas.blit(&sub, rect.x + pad + 2, rect.y + 20 + title.h);
+        self.button(Rect::new(rect.right() - 48, rect.y + 20, 30, 30), "X", &sb, mouse_pos, panel_light(), BAD, WHITE, cb(|g| g.close_battle()), Bo::r(8));
+        let t = self.battle.hub_t;
+        let gap = 18;
+        let top = rect.y + 92;
+        let cw = (w - pad * 2 - gap * 2) / 3;
+        let ch = rect.bottom() - pad - top;
+        // your strongest verities (the arena previews show them)
+        let best: Vec<Shown> = self
+            .battle_choices()
+            .into_iter()
+            .take(2)
+            .map(|(pet, m)| Shown { pet, m, phase: self.state.phase(pet, m).min(3) })
+            .collect();
+        let mine = best.first().copied().unwrap_or(Shown { pet: 0, m: "normal", phase: 0 });
+        let theirs = best.get(1).copied().unwrap_or(Shown { pet: 13, m: "normal", phase: 1 });
+        let ex = self.state.explore.clone();
+        let (rank_name, rank_color) = tier_of(self.state.rank_rating);
+        let modes: [(&str, String, String, String, Color); 3] = [
+            ("explore", tr("Explore"), tr("Walk Steve through 3D worlds and catch Verity Pets. Equip them for money and luck boosts!"), tr!("Level %d  ·  %d pets", ex.level(), ex.pets.len() as i64), Color::rgb(90, 200, 110)),
+            ("ranked", tr("Ranked"), tr("Get matched with a player of your level. Win to climb from Bronze to Master."), tr!("%s  ·  %d rating", tr(rank_name), self.state.rank_rating), rank_color),
+            ("online", tr("Fight a Friend"), tr("Challenge a friend to a battle, or practice against the computer."), tr!("Battles won: %s", format_number(self.state.battles_won as f64)), Color::rgb(235, 110, 90)),
+        ];
+        for (i, (key, name, desc, info, color)) in modes.into_iter().enumerate() {
+            let r = Rect::new(rect.x + pad + i as i32 * (cw + gap), top, cw, ch);
+            let hover = r.collidepoint(mouse_pos);
+            let lift = if hover { -4 } else { 0 };
+            let r = Rect::new(r.x, r.y + lift, r.w, r.h);
+            draw::rect(&mut self.canvas, panel_light(), r, 0, 16);
+            // the preview: a little live 3D scene of the mode
+            let pv = Rect::new(r.x + 10, r.y + 10, r.w - 20, (r.h as f64 * 0.56) as i32);
+            let (lw, lh) = ((pv.w / 2).max(8) as usize, (pv.h / 2).max(8) as usize);
+            let img = match key {
+                "explore" => {
+                    let look = super::explore::SteveLook { shirt: ex.shirt, pants: ex.pants, hat: ex.hat };
+                    let eq = ex.equipped.iter().filter_map(|&k| ex.pets.get(k)).map(|p| Shown { pet: p.pet, m: "normal", phase: 0 }).collect();
+                    super::explore::explore_preview(look, eq, t, lw, lh)
+                }
+                _ => {
+                    // the arena: in Ranked they stare each other down, with a friend they trade blows
+                    let cycle = 3.2;
+                    let k = t % cycle;
+                    let t0 = t - k;
+                    let fight = key == "online";
+                    let side_hit = ((t / cycle) as i64 % 2) as usize;
+                    let st = Stage {
+                        t,
+                        shown: [Some(mine), Some(theirs)],
+                        send_t0: [-99.0; 2],
+                        lunge_t0: if fight { if side_hit == 0 { [t0 + 0.3, -99.0] } else { [-99.0, t0 + 0.3] } } else { [-99.0; 2] },
+                        lunge_special: [side_hit == 1; 2],
+                        hit_t0: if fight { if side_hit == 0 { [-99.0, t0 + 0.3 + STRIKE_ARRIVE] } else { [t0 + 0.3 + SPECIAL_ARRIVE, -99.0] } } else { [-99.0; 2] },
+                        hit_crit: [false; 2],
+                        heal_t0: [-99.0; 2],
+                        guard_t0: [-99.0; 2],
+                        faint_t0: [None; 2],
+                        transform_t0: [-99.0; 2],
+                        calm_t0: [-99.0; 2],
+                        boost_t0: [-99.0; 2],
+                        boost_color: [(255.0, 255.0, 255.0); 2],
+                        shot: Shot::Idle,
+                        shot_t0: -99.0,
+                        prev_shot: Shot::Idle,
+                    };
+                    draw_arena_3d(&st, lw, lh).0
+                }
+            };
+            let img = transform::scale(&img, pv.w, pv.h);
+            self.canvas.blit(&img, pv.x, pv.y);
+            draw::rect(&mut self.canvas, color, pv, 3, 12);
+            if key == "ranked" {
+                // the tier badge over the preview
+                let badge = self.f.med.render(&tr(rank_name), BLACK);
+                let b = Rect::new(pv.x + 12, pv.y + 12, badge.w + 24, badge.h + 10);
+                draw::rect(&mut self.canvas, rank_color, b, 0, 10);
+                self.canvas.blit(&badge, b.x + 12, b.y + 5);
+            }
+            // the name, what it is, a line about you
+            let nt = self.f.big.render(&name, WHITE);
+            self.canvas.blit(&nt, r.x + 18, pv.bottom() + 12);
+            let mut y = pv.bottom() + 16 + nt.h;
+            for line in wrap_text(&desc, &small, r.w - 36) {
+                let l = small.render(&line, grey());
+                self.canvas.blit(&l, r.x + 18, y);
+                y += l.h + 2;
+            }
+            let it = sb.render(&info, color);
+            self.canvas.blit(&it, r.x + 18, r.bottom() - 18 - it.h);
+            draw::rect(&mut self.canvas, if hover { color } else { panel_lighter() }, r, if hover { 4 } else { 2 }, 16);
+            let k: &'static str = key;
+            self.register_button(
+                r,
+                Rc::new(move |g: &mut Game| {
+                    if k == "explore" {
+                        g.open_explore();
+                    } else {
+                        g.battle_mode(k);
+                    }
+                }),
+                Some("click"),
+            );
         }
     }
 
@@ -588,8 +747,9 @@ impl Game {
         let sb = self.f.small_b.clone();
         let med = self.f.med.clone();
         let small = self.f.small.clone();
+        self.button(Rect::new(rect.x + pad, rect.y + 20, 40, 36), "<", &sb, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.battle_back_to_hub()), Bo::r(9));
         let title = self.f.big.render(&tr("Battle"), WHITE);
-        self.canvas.blit(&title, rect.x + pad, rect.y + 18);
+        self.canvas.blit(&title, rect.x + pad + 52, rect.y + 18);
         let sub = small.render(&tr!("Pick up to %d of your Verities. Monsters and rare mutations hit the hardest.", TEAM_SIZE as i64), grey());
         self.canvas.blit(&sub, rect.x + pad + 2, rect.y + 20 + title.h);
         self.button(Rect::new(rect.right() - 48, rect.y + 20, 30, 30), "X", &sb, mouse_pos, panel_light(), BAD, WHITE, cb(|g| g.close_battle()), Bo::r(8));

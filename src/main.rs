@@ -109,6 +109,10 @@ fn main() {
         online_test(&args[2]);
         return;
     }
+    if args.len() > 2 && args[1] == "--explorevideo" {
+        explore_video(&args[2]);
+        return;
+    }
     if args.len() > 2 && args[1] == "--teaservideo" {
         teaser_video(&args[2]);
         return;
@@ -471,6 +475,61 @@ fn teaser_video(dir: &str) {
         if i > 30 * 30 {
             break;
         }
+    }
+}
+
+/// v4.0: the Battle hub, then Explore - Steve chases and catches pets in a few worlds (30 fps frames in dir).
+fn explore_video(dir: &str) {
+    use core::explore::{VerityPet, xp_for_level};
+    use core::state::set_fake_time;
+    set_fake_time(Some(1_790_000_000.0));
+    let mut g = game::Game::headless(1422, 800);
+    g.settings.set_str("last_update_seen", game::tutorial::latest_update());
+    g.settings.set_bool("tutorial_done", true);
+    g.settings.set_bool(game::teaser::TEASER_SETTING, true);
+    g.start_slot(1);
+    for _ in 0..300 {
+        g.state.roll();
+    }
+    g.state.explore.xp = xp_for_level(21) - 40.0;
+    for (dim, r) in [(4, 0.01), (3, 0.6), (1, 0.4)] {
+        g.state.explore.add_pet(VerityPet::roll(dim, [r, 0.3, 0.8, r]));
+        let n = g.state.explore.pets.len() - 1;
+        g.state.explore.toggle_equip(n);
+    }
+    g.state.explore.hat = 3;
+    g.state.explore.shirt = 6;
+    let mut i = 0;
+    let mut frame = |g: &mut game::Game, m: (f64, f64)| {
+        g.tick(1.0 / 30.0);
+        g.draw(m);
+        g.apply_glow();
+        save_png(&g.canvas, &std::path::Path::new(dir).join(format!("frame_{:05}.png", i)));
+        i += 1;
+    };
+    // the hub, the mouse over Explore
+    g.open_battle();
+    for k in 0..75 {
+        let m = if k < 20 { (700.0, 600.0) } else { (330.0, 420.0) };
+        frame(&mut g, m);
+    }
+    g.open_explore();
+    let m = (-100.0, -100.0);
+    for (dim, secs) in [(0, 9.0), (1, 5.0), (3, 5.0), (4, 6.0)] {
+        if dim != 0 {
+            g.explore_travel(dim);
+        }
+        let n = (secs * 30.0) as i32;
+        for _ in 0..n {
+            if !g.explore_busy() {
+                g.explore_chase_nearest();
+            }
+            frame(&mut g, m);
+        }
+    }
+    g.explore.overlay = "wardrobe";
+    for _ in 0..60 {
+        frame(&mut g, m);
     }
 }
 
@@ -860,6 +919,59 @@ fn shots(dir: &str) {
         // a battle: the team picker, the start, the moves, an attack and the result
         g.close_overlays();
         g.open_battle();
+        g.tick_battle(1.3);
+        g.draw(m);
+        save(&g, "n_battle_hub");
+        // v4.0 Explore: every world, a walk, the wardrobe and the pets
+        {
+            use core::explore::{VerityPet, xp_for_level};
+            g.state.explore.xp = xp_for_level(21) + 30.0;
+            for (dim, r) in [(0, 0.2), (1, 0.6), (2, 0.4), (3, 0.9), (4, 0.01), (4, 0.5)] {
+                g.state.explore.add_pet(VerityPet::roll(dim, [r, 0.3, 0.8, r]));
+            }
+            g.state.explore.toggle_equip(4);
+            g.state.explore.toggle_equip(3);
+            g.state.explore.toggle_equip(1);
+            g.state.explore.hat = 3;
+            g.state.explore.shirt = 6;
+            g.open_explore();
+            for (dim, name) in [(0, "overworld"), (1, "nether"), (2, "end"), (3, "end_city"), (4, "emerald_city")] {
+                g.enter_world(dim);
+                g.tick_explore(0.4);
+                g.draw(m);
+                let t0 = std::time::Instant::now();
+                for _ in 0..10 {
+                    g.tick_explore(1.0 / 60.0);
+                    g.draw(m);
+                }
+                eprintln!("explore {} frame: {:.1} ms (average of 10)", name, t0.elapsed().as_secs_f64() * 100.0);
+                save(&g, &format!("n_explore_{}", name));
+            }
+            g.enter_world(0);
+            let p = g.explore.pos;
+            g.explore.target = Some((p.0 + 6.0, p.1 - 5.0));
+            for _ in 0..12 {
+                g.tick_explore(1.0 / 30.0);
+            }
+            g.draw(m);
+            save(&g, "n_explore_walk");
+            g.explore.overlay = "wardrobe";
+            g.draw(m);
+            save(&g, "n_explore_wardrobe");
+            g.explore.overlay = "pets";
+            g.draw(m);
+            save(&g, "n_explore_pets");
+            g.close_explore();
+            g.close_battle();
+            g.open_left_panel("bag");
+            g.bag_view = "verity_pets";
+            g.draw(m);
+            save(&g, "n_bag_verity_pets");
+            g.bag_view = "equipped";
+            g.left_panel.close();
+            g.open_battle();
+        }
+        g.battle_mode("cpu");
         g.draw(m);
         save(&g, "n_battle_pick");
         g.start_battle();

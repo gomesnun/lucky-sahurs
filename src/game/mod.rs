@@ -30,6 +30,7 @@ pub mod battle3d;
 pub mod monster3d;
 pub mod tutorial;
 pub mod teaser;
+pub mod explore;
 pub mod shop_panel;
 pub mod title_saves;
 pub mod trades;
@@ -297,6 +298,8 @@ pub struct Game {
     pub sell: sell_panel::SellUi,
     pub evolve: evolve_panel::EvolveUi,
     pub battle: battle_panel::BattleUi,
+    /// v4.0 Explore (game/explore.rs)
+    pub explore: explore::ExploreUi,
     pub titles: titles_panel::TitlesUi,
     /// v3.0.1: season resets (see season.rs)
     pub season: season::SeasonUi,
@@ -490,6 +493,7 @@ impl Game {
             sell: sell_panel::SellUi::new(),
             evolve: evolve_panel::EvolveUi::new(),
             battle: battle_panel::BattleUi::new(),
+            explore: explore::ExploreUi::new(),
             titles: titles_panel::TitlesUi::new(),
             season: Default::default(),
             text_input_on: true,
@@ -934,6 +938,7 @@ impl Game {
         }
         self.tick_sell(dt);
         self.tick_battle(dt);
+        self.tick_explore(dt);
         self.tick_teaser(dt);
         if self.rebirth_confirm {
             self.rebirth_confirm_timer -= dt;
@@ -1213,6 +1218,9 @@ impl Game {
         let clamp = |v: f64, m: f64| v.min(m).max(0.0);
         if self.ban_screen_active() || self.adm.menu_open {
             return false;
+        }
+        if self.explore_scroll(step) {
+            return true;
         }
         if self.adm.ban_open {
             if self.adm.list_rect.collidepoint(pos) {

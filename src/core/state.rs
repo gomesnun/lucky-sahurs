@@ -120,6 +120,8 @@ pub struct GameState {
     pub rank_rating: i64,
     pub rank_wins: i64,
     pub rank_losses: i64,
+    /// v4.0 Explore: level, Verity Pets, Steve's clothes (core/explore.rs)
+    pub explore: crate::core::explore::ExploreState,
     pub milestones_claimed: HashSet<String>,
     ms_bonus: HashMap<&'static str, f64>,
 
@@ -298,6 +300,7 @@ impl GameState {
             rank_rating: RANK_START,
             rank_wins: 0,
             rank_losses: 0,
+            explore: Default::default(),
             equipped: Vec::new(),
             avatar: None,
             title: None,
@@ -401,6 +404,7 @@ impl GameState {
             * event_mult("money")
             * self.potion_mult("money")
             * self.prestige_def().map_or(1.0, |p| p.money)
+            * self.explore.money_mult()
     }
 
     pub fn auto_unlocked(&self) -> bool {
@@ -791,7 +795,7 @@ impl GameState {
         // v2.9: a bit less (see LUCK_BONUS_SCALE). The global event, the die, the luck potion and the
         // Golden/Diamond/Rainbow Rolls are NOT here: they are "flat" luck (see flat_luck / pet_probs)
         // v3.0: the Prestige luck multiplies everything, at full strength
-        (1.0 + (m - 1.0) * LUCK_BONUS_SCALE) * self.prestige_def().map_or(1.0, |p| p.luck)
+        (1.0 + (m - 1.0) * LUCK_BONUS_SCALE) * self.prestige_def().map_or(1.0, |p| p.luck) * self.explore.luck_mult()
     }
 
     /// "Flat" luck (like Sol's RNG): admin event x equipped die x luck potion x the Golden/Diamond/Rainbow Roll
@@ -1739,6 +1743,9 @@ impl GameState {
         if self.rank_wins + self.rank_losses > 0 {
             d.insert("rank".into(), json!([self.rank_rating, self.rank_wins, self.rank_losses]));
         }
+        if !self.explore.is_empty() {
+            d.insert("explore".into(), self.explore.to_value());
+        }
         if !self.phases.is_empty() {
             // only written when there is one, so older games read the save exactly as before
             let phases: Map<String, Value> = self.phases.iter().map(|(k, v)| (k.clone(), json!(v))).collect();
@@ -1898,6 +1905,7 @@ impl GameState {
         self.rank_rating = rank.first().copied().unwrap_or(RANK_START).clamp(0, 9999);
         self.rank_wins = rank.get(1).copied().unwrap_or(0).max(0);
         self.rank_losses = rank.get(2).copied().unwrap_or(0).max(0);
+        self.explore = d.get("explore").map(crate::core::explore::ExploreState::from_value).unwrap_or_default();
         self.phases = IndexMap::new();
         if let Some(Value::Object(ph)) = d.get("phases") {
             for (k, v) in ph {

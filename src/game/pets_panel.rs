@@ -352,12 +352,16 @@ impl Game {
         let h = 38;
         let n_inv = self.state.owned.values().filter(|n| **n > 0).count() as i64;
         let n_pot: i64 = self.state.shop.potions.values().sum();
-        let tabs: [(&'static str, String, &'static str); 3] = [
+        let n_vp = self.state.explore.pets.len() as i64;
+        let tabs: [(&'static str, String, &'static str); 4] = [
             ("equipped", tr!("Equipped %d/%d", self.state.equipped.len() as i64, self.state.max_slots()), "bag"),
             ("inventory", tr!("Inventory (%d)", n_inv), "index"),
             ("potions", if n_pot > 0 { tr!("Potions (%d)", n_pot) } else { tr("Potions") }, "shop/potion_luck"),
+            // v4.0: the pets caught in Explore
+            ("verity_pets", tr!("Verity Pets (%d)", n_vp), "battle"),
         ];
-        let tab_w = 200.min((full.w - pad * 2 - 16) / 5);
+        let act_w = 170;
+        let tab_w = 190.min((full.w - pad * 2 - 2 * (act_w + 8) - 8 * 4) / 4);
         let mut x = full.x + pad;
         for (key, label, icon) in tabs {
             let on = self.bag_view == key;
@@ -375,9 +379,8 @@ impl Game {
             x += tab_w + 8;
         }
         // the equip buttons, on the right of the same row
-        let act_w = 190;
         let mut rx = full.right() - pad - act_w;
-        if self.state.auto_equip_unlocked() {
+        if self.state.auto_equip_unlocked() && self.bag_view != "verity_pets" {
             let on = self.state.auto_equip_best_on;
             self.button(
                 Rect::new(rx, y, act_w, h),
@@ -397,7 +400,7 @@ impl Game {
             );
             rx -= act_w + 8;
         }
-        if rx >= x {
+        if rx >= x && self.bag_view != "verity_pets" {
             self.button(
                 Rect::new(rx, y, act_w, h),
                 &tr("Equip Best"),
@@ -424,6 +427,7 @@ impl Game {
         self.push_clip(content);
         let content_h = match self.bag_view {
             "potions" => self.draw_bag_potions(full, content, scroll, mouse_pos) as f64,
+            "verity_pets" => self.draw_verity_pets(Rect::new(full.x + 8, content.y, full.w - 16, content.h), scroll, mouse_pos, true),
             "inventory" => self.draw_bag_inventory(full, content, scroll, mouse_pos),
             _ => self.draw_bag_equipped(full, content, scroll, mouse_pos, pad),
         };
