@@ -94,6 +94,9 @@ pub struct BattleUi {
     pub ranked: RankedUi,
     /// how much a ranked battle moved my rating
     rank_delta: Option<i64>,
+    /// a wild Verity Pet encounter from Explore (game/explore.rs): the index into explore.wild being fought.
+    /// Win it to catch the pet; None for every other kind of battle.
+    pub wild: Option<usize>,
 }
 
 impl BattleUi {
@@ -153,6 +156,7 @@ impl BattleUi {
             ch_action: None,
             ranked: RankedUi::default(),
             rank_delta: None,
+            wild: None,
         }
     }
 
@@ -406,11 +410,54 @@ impl Game {
             self.leave_online_battle();
             return;
         }
+        if self.battle.wild.is_some() {
+            // running from a wild Verity Pet: it gets away, straight back to Explore (no team picker to go to)
+            self.battle.wild = None;
+            self.battle.battle = None;
+            self.battle.queue.clear();
+            self.battle.cur = None;
+            self.show_toast(&tr("You ran away safely."), 1.8);
+            return;
+        }
         self.battle.stage = "pick";
         self.battle.battle = None;
         self.battle.queue.clear();
         self.battle.cur = None;
         self.show_toast(&tr("You ran away safely."), 1.8);
+    }
+
+    /// Explore (game/explore.rs): a wild Verity Pet fights back. Win to catch it - explore_catch calls this
+    /// instead of catching it outright, whenever you have at least one Verity to send out.
+    pub fn start_wild_battle(&mut self, wild_idx: usize) {
+        if self.battle.wild.is_some() {
+            return;
+        }
+        let Some(w) = self.explore_wild_pet(wild_idx) else { return };
+        let phase = match w.stars {
+            1 | 2 => 0,
+            3 | 4 => 1,
+            _ => 2,
+        };
+        let wild_fighter = Fighter::new(w.pet, "normal", phase);
+        let team: Vec<Fighter> = self.battle_choices().into_iter().take(TEAM_SIZE).map(|(p, m)| self.fighter_for(p, m)).collect();
+        if team.is_empty() {
+            return;
+        }
+        self.battle.seed = self.battle.seed.wrapping_mul(6364136223846793005).wrapping_add((crate::core::state::now_ts() * 1000.0) as u64 | 1);
+        let (b, evs) = Battle::new_match([team, vec![wild_fighter]], self.battle.seed, 0, tr("Wild"), true);
+        self.battle.online = None;
+        self.battle.open = true;
+        self.battle.wild = Some(wild_idx);
+        self.begin_battle_playback(b, evs);
+    }
+
+    /// Closes the wild encounter's result screen (Continue): back to walking around in Explore.
+    pub fn battle_wild_continue(&mut self) {
+        self.battle.wild = None;
+        self.battle.battle = None;
+        self.battle.reward = None;
+        self.battle.queue.clear();
+        self.battle.cur = None;
     }
 
     /// Skips the text on screen (click / Enter).
@@ -546,21 +593,30 @@ impl Game {
             ui.shot = Shot::Idle;
             ui.shot_t0 = ui.t;
         }
-        // the battle is over and everything was shown: pay the win once
+        // the battle is over and everything was shown: pay the win once (or, in Explore, catch the pet)
         if !self.battle.busy() && self.battle.reward.is_none() {
             let winner = self.battle.battle.as_ref().and_then(|b| b.winner.map(|w| w == b.me));
             if let Some(won) = winner {
                 self.battle.won = won;
-                let ranked = self.battle.online.as_ref().is_some_and(|om| om.ranked);
-                self.battle.rank_delta = self.apply_ranked_result(won);
-                let reward = if won { (self.state.income_per_second() * if ranked { 600.0 } else { 300.0 }).max(100.0).round() } else { 0.0 };
-                if reward > 0.0 {
-                    self.state.coins += reward;
-                    self.state.total_coins_earned += reward;
-                    self.state.battles_won += 1;
-                    self.state.dirty = true;
+                if let Some(wild_idx) = self.battle.wild {
+                    self.battle.reward = Some(0.0);
+                    if won {
+                        self.explore_finish_catch(wild_idx);
+                    } else {
+                        self.show_toast(&tr("It got away..."), 1.8);
+                    }
+                } else {
+                    let ranked = self.battle.online.as_ref().is_some_and(|om| om.ranked);
+                    self.battle.rank_delta = self.apply_ranked_result(won);
+                    let reward = if won { (self.state.income_per_second() * if ranked { 600.0 } else { 300.0 }).max(100.0).round() } else { 0.0 };
+                    if reward > 0.0 {
+                        self.state.coins += reward;
+                        self.state.total_coins_earned += reward;
+                        self.state.battles_won += 1;
+                        self.state.dirty = true;
+                    }
+                    self.battle.reward = Some(reward);
                 }
-                self.battle.reward = Some(reward);
             } else if self.battle.battle.as_ref().is_some_and(|b| b.needs_switch()) {
                 self.battle.menu = "switch";
             }
@@ -573,7 +629,7 @@ impl Game {
         if !self.battle.open {
             return false;
         }
-        if self.explore.open {
+        if self.explore.open && self.battle.wild.is_none() {
             return self.handle_explore_key(ev);
         }
         if self.battle.stage == "hub" {
@@ -604,7 +660,7 @@ impl Game {
 
     // ---------------------------------------------------------------- drawing
     pub fn draw_battle(&mut self, mouse_pos: (f64, f64)) {
-        if self.explore.open {
+        if self.explore.open && self.battle.wild.is_none() {
             self.draw_explore(mouse_pos);
             return;
         }
@@ -1193,6 +1249,23 @@ impl Game {
 
     fn draw_battle_result(&mut self, arena: Rect, reward: f64, mouse_pos: (f64, f64)) {
         let won = self.battle.won;
+        if self.battle.wild.is_some() {
+            let veil = dim_overlay(arena.w, arena.h, 150);
+            self.canvas.blit(&veil, arena.x, arena.y);
+            let r = Rect::with_center(420, 200, arena.center());
+            draw_panel(&mut self.canvas, r, Some(panel()), 16, true, None);
+            let title_text = if won { tr("Caught it!") } else { tr("It got away...") };
+            let title = self.f.big.render(&title_text, if won { accent() } else { BAD });
+            let scale = 1.3;
+            let title = transform::smoothscale(&title, (title.w as f64 * scale) as i32, (title.h as f64 * scale) as i32);
+            self.canvas.blit(&title, r.centerx() - title.w / 2, r.y + 26);
+            let msg = if won { tr("Check your Verity Pets in the Bag.") } else { tr("Train your Verities and try again!") };
+            let t = self.f.med.render(&msg, if won { GOOD } else { grey() });
+            self.canvas.blit(&t, r.centerx() - t.w / 2, r.y + 40 + title.h);
+            let back = Rect::new(r.x + 20, r.bottom() - 66, r.w - 40, 46);
+            self.button(back, &tr("Continue"), &self.f.small_b.clone(), mouse_pos, accent(), accent_hover(), BLACK, cb(|g| g.battle_wild_continue()), Bo::r(10));
+            return;
+        }
         let friend = self.battle.online.as_ref().map(|om| om.friend.clone());
         let veil = dim_overlay(arena.w, arena.h, 150);
         self.canvas.blit(&veil, arena.x, arena.y);

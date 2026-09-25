@@ -961,6 +961,33 @@ fn shots(dir: &str) {
             g.explore.overlay = "pets";
             g.draw(m);
             save(&g, "n_explore_pets");
+            g.explore.overlay = "";
+            // E on a wild pet: it fights back now, instead of an instant catch
+            g.state.owned.insert("8_normal".into(), 1);
+            game::explore::debug_place_wild(&mut g, core::explore::VerityPet::roll(0, [0.9, 0.05, 0.0, 0.0]));
+            g.explore_catch(0);
+            g.draw(m);
+            save(&g, "n_explore_wild_battle");
+            let mut turns = 0;
+            while g.battle.battle.is_some() {
+                g.tick_battle(0.05);
+                if !g.battle.busy() {
+                    if g.battle.battle.as_ref().is_some_and(|b| b.winner.is_some()) {
+                        break;
+                    }
+                    g.battle_use(core::battle::Move::Strike);
+                    turns += 1;
+                    if turns > 40 {
+                        break;
+                    }
+                }
+            }
+            for _ in 0..40 {
+                g.tick_battle(0.1);
+                g.draw(m);
+            }
+            save(&g, "n_explore_wild_caught");
+            g.battle_wild_continue();
             g.close_explore();
             g.close_battle();
             g.open_left_panel("bag");

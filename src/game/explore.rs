@@ -1093,7 +1093,8 @@ impl Game {
 
     // ---------------------------------------------------------------- every frame
     pub fn tick_explore(&mut self, dt: f64) {
-        if !self.explore.open {
+        if !self.explore.open || self.battle.wild.is_some() {
+            // fighting a wild Verity Pet: Steve, the other pets and the timers all pause until it's resolved
             return;
         }
         self.explore.t += dt;
@@ -1230,23 +1231,8 @@ impl Game {
             }
         }
         for i in done.into_iter().rev() {
-            let p = self.explore.wild.remove(i);
-            self.explore.respawn.push(t + 3.0 + rand_random() * 4.0);
-            let name = rarities()[p.pet.pet].pet;
-            let what = if p.pet.luck { tr("Luck") } else { tr("Money") };
-            let gain = catch_xp(&p.pet);
-            if self.state.explore.add_pet(p.pet.clone()) {
-                xp += gain;
-                self.show_toast(&tr!("Caught %s %s  +%s%% %s", name, stars(p.pet.stars), format_number(p.pet.boost), what), 2.4);
-                let at = v3(self.explore.pos.0, self.explore.y + 2.4, self.explore.pos.1);
-                self.explore.pops.push((tr!("+%d XP", gain.round() as i64), at, t, Color::rgb(140, 255, 150)));
-                self.play("equip", 0.0);
-            } else {
-                self.show_toast(&tr!("Your Verity Pets are full (%d). Release some in the Bag.", MAX_PETS as i64), 2.6);
-            }
-            if let Some(tp) = self.explore.target_pet {
-                self.explore.target_pet = if tp == i { None } else if tp > i { Some(tp - 1) } else { Some(tp) };
-            }
+            // explore_finish_catch awards its own XP (also used by the wild-battle win path in battle_panel.rs)
+            self.explore_finish_catch(i);
         }
         // new pets show up (away from Steve)
         let dim = self.explore.dim;
@@ -1284,6 +1270,11 @@ impl Game {
     }
 
     /// The nearest wild pet in reach, if any.
+    /// The Verity Pet at explore.wild[i] (its `Wild` wrapper is private to this module) - for start_wild_battle.
+    pub fn explore_wild_pet(&self, i: usize) -> Option<&VerityPet> {
+        self.explore.wild.get(i).map(|w| &w.pet)
+    }
+
     fn explore_nearest(&self) -> Option<usize> {
         let e = &self.explore;
         e.wild
@@ -1296,18 +1287,55 @@ impl Game {
             .map(|(i, _)| i)
     }
 
+    /// Actually gives you a wild pet - a win in the fight it starts, or (with no Verities to fight with yet) an
+    /// outright catch - removes it from the world, adds it to your Verity Pets, and gives XP. None if your Verity
+    /// Pets were already full (the pet still gets away either way).
+    pub fn explore_finish_catch(&mut self, i: usize) -> Option<f64> {
+        if i >= self.explore.wild.len() {
+            return None;
+        }
+        let t = self.explore.t;
+        let p = self.explore.wild.remove(i);
+        self.explore.respawn.push(t + 3.0 + rand_random() * 4.0);
+        if let Some(tp) = self.explore.target_pet {
+            self.explore.target_pet = if tp == i { None } else if tp > i { Some(tp - 1) } else { Some(tp) };
+        }
+        let name = rarities()[p.pet.pet].pet;
+        let what = if p.pet.luck { tr("Luck") } else { tr("Money") };
+        let gain = catch_xp(&p.pet);
+        if self.state.explore.add_pet(p.pet.clone()) {
+            self.show_toast(&tr!("Caught %s %s  +%s%% %s", name, stars(p.pet.stars), format_number(p.pet.boost), what), 2.4);
+            let at = v3(self.explore.pos.0, self.explore.y + 2.4, self.explore.pos.1);
+            self.explore.pops.push((tr!("+%d XP", gain.round() as i64), at, t, Color::rgb(140, 255, 150)));
+            self.play("equip", 0.0);
+            self.explore_add_xp(gain);
+            Some(gain)
+        } else {
+            self.show_toast(&tr!("Your Verity Pets are full (%d). Release some in the Bag.", MAX_PETS as i64), 2.6);
+            None
+        }
+    }
+
+    /// E / the Catch! button / clicking a pet in reach: with at least one Verity to send out, it fights back -
+    /// win the battle to catch it. Brand new players (no Verities at all yet) just catch it outright.
     pub fn explore_catch(&mut self, i: usize) {
         if self.state.explore.pets.len() >= MAX_PETS {
             self.show_toast(&tr!("Your Verity Pets are full (%d). Release some in the Bag.", MAX_PETS as i64), 2.6);
             return;
         }
-        let t = self.explore.t;
-        if let Some(p) = self.explore.wild.get_mut(i) {
-            if p.caught.is_none() {
-                p.caught = Some(t);
-                self.play("click", 0.0);
-            }
+        let Some(p) = self.explore.wild.get(i) else { return };
+        if p.caught.is_some() {
+            return;
         }
+        if self.battle_choices().is_empty() {
+            // nothing to fight with yet: catch it outright, like before
+            if let Some(p) = self.explore.wild.get_mut(i) {
+                p.caught = Some(self.explore.t);
+            }
+            self.play("click", 0.0);
+            return;
+        }
+        self.start_wild_battle(i);
     }
 
     fn explore_catch_nearest(&mut self) {
@@ -1953,6 +1981,12 @@ fn steve_portrait(look: &SteveLook, t: f64, w: usize, h: usize) -> Surface {
     fr.to_surface()
 }
 
+/// --shots / debugging only: puts one wild pet right at Steve's feet (`Wild` is private to this module).
+pub fn debug_place_wild(g: &mut Game, pet: VerityPet) {
+    let at = g.explore.pos;
+    g.explore.wild = vec![Wild { pet, pos: at, to: at, think: 99.0, seed: 0.0, caught: None }];
+}
+
 /// A still of Explore for the Battle hub's button: Steve and his pets in the Overworld.
 pub fn explore_preview(look: SteveLook, equipped: Vec<Shown>, t: f64, w: usize, h: usize) -> Surface {
     let wd = world(0);
@@ -1980,5 +2014,47 @@ mod tests {
             assert!(w.reach[col(N / 2, N / 2)]);
             assert!(!w.faces.is_empty());
         }
+    }
+
+    /// E (or the Catch! button) on a pet you can fight starts a battle - not an instant catch - and winning it is
+    /// what actually puts the pet in your Verity Pets.
+    #[test]
+    fn wild_battle_catches_on_win() {
+        let mut g = Game::headless(1200, 700);
+        // a high-tier team so the fight is a lopsided, quick win regardless of RNG
+        g.state.owned.insert("8_normal".into(), 1);
+        g.open_explore();
+        assert!(g.explore.open);
+        let at = g.explore.pos;
+        g.explore.wild = vec![Wild { pet: VerityPet::roll(0, [0.9, 0.05, 0.0, 0.0]), pos: at, to: at, think: 99.0, seed: 0.0, caught: None }];
+        let caught_pet = g.explore.wild[0].pet.pet;
+        g.explore_catch(0);
+        assert!(g.battle.wild.is_some(), "pressing catch with a team to fight with should start a battle, not an instant catch");
+        assert!(g.battle.battle.is_some());
+        assert!(g.explore.open, "Explore stays open (paused) behind the fight");
+        // the world freezes while the fight is on
+        let pos_before = g.explore.pos;
+        g.tick_explore(1.0);
+        assert_eq!(g.explore.pos, pos_before);
+        // play it out with Strike (never misses) until there's a winner
+        let mut turns = 0;
+        while g.battle.battle.as_ref().is_some_and(|b| b.winner.is_none()) {
+            g.tick_battle(0.05);
+            if !g.battle.busy() {
+                g.battle_use(crate::core::battle::Move::Strike);
+                turns += 1;
+                assert!(turns < 40, "the fight never resolved");
+            }
+        }
+        for _ in 0..300 {
+            // drain the rest of the playback (the faint, the result screen's reward block)
+            g.tick_battle(0.1);
+        }
+        assert_eq!(g.state.explore.pets.len(), 1);
+        assert_eq!(g.state.explore.pets[0].pet, caught_pet);
+        // Continue: back to walking, no battle state left over
+        g.battle_wild_continue();
+        assert!(g.battle.wild.is_none());
+        assert!(g.explore.open);
     }
 }
