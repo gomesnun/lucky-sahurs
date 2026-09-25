@@ -5,6 +5,8 @@
 use super::base::Bo;
 use super::{Game, KeyEv, cb};
 use crate::config::VIRTUAL_H;
+use super::battle_online::{OnlineMatch, PATIENCE, letter_of};
+use crate::online::firebase::BattleDoc;
 use super::battle3d::{SEND_FALL, SPECIAL_ARRIVE, STRIKE_ARRIVE, Shot, Shown, Stage, draw_arena_3d};
 use crate::core::battle::{Action, Battle, Ev, Fighter, MOVES, Move, TEAM_SIZE, move_info, move_name, rival_team};
 use crate::core::data::{PHASES, is_mutation, mut_key, rarities};
@@ -61,6 +63,21 @@ pub struct BattleUi {
     seed: u64,
     /// the arena background, scaled to the arena (w, h, image)
     bg: Option<(i32, i32, crate::gfx::Surf)>,
+    /// whether I won the battle that just ended
+    won: bool,
+    /// "cpu" (against the computer) or "online" (against friends)
+    pub mode: &'static str,
+    /// the online battle being played (game/battle_online.rs)
+    pub online: Option<OnlineMatch>,
+    /// challenges I got / sent that are still waiting
+    pub received: Vec<BattleDoc>,
+    pub sent: Vec<BattleDoc>,
+    pub ch_loading: bool,
+    pub ch_loaded: bool,
+    pub ch_next: f64,
+    pub ch_msg: Option<(String, Color)>,
+    /// a challenge being sent / accepted / dropped (its uid or id)
+    pub ch_action: Option<String>,
 }
 
 impl BattleUi {
@@ -98,6 +115,16 @@ impl BattleUi {
             hover_move: None,
             seed: 1,
             bg: None,
+            won: false,
+            mode: "cpu",
+            online: None,
+            received: Vec::new(),
+            sent: Vec::new(),
+            ch_loading: false,
+            ch_loaded: false,
+            ch_next: 0.0,
+            ch_msg: None,
+            ch_action: None,
         }
     }
 
@@ -206,6 +233,12 @@ impl Game {
         self.battle.seed = self.battle.seed.wrapping_mul(6364136223846793005).wrapping_add((crate::core::state::now_ts() * 1000.0) as u64 | 1);
         let rival = rival_team(&team, self.battle.seed);
         let (b, evs) = Battle::new(team, rival, self.battle.seed);
+        self.battle.online = None;
+        self.begin_battle_playback(b, evs);
+    }
+
+    /// Shows a new battle from its first events.
+    pub fn begin_battle_playback(&mut self, b: Battle, evs: Vec<Ev>) {
         let ui = &mut self.battle;
         ui.battle = Some(b);
         ui.stage = "fight";
@@ -219,7 +252,7 @@ impl Game {
         ui.next_start = ui.t;
     }
 
-    fn battle_push(&mut self, evs: Vec<Ev>) {
+    pub fn battle_push(&mut self, evs: Vec<Ev>) {
         if !self.battle.busy() {
             self.battle.next_start = self.battle.t;
         }
@@ -233,7 +266,11 @@ impl Game {
             return;
         }
         let Some(b) = self.battle.battle.as_mut() else { return };
-        if !b.fighter(0).can_use(mv) {
+        if !b.fighter(b.me).can_use(mv) {
+            return;
+        }
+        if self.battle.online.is_some() {
+            self.online_send(letter_of(mv));
             return;
         }
         let evs = b.turn(Action::Use(mv));
@@ -245,6 +282,12 @@ impl Game {
             return;
         }
         let Some(b) = self.battle.battle.as_mut() else { return };
+        if self.battle.online.is_some() {
+            if b.can_switch_to(b.me, idx) && idx < 10 {
+                self.online_send(char::from(b'0' + idx as u8));
+            }
+            return;
+        }
         let evs = if b.needs_switch() { b.send_out(idx) } else if b.can_switch_to(0, idx) { b.turn(Action::Switch(idx)) } else { Vec::new() };
         if !evs.is_empty() {
             self.battle_push(evs);
@@ -252,6 +295,10 @@ impl Game {
     }
 
     pub fn battle_run(&mut self) {
+        if self.battle.online.is_some() {
+            self.leave_online_battle();
+            return;
+        }
         self.battle.stage = "pick";
         self.battle.battle = None;
         self.battle.queue.clear();
@@ -272,6 +319,7 @@ impl Game {
 
     /// Advances the playback; the Game's tick calls it every frame.
     pub fn tick_battle(&mut self, dt: f64) {
+        self.tick_battle_online();
         if !self.battle.open || self.battle.stage != "fight" {
             return;
         }
@@ -356,9 +404,10 @@ impl Game {
         }
         // the battle is over and everything was shown: pay the win once
         if !self.battle.busy() && self.battle.reward.is_none() {
-            let winner = self.battle.battle.as_ref().and_then(|b| b.winner);
-            if let Some(w) = winner {
-                let reward = if w == 0 { (self.state.income_per_second() * 300.0).max(100.0).round() } else { 0.0 };
+            let winner = self.battle.battle.as_ref().and_then(|b| b.winner.map(|w| w == b.me));
+            if let Some(won) = winner {
+                self.battle.won = won;
+                let reward = if won { (self.state.income_per_second() * 300.0).max(100.0).round() } else { 0.0 };
                 if reward > 0.0 {
                     self.state.coins += reward;
                     self.state.total_coins_earned += reward;
@@ -426,9 +475,23 @@ impl Game {
         let sub = small.render(&tr!("Pick up to %d of your Verities. Monsters and rare mutations hit the hardest.", TEAM_SIZE as i64), grey());
         self.canvas.blit(&sub, rect.x + pad + 2, rect.y + 20 + title.h);
         self.button(Rect::new(rect.right() - 48, rect.y + 20, 30, 30), "X", &sb, mouse_pos, panel_light(), BAD, WHITE, cb(|g| g.close_battle()), Bo::r(8));
+        // vs Computer / vs Friends
+        let online = self.battle.mode == "online";
+        for (i, (key, label)) in [("cpu", tr("vs Computer")), ("online", tr("vs Friends"))].iter().enumerate() {
+            let r = Rect::new(rect.right() - 60 - 2 * 160 + i as i32 * 160, rect.y + 20, 150, 34);
+            let active = self.battle.mode == *key;
+            let k: &'static str = key;
+            self.button(r, label, &sb, mouse_pos, if active { accent() } else { panel_light() }, if active { accent() } else { panel_lighter() }, if active { BLACK } else { WHITE }, cb(move |g| {
+                g.battle.mode = k;
+                if k == "online" {
+                    g.refresh_battles(true);
+                    g.refresh_friends(false);
+                }
+            }), Bo::r(9));
+        }
         if self.state.battles_won > 0 {
             let t = self.f.tiny_b.render(&tr!("Battles won: %s", format_number(self.state.battles_won as f64)), accent());
-            self.canvas.blit(&t, rect.right() - 60 - t.w, rect.y + 28);
+            self.canvas.blit(&t, rect.right() - 60 - t.w, rect.y + 60);
         }
 
         // ---- your team (click one to take it out)
@@ -458,7 +521,12 @@ impl Game {
         let bw = rect.right() - pad - bx;
         let can_fight = !self.battle.picks.is_empty();
         self.button(Rect::new(bx, ty + 24, bw, 46), &tr("Auto pick best"), &med, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.battle_auto_pick()), Bo::r(10));
-        self.button(Rect::new(bx, ty + 24 + 56, bw, 56), &tr("Fight!"), &self.f.big.clone(), mouse_pos, BAD, Color::rgb(250, 110, 110), WHITE, if can_fight { cb(|g| g.start_battle()) } else { None }, Bo::r(12).enabled(can_fight).icon("battle"));
+        if online {
+            let hint = small.render(&tr("Pick your team, then challenge a friend on the right."), grey());
+            self.canvas.blit(&hint, bx, ty + 24 + 56 + 16);
+        } else {
+            self.button(Rect::new(bx, ty + 24 + 56, bw, 56), &tr("Fight!"), &self.f.big.clone(), mouse_pos, BAD, Color::rgb(250, 110, 110), WHITE, if can_fight { cb(|g| g.start_battle()) } else { None }, Bo::r(12).enabled(can_fight).icon("battle"));
+        }
 
         // ---- your verities, the strongest first
         let gy = ty + 24 + slot + 22;
@@ -470,9 +538,15 @@ impl Game {
             self.canvas.blit(&t, rect.x + pad, gy + 30);
             return;
         }
-        let cols = 6;
+        // online: the grid makes room for the friends / challenges column
+        let side_w = if online { 330 } else { 0 };
+        if online {
+            let col = Rect::new(rect.right() - pad - side_w, gy, side_w, rect.bottom() - pad - gy);
+            self.draw_battle_friends(col, mouse_pos);
+        }
+        let cols = if online { 4 } else { 6 };
         let gap = 10;
-        let card_w = (w - pad * 2 - gap * (cols - 1)) / cols;
+        let card_w = (w - pad * 2 - side_w - if online { 16 } else { 0 } - gap * (cols - 1)) / cols;
         let card_h = ((rect.bottom() - pad - (gy + 24) - gap * 2) / 3).min(card_w + 30);
         for (n, (pet, m)) in choices.iter().take(PICK_SHOWN).enumerate() {
             let (pet, m) = (*pet, *m);
@@ -518,26 +592,39 @@ impl Game {
     fn draw_battle_arena(&mut self, arena: Rect) {
         let Some(b) = self.battle.battle.as_ref() else { return };
         let ui = &self.battle;
-        let shown = [0usize, 1].map(|s| {
+        // the arena always shows MY verity near (its side 0): d() turns a battle side into an arena side
+        let me = b.me;
+        let d = move |s: usize| if me == 0 { s } else { 1 - s };
+        let sw = |a: [f64; 2]| [a[d(0)], a[d(1)]];
+        let shown = [d(0), d(1)].map(|s| {
             ui.shown[s].map(|i| {
                 let f = &b.teams[s][i];
                 Shown { pet: f.pet, m: f.m, phase: f.phase }
             })
         });
+        let shot = |sh: Shot| match sh {
+            Shot::Idle => Shot::Idle,
+            Shot::SendOut(s) => Shot::SendOut(d(s)),
+            Shot::Attack(s, sp) => Shot::Attack(d(s), sp),
+            Shot::Impact(s) => Shot::Impact(d(s)),
+            Shot::Guard(s) => Shot::Guard(d(s)),
+            Shot::Heal(s) => Shot::Heal(d(s)),
+            Shot::Faint(s) => Shot::Faint(d(s)),
+        };
         let st = Stage {
             t: ui.t,
             shown,
-            send_t0: ui.send_t0,
-            lunge_t0: ui.lunge_t0,
-            lunge_special: ui.lunge_special,
-            hit_t0: ui.hit_t0,
-            hit_crit: ui.hit_crit,
-            heal_t0: ui.heal_t0,
-            guard_t0: ui.guard_t0,
-            faint_t0: ui.faint_t0,
-            shot: ui.shot,
+            send_t0: sw(ui.send_t0),
+            lunge_t0: sw(ui.lunge_t0),
+            lunge_special: [ui.lunge_special[d(0)], ui.lunge_special[d(1)]],
+            hit_t0: sw(ui.hit_t0),
+            hit_crit: [ui.hit_crit[d(0)], ui.hit_crit[d(1)]],
+            heal_t0: sw(ui.heal_t0),
+            guard_t0: sw(ui.guard_t0),
+            faint_t0: [ui.faint_t0[d(0)], ui.faint_t0[d(1)]],
+            shot: shot(ui.shot),
             shot_t0: ui.shot_t0,
-            prev_shot: ui.prev_shot,
+            prev_shot: shot(ui.prev_shot),
         };
         // the 3D arena is drawn at half size and scaled up without smoothing (crisp, blocky pixels)
         let (lw, lh) = ((arena.w / 2).max(8) as usize, (arena.h / 2).max(8) as usize);
@@ -559,7 +646,7 @@ impl Game {
         let big_font = self.f.big.clone();
         for side in 0..2 {
             let d = ui.t - ui.dmg_t0[side];
-            let (Some((hx, hy)), true) = (marks.head[side], (0.0..1.2).contains(&d) && ui.last_dmg[side] > 0) else { continue };
+            let (Some((hx, hy)), true) = (marks.head[if me == 0 { side } else { 1 - side }], (0.0..1.2).contains(&d) && ui.last_dmg[side] > 0) else { continue };
             let crit = ui.hit_crit[side];
             let txt = format!("-{}", ui.last_dmg[side]);
             let col = if crit { Color::rgb(255, 220, 60) } else { Color::rgb(255, 90, 70) };
@@ -580,10 +667,12 @@ impl Game {
         let ui = &self.battle;
         let Some(b) = ui.battle.as_ref() else { return };
         let boxes = [Rect::new(arena.right() - 24 - 360, arena.bottom() - 24 - 104, 360, 104), Rect::new(arena.x + 24, arena.y + 24, 340, 88)];
+        let me = b.me;
         let infos: Vec<(usize, Fighter, f64, Vec<Fighter>)> =
             [1usize, 0].iter().filter_map(|&side| ui.shown[side].map(|idx| (side, b.teams[side][idx].clone(), ui.shown_hp(side), b.teams[side].clone()))).collect();
         for (side, f, hp, team) in infos {
-            self.draw_battle_namebox(boxes[side], &f, hp, side == 0, &team);
+            let mine = side == me;
+            self.draw_battle_namebox(boxes[if mine { 0 } else { 1 }], &f, hp, mine, &team);
         }
     }
 
@@ -624,12 +713,14 @@ impl Game {
 
     fn draw_battle_controls(&mut self, area: Rect, mouse_pos: (f64, f64)) {
         let Some(b) = self.battle.battle.as_ref() else { return };
-        let me = b.fighter(0).clone();
-        let team = b.teams[0].clone();
-        let active = b.active[0];
+        let me = b.fighter(b.me).clone();
+        let team = b.teams[b.me].clone();
+        let active = b.active[b.me];
         let forced = b.needs_switch();
         let over = b.winner.is_some();
-        let busy = self.battle.busy();
+        // online: nothing to choose while it's the friend's move
+        let waiting = self.battle.online.as_ref().map(|om| (om.friend.clone(), om.gone, crate::core::state::now_ts() - om.waiting_since));
+        let busy = self.battle.busy() || (waiting.is_some() && !over && !self.online_my_turn());
         // the text box
         let menu_w = 420;
         let text_box = Rect::new(area.x, area.y, area.w - menu_w - 12, area.h);
@@ -648,6 +739,9 @@ impl Game {
             tr("Choose your next Verity!")
         } else if !busy && !over && self.battle.menu == "main" {
             tr!("What will %s do?", me.name())
+        } else if let (Some((friend, gone, _)), false, false) = (&waiting, self.battle.busy(), over) {
+            let dots = ".".repeat(1 + (crate::core::state::now_ts() * 2.0) as usize % 3);
+            if *gone { tr!("%s left the battle.", friend.clone()) } else { format!("{}{}", tr!("Waiting for %s", friend.clone()), dots) }
         } else {
             self.battle.text.clone()
         };
@@ -657,7 +751,7 @@ impl Game {
             self.canvas.blit(&t, text_box.x + 22, y);
             y += t.h + 4;
         }
-        if busy {
+        if self.battle.busy() {
             self.register_button(text_box, Rc::new(|g: &mut Game| g.battle_skip()), None);
             let hint = tiny.render(&tr("click to skip"), grey_dim());
             self.canvas.blit(&hint, text_box.right() - 16 - hint.w, text_box.bottom() - 14 - hint.h);
@@ -665,6 +759,13 @@ impl Game {
         // the menu
         let menu = Rect::new(text_box.right() + 12, area.y, menu_w, area.h);
         draw_panel(&mut self.canvas, menu, Some(Color::rgb(34, 38, 56)), 12, false, None);
+        // online, waiting too long for the friend (or they left): a way out
+        if let (Some((_, gone, waited)), false, false) = (&waiting, self.battle.busy(), over) {
+            if *gone || *waited > PATIENCE {
+                let r = Rect::with_center(menu.w - 60, 50, menu.center());
+                self.button(r, &tr("Leave"), &med, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.leave_online_battle()), Bo::r(10));
+            }
+        }
         if busy || over {
             return;
         }
@@ -727,28 +828,120 @@ impl Game {
                 self.button(top, &tr("FIGHT"), &big, mouse_pos, BAD, Color::rgb(250, 110, 110), WHITE, cb(|g| g.battle.menu = "fight"), Bo::r(12).icon("battle"));
                 let can_switch = team.iter().enumerate().any(|(i, f)| i != active && !f.fainted());
                 self.button(cell_at(2), &tr("SWITCH"), &med, mouse_pos, Color::rgb(60, 130, 190), Color::rgb(90, 160, 220), WHITE, if can_switch { cb(|g| g.battle.menu = "switch") } else { None }, Bo::r(10).enabled(can_switch));
-                self.button(cell_at(3), &tr("RUN"), &med, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.battle_run()), Bo::r(10));
+                let run = if self.battle.online.is_some() { tr("GIVE UP") } else { tr("RUN") };
+                self.button(cell_at(3), &run, &med, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.battle_run()), Bo::r(10));
             }
         }
     }
 
     fn draw_battle_result(&mut self, arena: Rect, reward: f64, mouse_pos: (f64, f64)) {
-        let won = reward > 0.0;
+        let won = self.battle.won;
+        let friend = self.battle.online.as_ref().map(|om| om.friend.clone());
         let veil = dim_overlay(arena.w, arena.h, 150);
         self.canvas.blit(&veil, arena.x, arena.y);
         let r = Rect::with_center(460, 230, arena.center());
         draw_panel(&mut self.canvas, r, Some(panel()), 16, true, None);
-        let title = self.f.big.render(&if won { tr("You won!") } else { tr("You lost...") }, if won { accent() } else { BAD });
+        let title_text = match (&friend, won) {
+            (Some(f), true) => tr!("You beat %s!", f.clone()),
+            (Some(f), false) => tr!("%s won...", f.clone()),
+            (None, true) => tr("You won!"),
+            (None, false) => tr("You lost..."),
+        };
+        let title = self.f.big.render(&fit_text(&self.f.big, &title_text, 300), if won { accent() } else { BAD });
         let scale = 1.4;
         let title = transform::smoothscale(&title, (title.w as f64 * scale) as i32, (title.h as f64 * scale) as i32);
         self.canvas.blit(&title, r.centerx() - title.w / 2, r.y + 22);
-        let msg = if won { tr!("+$%s for winning!", format_number(reward)) } else { tr("Train your Verities and try again!") };
+        let msg = if won && reward > 0.0 { tr!("+$%s for winning!", format_number(reward)) } else { tr("Train your Verities and try again!") };
         let t = self.f.med.render(&msg, if won { GOOD } else { grey() });
         self.canvas.blit(&t, r.centerx() - t.w / 2, r.y + 36 + title.h);
         let sb = self.f.small_b.clone();
         let bw = (r.w - 60) / 2;
+        if friend.is_some() {
+            let back = Rect::new(r.x + 20, r.bottom() - 66, r.w - 40, 46);
+            self.button(back, &tr("Back"), &sb, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.leave_online_battle()), Bo::r(10));
+            return;
+        }
         self.button(Rect::new(r.x + 20, r.bottom() - 66, bw, 46), &tr("Battle again"), &sb, mouse_pos, BAD, Color::rgb(250, 110, 110), WHITE, cb(|g| g.start_battle()), Bo::r(10).icon("battle"));
         self.button(Rect::new(r.right() - 20 - bw, r.bottom() - 66, bw, 46), &tr("Change team"), &sb, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.battle_run_quiet()), Bo::r(10));
+    }
+
+    /// "vs Friends": the challenges waiting (got / sent) and the friends to challenge.
+    fn draw_battle_friends(&mut self, col: Rect, mouse_pos: (f64, f64)) {
+        draw_panel(&mut self.canvas, col, Some(panel_light()), 12, false, None);
+        let inner = col.inflate(-24, -24);
+        let (sb, small, tiny) = (self.f.small_b.clone(), self.f.small.clone(), self.f.tiny.clone());
+        let mut y = inner.y;
+        if self.account.is_none() {
+            for line in wrap_text(&tr("Log in to your account (Account, on the title screen) to battle your friends."), &small, inner.w) {
+                let t = small.render(&line, grey());
+                self.canvas.blit(&t, inner.x, y);
+                y += 22;
+            }
+            return;
+        }
+        if let Some((msg, c)) = self.battle.ch_msg.clone() {
+            for line in wrap_text(&msg, &tiny, inner.w).iter().take(2) {
+                let t = tiny.render(line, c);
+                self.canvas.blit(&t, inner.x, y);
+                y += 16;
+            }
+            y += 6;
+        }
+        let row = |g: &mut Game, y: i32, label: &str, color: Color| {
+            let t = small.render(&fit_text(&small, label, inner.w - 170), color);
+            g.canvas.blit(&t, inner.x, y + 20 - t.h / 2);
+        };
+        let busy = self.battle.ch_action.is_some();
+        let has_team = !self.battle.picks.is_empty();
+        // challenges I got
+        let received = self.battle.received.clone();
+        if !received.is_empty() {
+            let t = sb.render(&tr("Challenges"), accent());
+            self.canvas.blit(&t, inner.x, y);
+            y += 26;
+            for d in received.iter().take(3) {
+                row(self, y, &tr!("From %s", d.from_name.clone()), WHITE);
+                let (d1, id) = (d.clone(), d.id.clone());
+                self.button(Rect::new(inner.right() - 160, y + 2, 84, 36), &tr("Accept"), &sb, mouse_pos, GOOD, accent_hover(), BLACK, if has_team && !busy { cb(move |g| g.accept_challenge(d1.clone())) } else { None }, Bo::r(8).enabled(has_team && !busy));
+                self.button(Rect::new(inner.right() - 70, y + 2, 70, 36), &tr("No"), &sb, mouse_pos, panel(), BAD, WHITE, if !busy { cb(move |g| g.drop_challenge(id.clone())) } else { None }, Bo::r(8).enabled(!busy));
+                y += 44;
+            }
+            y += 6;
+        }
+        // challenges I sent
+        let sent = self.battle.sent.clone();
+        for d in sent.iter().take(3) {
+            row(self, y, &tr!("Waiting for %s...", d.to_name.clone()), grey());
+            let id = d.id.clone();
+            self.button(Rect::new(inner.right() - 90, y + 2, 90, 36), &tr("Cancel"), &sb, mouse_pos, panel(), BAD, WHITE, if !busy { cb(move |g| g.drop_challenge(id.clone())) } else { None }, Bo::r(8).enabled(!busy));
+            y += 44;
+        }
+        // friends
+        let t = sb.render(&tr("Friends"), accent());
+        self.canvas.blit(&t, inner.x, y);
+        y += 26;
+        let friends = self.fr.list.clone();
+        if friends.is_empty() {
+            let msg = if self.fr.loading || !self.fr.loaded { tr("Loading...") } else { tr("No friends yet: add some on the Friends page.") };
+            for line in wrap_text(&msg, &small, inner.w) {
+                let t = small.render(&line, grey());
+                self.canvas.blit(&t, inner.x, y);
+                y += 22;
+            }
+            return;
+        }
+        for p in friends {
+            if y + 40 > inner.bottom() {
+                break;
+            }
+            let waiting = sent.iter().any(|d| d.to_uid == p.uid);
+            row(self, y, &p.username, WHITE);
+            let (uid, name) = (p.uid.clone(), p.username.clone());
+            let ok = has_team && !busy && !waiting;
+            let label = if waiting { tr("Sent") } else { tr("Challenge") };
+            self.button(Rect::new(inner.right() - 120, y + 2, 120, 36), &label, &sb, mouse_pos, BAD, Color::rgb(250, 110, 110), WHITE, if ok { cb(move |g| g.challenge_friend(uid.clone(), name.clone())) } else { None }, Bo::r(8).enabled(ok).icon("battle"));
+            y += 44;
+        }
     }
 
     /// Back to the team picker after a battle (no "ran away" message).

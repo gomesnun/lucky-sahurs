@@ -585,6 +585,45 @@ pub struct Trade {
     pub request: Vec<(String, i64)>,
 }
 
+/// An online battle between two friends (/battles/{id}). Only the teams, a seed and each side's moves are stored:
+/// both games work out the very same battle from them (core/battle.rs).
+#[derive(Clone, Debug, Default)]
+pub struct BattleDoc {
+    pub id: String,
+    pub from_uid: String,
+    pub to_uid: String,
+    pub from_name: String,
+    pub to_name: String,
+    /// "pet_mutation_phase,..." (up to 3)
+    pub from_team: String,
+    pub to_team: String,
+    pub seed: i64,
+    /// "pending" (waiting for the friend), "live" or "over"
+    pub status: String,
+    /// one letter per action: S Strike, P Special, G Guard, R Rest, 0-2 switch to that team member
+    pub from_moves: String,
+    pub to_moves: String,
+    pub created: f64,
+}
+
+fn battle_from_doc(doc: &Value) -> BattleDoc {
+    let f = fs_fields(doc);
+    BattleDoc {
+        id: doc_id(doc),
+        from_uid: f.str_or("from_uid", ""),
+        to_uid: f.str_or("to_uid", ""),
+        from_name: f.str_or("from_name", "?"),
+        to_name: f.str_or("to_name", "?"),
+        from_team: f.str_or("from_team", ""),
+        to_team: f.str_or("to_team", ""),
+        seed: f.i64_or0("seed"),
+        status: f.str_or("status", "pending"),
+        from_moves: f.str_or("from_moves", ""),
+        to_moves: f.str_or("to_moves", ""),
+        created: f.f64_or0("created"),
+    }
+}
+
 /// A receipt left in /users/{uid}/incoming by whoever accepted my trade: what I get and what I lose.
 #[derive(Clone, Debug)]
 pub struct Receipt {
@@ -1585,6 +1624,90 @@ impl FirebaseClient {
     pub fn trades_received(&self) -> Res<Vec<Trade>> {
         let uid = self.need_uid()?;
         self.list_trades("to_uid", &uid)
+    }
+
+    // ---- online battles (between friends) ----
+    // /battles/{id}: the challenger creates it (their team + a seed), the friend accepts (their team, "live"), then
+    // each side appends its moves to its own string. Each game polls the document while waiting for the other's
+    // move. Reads: one per poll; writes: one per move.
+    fn patch_fields(&self, path: &str, fields: Map<String, Value>, must_exist: bool) -> Res<()> {
+        let mut keys: Vec<String> = fields.keys().cloned().collect();
+        keys.sort();
+        let mut params: Vec<(String, String)> = keys.into_iter().map(|k| ("updateMask.fieldPaths".to_string(), k)).collect();
+        params.push(("currentDocument.exists".into(), if must_exist { "true" } else { "false" }.into()));
+        self.fs("PATCH", path, Some(json!({"fields": fields})), &params).map(|_| ())
+    }
+
+    /// Challenges a friend with my team. Returns the battle's id.
+    pub fn create_battle(&self, to_uid: &str, from_name: &str, to_name: &str, team: &str, seed: i64) -> Res<String> {
+        let uid = self.need_uid()?;
+        let id = new_doc_id();
+        let mut f = Map::new();
+        f.insert("from_uid".into(), fs_str(&uid));
+        f.insert("to_uid".into(), fs_str(to_uid));
+        f.insert("from_name".into(), fs_str(from_name));
+        f.insert("to_name".into(), fs_str(to_name));
+        f.insert("from_team".into(), fs_str(team));
+        f.insert("to_team".into(), fs_str(""));
+        f.insert("seed".into(), fs_int(seed));
+        f.insert("status".into(), fs_str("pending"));
+        f.insert("from_moves".into(), fs_str(""));
+        f.insert("to_moves".into(), fs_str(""));
+        f.insert("created".into(), fs_f64(server_now()));
+        self.patch_fields(&format!("/battles/{}", id), f, false)?;
+        Ok(id)
+    }
+
+    /// My battles: the ones I sent (field "from_uid") or got (field "to_uid").
+    pub fn list_battles(&self, field: &str) -> Res<Vec<BattleDoc>> {
+        let uid = self.need_uid()?;
+        let q = json!({
+            "from": [{"collectionId": "battles"}],
+            "where": {"fieldFilter": {"field": {"fieldPath": field}, "op": "EQUAL", "value": {"stringValue": uid}}},
+            "limit": 30,
+        });
+        Ok(self.run_query(":runQuery", q)?.iter().filter(|d| d.get("name").is_some()).map(battle_from_doc).collect())
+    }
+
+    /// One battle (None = it's gone: cancelled or declined).
+    pub fn get_battle(&self, id: &str) -> Res<Option<BattleDoc>> {
+        match self.fs("GET", &format!("/battles/{}", id), None, &[]) {
+            Ok(doc) => Ok(Some(battle_from_doc(&doc))),
+            Err(e) if e.code == "not_found" => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// The friend accepts with their team: the battle is on.
+    pub fn accept_battle(&self, id: &str, team: &str) -> Res<()> {
+        let mut f = Map::new();
+        f.insert("to_team".into(), fs_str(team));
+        f.insert("status".into(), fs_str("live"));
+        self.patch_fields(&format!("/battles/{}", id), f, true)
+    }
+
+    /// Saves my moves so far (field "from_moves" or "to_moves").
+    pub fn push_battle_moves(&self, id: &str, field: &str, moves: &str) -> Res<()> {
+        let mut f = Map::new();
+        f.insert(field.to_string(), fs_str(moves));
+        self.patch_fields(&format!("/battles/{}", id), f, true)
+    }
+
+    pub fn finish_battle(&self, id: &str) -> Res<()> {
+        let mut f = Map::new();
+        f.insert("status".into(), fs_str("over"));
+        match self.patch_fields(&format!("/battles/{}", id), f, true) {
+            Err(e) if e.code != "not_found" => Err(e),
+            _ => Ok(()),
+        }
+    }
+
+    /// Cancel (the challenger), decline (the friend) or clean up a finished one.
+    pub fn delete_battle(&self, id: &str) -> Res<()> {
+        match self.fs("DELETE", &format!("/battles/{}", id), None, &[]) {
+            Err(e) if e.code != "not_found" => Err(e),
+            _ => Ok(()),
+        }
     }
 
     /// Cancel (the proposer) or decline (the receiver) - the rules only allow deleting to one of the two.

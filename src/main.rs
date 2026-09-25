@@ -105,6 +105,10 @@ fn main() {
         statetest(args[2].parse().unwrap(), args[3].parse().unwrap());
         return;
     }
+    if args.len() > 2 && args[1] == "--onlinetest" {
+        online_test(&args[2]);
+        return;
+    }
     if args.len() > 2 && args[1] == "--battlevideo" {
         battle_video(&args[2]);
         return;
@@ -293,6 +297,82 @@ fn sim(dir: &str) {
 }
 
 /// Headless screenshots of the main screens (no window): `--shots <dir>`.
+/// Two games playing an online battle against each other, the moves passed by hand instead of through the
+/// server: both must see the same battle (and the one who accepted sees it from their side). Saves a few shots.
+fn online_test(dir: &str) {
+    use core::battle::Move;
+    use core::data::tier_first_pet;
+    use core::state::set_fake_time;
+    set_fake_time(Some(1_790_000_000.0));
+    let doc = online::firebase::BattleDoc {
+        id: "test".into(),
+        from_uid: "a".into(),
+        to_uid: "b".into(),
+        from_name: "Tom".into(),
+        to_name: "Nuno".into(),
+        from_team: format!("{}_normal_3,{}_rainbow_1", tier_first_pet(6), tier_first_pet(9) + 1),
+        to_team: format!("{}_golden_2,{}_normal_0", tier_first_pet(8), tier_first_pet(7) + 2),
+        seed: 12345,
+        status: "live".into(),
+        ..Default::default()
+    };
+    let mut games: Vec<game::Game> = (0..2).map(|_| game::Game::headless(1422, 800)).collect();
+    for (me, g) in games.iter_mut().enumerate() {
+        g.settings.set_str("last_update_seen", game::tutorial::latest_update());
+        g.settings.set_bool("tutorial_done", true);
+        g.start_slot(1);
+        g.open_battle();
+        g.battle.mode = "online";
+        g.start_online_battle(&doc, me);
+    }
+    let m = (-100.0, -100.0);
+    let mut turn = [0usize; 2];
+    let mut shots = 0;
+    for step in 0..6000 {
+        for me in 0..2 {
+            let g = &mut games[me];
+            g.tick_battle(0.1);
+            if g.online_my_turn() && !g.battle.busy() {
+                let b = g.battle.battle.as_ref().unwrap();
+                if b.needs_switch() {
+                    let k = (0..b.teams[b.me].len()).find(|&k| b.can_switch_to(b.me, k)).unwrap();
+                    g.battle_switch(k);
+                } else {
+                    let f = b.fighter(b.me).clone();
+                    let mv = if turn[me] % 3 == 0 && f.special_pp > 0 { Move::Special } else if turn[me] % 5 == 4 { Move::Guard } else { Move::Strike };
+                    turn[me] += 1;
+                    g.battle_use(mv);
+                }
+            }
+        }
+        // the "server": each game gets the other's moves
+        let (a, b) = (games[0].online_moves(), games[1].online_moves());
+        games[0].online_feed(&b);
+        games[1].online_feed(&a);
+        if step % 400 == 5 && shots < 6 {
+            for (me, g) in games.iter_mut().enumerate() {
+                g.draw(m);
+                save_png(&g.canvas, &std::path::Path::new(dir).join(format!("online_{}_{}.png", shots, if me == 0 { "tom" } else { "nuno" })));
+            }
+            shots += 1;
+        }
+        let w: Vec<Option<usize>> = games.iter().map(|g| g.battle.battle.as_ref().and_then(|b| b.winner)).collect();
+        if w[0].is_some() && w[1].is_some() && !games[0].battle.busy() && !games[1].battle.busy() {
+            assert_eq!(w[0], w[1], "both games must agree on the winner");
+            let hp: Vec<Vec<i32>> = games.iter().map(|g| g.battle.battle.as_ref().unwrap().teams.iter().flatten().map(|f| f.hp).collect()).collect();
+            assert_eq!(hp[0], hp[1], "both games must end with the same HP");
+            for (me, g) in games.iter_mut().enumerate() {
+                g.tick_battle(0.1);
+                g.draw(m);
+                save_png(&g.canvas, &std::path::Path::new(dir).join(format!("online_end_{}.png", if me == 0 { "tom" } else { "nuno" })));
+            }
+            println!("online test: same battle on both sides, winner side {:?}, {} steps", w[0], step);
+            return;
+        }
+    }
+    panic!("the online battle never ended");
+}
+
 /// Plays a whole battle by itself and saves every frame (30 fps, Glow on) as dir/frame_NNNNN.png - for a video.
 /// Team: a Monster, a Rainbow and a Golden verity. Moves: Special and Strike in turn, Rest when low, switches.
 fn battle_video(dir: &str) {
@@ -916,6 +996,19 @@ fn shots(dir: &str) {
     g.screen_mode = "game";
     g.draw(m);
     save(&g, "o_game_event_banner");
+    // online battles: the "vs Friends" tab with a challenge got and one sent
+    g.open_battle();
+    g.battle.mode = "online";
+    g.battle.ch_next = f64::INFINITY;
+    g.battle.ch_loaded = true;
+    let bd = |id: &str, from: &str, to: &str| online::firebase::BattleDoc { id: id.into(), from_uid: format!("u_{}", from), to_uid: format!("u_{}", to), from_name: from.into(), to_name: to.into(), status: "pending".into(), ..Default::default() };
+    g.battle.received = vec![bd("b1", "alice", "tommy")];
+    g.battle.sent = vec![bd("b2", "tommy", "bob")];
+    g.draw(m);
+    save(&g, "o_battle_friends");
+    g.close_battle();
+    g.battle.received.clear();
+    g.battle.sent.clear();
     g.screen_mode = "title";
     g.open_account();
     g.draw(m);

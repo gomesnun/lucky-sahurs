@@ -160,18 +160,31 @@ pub struct Battle {
     pub active: [usize; 2],
     /// Some(side) once one side has no verities left
     pub winner: Option<usize>,
+    /// which side is the one playing on this computer (only changes the wording - never the fight itself, so
+    /// both players of an online battle work out exactly the same battle)
+    pub me: usize,
+    /// what the other side is called ("Rival" against the computer, the friend's name online)
+    pub rival_name: String,
+    /// against the computer: the rival picks its moves and sends out its next verity by itself
+    auto_rival: bool,
     rng: PyRandom,
 }
 
 impl Battle {
-    /// Side 0 is the player, side 1 the rival (played by the computer for now).
+    /// Against the computer: side 0 is the player, side 1 the rival.
     pub fn new(player: Vec<Fighter>, rival: Vec<Fighter>, seed: u64) -> (Battle, Vec<Ev>) {
-        let b = Battle { teams: [player, rival], active: [0, 0], winner: None, rng: PyRandom::from_int(seed) };
+        Battle::new_match([player, rival], seed, 0, tr("Rival"), true)
+    }
+
+    /// Any battle: `teams` in a fixed order (online: the challenger first), `me` = the side on this computer.
+    pub fn new_match(teams: [Vec<Fighter>; 2], seed: u64, me: usize, rival_name: String, auto_rival: bool) -> (Battle, Vec<Ev>) {
+        let b = Battle { teams, active: [0, 0], winner: None, me, rival_name, auto_rival, rng: PyRandom::from_int(seed) };
+        let other = 1 - me;
         let evs = vec![
-            Ev::SendOut { side: 1, idx: 0, hp: b.teams[1][0].hp },
-            Ev::Say(tr!("Rival sent out %s!", b.teams[1][0].name())),
-            Ev::SendOut { side: 0, idx: 0, hp: b.teams[0][0].hp },
-            Ev::Say(tr!("Go, %s!", b.teams[0][0].name())),
+            Ev::SendOut { side: other, idx: 0, hp: b.teams[other][0].hp },
+            Ev::Say(b.sent_out_text(other)),
+            Ev::SendOut { side: me, idx: 0, hp: b.teams[me][0].hp },
+            Ev::Say(b.sent_out_text(me)),
         ];
         (b, evs)
     }
@@ -184,22 +197,49 @@ impl Battle {
         self.rng.random()
     }
 
-    /// The player's active verity fainted and another one has to come out.
+    /// A verity's name as this computer's player reads it ("Levity" / "Tom's Levity").
+    fn who(&self, side: usize) -> String {
+        if side == self.me { self.fighter(side).name() } else { tr!("%s's %s", self.rival_name.clone(), self.fighter(side).name()) }
+    }
+
+    fn sent_out_text(&self, side: usize) -> String {
+        if side == self.me { tr!("Go, %s!", self.fighter(side).name()) } else { tr!("%s sent out %s!", self.rival_name.clone(), self.fighter(side).name()) }
+    }
+
+    /// This computer's player has to send out another verity (theirs fainted).
     pub fn needs_switch(&self) -> bool {
-        self.winner.is_none() && self.fighter(0).fainted()
+        self.needs_switch_side(self.me)
+    }
+
+    pub fn needs_switch_side(&self, side: usize) -> bool {
+        self.winner.is_none() && self.fighter(side).fainted()
     }
 
     pub fn can_switch_to(&self, side: usize, idx: usize) -> bool {
         idx < self.teams[side].len() && idx != self.active[side] && !self.teams[side][idx].fainted()
     }
 
-    /// After a faint: the player sends out another verity (no turn passes).
+    /// After a faint: this computer's player sends out another verity (no turn passes).
     pub fn send_out(&mut self, idx: usize) -> Vec<Ev> {
-        if !self.can_switch_to(0, idx) {
+        self.send_out_side(self.me, idx)
+    }
+
+    pub fn send_out_side(&mut self, side: usize, idx: usize) -> Vec<Ev> {
+        if !self.needs_switch_side(side) || !self.can_switch_to(side, idx) {
             return Vec::new();
         }
-        self.active[0] = idx;
-        vec![Ev::SendOut { side: 0, idx, hp: self.fighter(0).hp }, Ev::Say(tr!("Go, %s!", self.fighter(0).name()))]
+        self.active[side] = idx;
+        vec![Ev::SendOut { side, idx, hp: self.fighter(side).hp }, Ev::Say(self.sent_out_text(side))]
+    }
+
+    /// A side gives up (leaves an online battle): the other side wins.
+    pub fn forfeit(&mut self, side: usize) -> Vec<Ev> {
+        if self.winner.is_some() {
+            return Vec::new();
+        }
+        self.winner = Some(1 - side);
+        let who = if side == self.me { tr("You") } else { self.rival_name.clone() };
+        vec![Ev::Say(tr!("%s gave up!", who))]
     }
 
     /// The computer's choice: heal when low, guard now and then, otherwise hit as hard as it can.
@@ -218,13 +258,21 @@ impl Battle {
         Action::Use(Move::Strike)
     }
 
-    /// Plays one turn with the player's action. Returns what happened, in order.
+    /// Against the computer: one turn with the player's action (the rival picks its own).
     pub fn turn(&mut self, player: Action) -> Vec<Ev> {
-        let mut evs = Vec::new();
         if self.winner.is_some() || self.needs_switch() {
+            return Vec::new();
+        }
+        let rival = self.rival_action();
+        self.turn_both([player, rival])
+    }
+
+    /// One turn with both sides' actions (in side order). Returns what happened, in order.
+    pub fn turn_both(&mut self, actions: [Action; 2]) -> Vec<Ev> {
+        let mut evs = Vec::new();
+        if self.winner.is_some() || self.needs_switch_side(0) || self.needs_switch_side(1) {
             return evs;
         }
-        let actions = [player, self.rival_action()];
         for side in 0..2 {
             self.teams[side][self.active[side]].guarding = false;
         }
@@ -252,19 +300,22 @@ impl Battle {
 
     fn act(&mut self, side: usize, action: Action, evs: &mut Vec<Ev>) {
         let other = 1 - side;
-        let who = |b: &Battle, s: usize| if s == 0 { b.fighter(0).name() } else { tr!("Rival's %s", b.fighter(1).name()) };
         match action {
             Action::Switch(idx) => {
                 if self.can_switch_to(side, idx) {
-                    evs.push(Ev::Say(if side == 0 { tr!("Come back, %s!", self.fighter(0).name()) } else { tr!("Rival called back %s!", self.fighter(1).name()) }));
+                    evs.push(Ev::Say(if side == self.me {
+                        tr!("Come back, %s!", self.fighter(side).name())
+                    } else {
+                        tr!("%s called back %s!", self.rival_name.clone(), self.fighter(side).name())
+                    }));
                     self.active[side] = idx;
                     evs.push(Ev::SendOut { side, idx, hp: self.fighter(side).hp });
-                    evs.push(Ev::Say(if side == 0 { tr!("Go, %s!", self.fighter(0).name()) } else { tr!("Rival sent out %s!", self.fighter(1).name()) }));
+                    evs.push(Ev::Say(self.sent_out_text(side)));
                 }
             }
             Action::Use(mv) => {
                 let mv = if self.fighter(side).can_use(mv) { mv } else { Move::Strike };
-                evs.push(Ev::Say(tr!("%s used %s!", who(self, side), move_name(self.fighter(side), mv))));
+                evs.push(Ev::Say(tr!("%s used %s!", self.who(side), move_name(self.fighter(side), mv))));
                 match mv {
                     Move::Guard => {
                         self.teams[side][self.active[side]].guarding = true;
@@ -275,7 +326,7 @@ impl Battle {
                         f.rest_pp -= 1;
                         f.hp = (f.hp + (f.max_hp as f64 * 0.35).round() as i32).min(f.max_hp);
                         evs.push(Ev::Heal { side, hp: f.hp });
-                        evs.push(Ev::Say(tr!("%s feels better.", who(self, side))));
+                        evs.push(Ev::Say(tr!("%s feels better.", self.who(side))));
                     }
                     Move::Strike | Move::Special => {
                         let (power, accuracy) = if mv == Move::Special { (75.0, 0.85) } else { (40.0, 1.0) };
@@ -284,7 +335,7 @@ impl Battle {
                         }
                         evs.push(Ev::Lunge { side, special: mv == Move::Special });
                         if self.roll() > accuracy {
-                            evs.push(Ev::Say(tr!("%s missed!", who(self, side))));
+                            evs.push(Ev::Say(tr!("%s missed!", self.who(side))));
                             return;
                         }
                         let crit = self.roll() < 1.0 / 16.0;
@@ -302,11 +353,11 @@ impl Battle {
                             evs.push(Ev::Say(tr("A critical hit!")));
                         }
                         if self.fighter(other).guarding {
-                            evs.push(Ev::Say(tr!("%s guarded against it!", who(self, other))));
+                            evs.push(Ev::Say(tr!("%s guarded against it!", self.who(other))));
                         }
                         if self.fighter(other).fainted() {
                             evs.push(Ev::Faint { side: other });
-                            evs.push(Ev::Say(tr!("%s fainted!", who(self, other))));
+                            evs.push(Ev::Say(tr!("%s fainted!", self.who(other))));
                             self.after_faint(other, evs);
                         }
                     }
@@ -321,11 +372,11 @@ impl Battle {
             self.winner = Some(1 - side);
             return;
         }
-        if side == 1 {
-            // the rival sends out its next one right away
-            self.active[1] = left[0];
-            evs.push(Ev::SendOut { side: 1, idx: left[0], hp: self.fighter(1).hp });
-            evs.push(Ev::Say(tr!("Rival sent out %s!", self.fighter(1).name())));
+        if self.auto_rival && side != self.me {
+            // the computer sends out its next one right away
+            self.active[side] = left[0];
+            evs.push(Ev::SendOut { side, idx: left[0], hp: self.fighter(side).hp });
+            evs.push(Ev::Say(self.sent_out_text(side)));
         }
     }
 }
@@ -371,6 +422,37 @@ mod tests {
             assert!(!evs.is_empty());
         }
         assert!(b.winner.is_some());
+    }
+
+    #[test]
+    fn both_players_see_the_same_online_battle() {
+        let teams = || [vec![Fighter::new(10, "golden", 3), Fighter::new(4, "normal", 1)], vec![Fighter::new(12, "normal", 2), Fighter::new(7, "rainbow", 0)]];
+        let (mut a, _) = Battle::new_match(teams(), 99, 0, "B".into(), false);
+        let (mut b, _) = Battle::new_match(teams(), 99, 1, "A".into(), false);
+        let moves = [Action::Use(Move::Special), Action::Use(Move::Strike), Action::Use(Move::Guard), Action::Use(Move::Strike)];
+        for i in 0..200 {
+            if a.winner.is_some() {
+                break;
+            }
+            let mut stepped = false;
+            for side in 0..2 {
+                if a.needs_switch_side(side) {
+                    let k = (0..2).find(|&k| a.can_switch_to(side, k)).unwrap();
+                    a.send_out_side(side, k);
+                    b.send_out_side(side, k);
+                    stepped = true;
+                }
+            }
+            if stepped {
+                continue;
+            }
+            let acts = [moves[i % 4], moves[(i + 1) % 4]];
+            a.turn_both(acts);
+            b.turn_both(acts);
+            assert_eq!([a.fighter(0).hp, a.fighter(1).hp], [b.fighter(0).hp, b.fighter(1).hp]);
+        }
+        assert!(a.winner.is_some());
+        assert_eq!(a.winner, b.winner);
     }
 
     #[test]

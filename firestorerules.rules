@@ -242,6 +242,40 @@ service cloud.firestore {
       allow delete: if request.auth != null && request.auth.uid == uid;
     }
 
+    // ---- Batalhas online entre amigos (v3.1): só os dois jogadores leem e escrevem ----
+    // O desafiante cria (a sua equipa + seed, "pending"); o amigo aceita (a equipa dele, "live"); depois cada um
+    // só acrescenta as SUAS jogadas ao seu campo. Os dois jogos calculam a mesma batalha a partir disto.
+    match /battles/{id} {
+      allow read: if request.auth != null
+                  && (resource.data.from_uid == request.auth.uid || resource.data.to_uid == request.auth.uid);
+      allow create: if request.auth != null
+                    && request.resource.data.from_uid == request.auth.uid
+                    && request.resource.data.to_uid != request.auth.uid
+                    && exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(request.resource.data.to_uid))
+                    && request.resource.data.keys().hasOnly(['from_uid', 'to_uid', 'from_name', 'to_name', 'from_team', 'to_team',
+                                                             'seed', 'status', 'from_moves', 'to_moves', 'created'])
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.from_team is string && request.resource.data.from_team.size() <= 64
+                    && request.resource.data.from_moves == '' && request.resource.data.to_moves == '';
+      // cada um só mexe no que é seu: o convidado aceita (to_team, status) e joga (to_moves);
+      // o desafiante joga (from_moves); qualquer um marca o fim ("over")
+      allow update: if request.auth != null
+                    && (resource.data.from_uid == request.auth.uid || resource.data.to_uid == request.auth.uid)
+                    && request.resource.data.from_uid == resource.data.from_uid
+                    && request.resource.data.to_uid == resource.data.to_uid
+                    && request.resource.data.seed == resource.data.seed
+                    && request.resource.data.from_team == resource.data.from_team
+                    && (request.auth.uid == resource.data.to_uid || request.resource.data.to_team == resource.data.to_team)
+                    && (request.auth.uid == resource.data.to_uid || request.resource.data.to_moves == resource.data.to_moves)
+                    && (request.auth.uid == resource.data.from_uid || request.resource.data.from_moves == resource.data.from_moves)
+                    && request.resource.data.status in ['pending', 'live', 'over']
+                    && request.resource.data.to_team.size() <= 64
+                    && request.resource.data.from_moves.size() <= 300
+                    && request.resource.data.to_moves.size() <= 300;
+      allow delete: if request.auth != null
+                    && (resource.data.from_uid == request.auth.uid || resource.data.to_uid == request.auth.uid);
+    }
+
     // NOTA: as stats de um amigo vêm da /leaderboard/{uid}, que já é pública para leitura.
     match /{document=**} {
       allow read, write: if false;
