@@ -77,6 +77,21 @@ impl Game {
     }
 
     pub fn draw_game_screen(&mut self, mouse_pos: (f64, f64)) {
+        // the 4.0 teaser covers everything; at its very end the game shows up from black
+        if let Some(t) = self.teaser_t {
+            let back = super::teaser::game_from(t);
+            if back <= 0.0 {
+                self.draw_teaser();
+                return;
+            }
+            self.teaser_t = None;
+            self.draw_game_screen(mouse_pos);
+            self.teaser_t = Some(t);
+            let mut veil = Surface::new_alpha(self.vw, VIRTUAL_H);
+            veil.fill(Color::rgba(0, 0, 0, (255.0 * (1.0 - back)) as u8), None);
+            self.canvas.blit(&veil, 0, 0);
+            return;
+        }
         if self.battle.open && !self.tutorial_active() {
             // the battle covers the whole screen: skip drawing the game under it (the 3D arena needs the time)
             self.draw_topbar(mouse_pos);

@@ -537,6 +537,16 @@ pub fn draw_rarity_bg(surface: &mut Surface, rect_local: Rect, rarity: &Rarity, 
                 "absoluto" => paint_absolute_bg(&mut bg, c1, c2, w, h),
                 "primordial" => paint_primordial_bg(&mut bg, c1, c2, w, h),
                 "paradoxo" => paint_paradox_bg(&mut bg, c1, c2, w, h),
+                "og" => {
+                    // the three originals: yellow, pink and blue bands
+                    let bands = [Color::rgb(255, 196, 40), Color::rgb(255, 70, 150), Color::rgb(40, 140, 255)];
+                    let bw = w / 3 + 1;
+                    for (i, c) in bands.iter().enumerate() {
+                        let x0 = i as i32 * bw;
+                        draw::polygon(&mut bg, *c, &[(x0 - h / 3, h), (x0 + bw - h / 3, h), (x0 + bw + h / 3, 0), (x0 + h / 3, 0)], 0);
+                    }
+                    draw::polygon(&mut bg, bands[0], &[(0, 0), (h / 3, 0), (-h / 3, h), (0, h)], 0);
+                }
                 "secreto" => {
                     let stripe_w = 8.max(w / 14);
                     let mut x = full.left() - full.h;

@@ -111,7 +111,7 @@ pub const SFX_CATEGORIES: [(&str, &str); 6] = [
     ("rebirth", "Rebirth"),
 ];
 
-pub const CUTSCENE_RARITIES: [&str; 9] = ["secreto", "divino", "cosmico", "transcendente", "etereo", "celestial", "absoluto", "primordial", "paradoxo"];
+pub const CUTSCENE_RARITIES: [&str; 10] = ["secreto", "divino", "cosmico", "transcendente", "etereo", "celestial", "absoluto", "primordial", "paradoxo", "og"];
 
 /// The settings dict (kept as an ordered JSON object, like the Python dict it mirrors).
 #[derive(Clone, Debug)]

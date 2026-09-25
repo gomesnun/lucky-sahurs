@@ -58,7 +58,7 @@ pub struct Tier {
     pub income: f64,
 }
 
-pub const RARITY_TIERS: [Tier; 16] = [
+pub const RARITY_TIERS: [Tier; 17] = [
     Tier { key: "comum", name: "Common", color: Color::rgb(235, 235, 235), color2: None, text: BLACK, one_in: 2.0, income: 1.0 },
     Tier { key: "incomum", name: "Uncommon", color: Color::rgb(60, 190, 90), color2: None, text: BLACK, one_in: 4.0, income: 4.0 },
     Tier { key: "raro", name: "Rare", color: Color::rgb(45, 120, 230), color2: None, text: WHITE, one_in: 15.0, income: 15.0 },
@@ -75,9 +75,11 @@ pub const RARITY_TIERS: [Tier; 16] = [
     Tier { key: "absoluto", name: "Absolute", color: Color::rgb(18, 14, 10), color2: Some(Color::rgb(255, 198, 58)), text: WHITE, one_in: 5.0e+17, income: 90000000000.0 },
     Tier { key: "primordial", name: "Primordial", color: Color::rgb(26, 10, 8), color2: Some(Color::rgb(255, 112, 30)), text: WHITE, one_in: 5.0e+19, income: 900000000000.0 },
     Tier { key: "paradoxo", name: "Paradox", color: Color::rgb(246, 246, 250), color2: Some(Color::rgb(14, 14, 20)), text: Color::rgb(120, 60, 220), one_in: 5.0e+21, income: 9000000000000.0 },
+    // v4.0: the original three - Verity (the game's own face), Lovity and Falsity
+    Tier { key: "og", name: "OG", color: Color::rgb(255, 196, 40), color2: Some(Color::rgb(255, 70, 150)), text: Color::rgb(10, 8, 50), one_in: 5.0e+23, income: 90000000000000.0 },
 ];
 
-pub const PET_DEFS: [(&str, &str); 64] = [
+pub const PET_DEFS: [(&str, &str); 67] = [
     ("comum", "Levity"),
     ("incomum", "Humility"),
     ("raro", "Amity"),
@@ -142,6 +144,9 @@ pub const PET_DEFS: [(&str, &str); 64] = [
     ("paradoxo", "Absurdity"),
     ("paradoxo", "Parity"),
     ("paradoxo", "Impossibility"),
+    ("og", "Verity"),
+    ("og", "Lovity"),
+    ("og", "Falsity"),
 ];
 
 pub const TIER_SECRET: usize = 7;
@@ -213,7 +218,7 @@ pub fn rarities() -> &'static [Rarity] {
     })
 }
 
-pub const N_PETS: usize = 64;
+pub const N_PETS: usize = 67;
 
 /// PET_ORDER: display order (by tier, then index)
 pub fn pet_order() -> &'static [usize] {

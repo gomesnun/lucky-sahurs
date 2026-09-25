@@ -29,6 +29,7 @@ pub mod battle_online;
 pub mod battle3d;
 pub mod monster3d;
 pub mod tutorial;
+pub mod teaser;
 pub mod shop_panel;
 pub mod title_saves;
 pub mod trades;
@@ -141,6 +142,8 @@ pub struct Game {
     pub tutorial_step: Option<usize>,
     /// the "What's new" pop-up after an update
     pub whats_new_open: bool,
+    /// the 4.0 teaser's clock (None = not playing)
+    pub teaser_t: Option<f64>,
     pub update_log_scroll: f64,
     pub update_log_max_scroll: f64,
     pub update_log_list_rect: Rect,
@@ -355,6 +358,7 @@ impl Game {
             glow_buf: Default::default(),
             tutorial_step: None,
             whats_new_open: false,
+            teaser_t: None,
             update_log_scroll: 0.0,
             update_log_max_scroll: 0.0,
             update_log_list_rect: Rect::ZERO,
@@ -930,6 +934,7 @@ impl Game {
         }
         self.tick_sell(dt);
         self.tick_battle(dt);
+        self.tick_teaser(dt);
         if self.rebirth_confirm {
             self.rebirth_confirm_timer -= dt;
             if self.rebirth_confirm_timer <= 0.0 {
@@ -1107,7 +1112,7 @@ impl Game {
         } else if self.cutscene_active.is_some() && k != Keycode::F11 {
             self.skip_cutscene();
         } else if self.screen_mode == "account" && self.handle_account_key(ev) {
-        } else if self.screen_mode == "game" && (self.handle_tutorial_key(ev) || self.handle_whats_new_key(ev) || self.handle_battle_key(ev)) {
+        } else if self.screen_mode == "game" && (self.handle_teaser_key(ev) || self.handle_tutorial_key(ev) || self.handle_whats_new_key(ev) || self.handle_battle_key(ev)) {
         } else if self.handle_sell_key(ev)
             || self.handle_evolve_key(ev)
             || self.handle_ban_key(ev)

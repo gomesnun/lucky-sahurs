@@ -65,6 +65,14 @@ impl Game {
             self.mark_updates_seen(); // the tutorial covers what's new
             return;
         }
+        // v4.0: a player who already played gets the teaser once (it opens "What's new" when it ends)
+        if !fresh && self.maybe_start_teaser() {
+            return;
+        }
+        if fresh {
+            // a new save never needs the teaser
+            self.settings.set_bool(super::teaser::TEASER_SETTING, true);
+        }
         if !self.unseen_updates().is_empty() {
             self.whats_new_open = true;
         }

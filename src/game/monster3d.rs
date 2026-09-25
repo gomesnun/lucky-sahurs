@@ -119,7 +119,8 @@ impl Model {
         let Some(mv) = self.moves.get(name).or_else(|| self.moves.get("Idle")) else { return vec![[1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0.]; self.nb] };
         let last = mv.frames.max(1) - 1;
         let f = (t * mv.fps).max(0.0);
-        let (fa, k) = if name == "Idle" { ((f as usize) % last.max(1), f.fract() as f32) } else { ((f as usize).min(last), if f as usize >= last { 0.0 } else { f.fract() as f32 }) };
+        let looping = matches!(name, "Idle" | "Walk" | "Wave");
+        let (fa, k) = if looping { ((f as usize) % last.max(1), f.fract() as f32) } else { ((f as usize).min(last), if f as usize >= last { 0.0 } else { f.fract() as f32 }) };
         let fb = (fa + 1).min(last);
         (0..self.nb)
             .map(|j| {
@@ -175,6 +176,10 @@ fn vertex_colors(model: &Model, slug_pet: usize) -> Rc<Vec<u32>> {
             .or_insert_with(|| {
                 let name = crate::core::data::rarities()[slug_pet].pet;
                 let slug = crate::ui::icons::pet_slug(name);
+                // the OG Verity is the model exactly as it was made: its own texture, no recolouring
+                if slug == "verity" {
+                    return Rc::new(vec![ORIGINAL; model.ball_uv.len()]);
+                }
                 let img = crate::assets::read(&format!("icons/pets/clean/{}.png", slug)).and_then(|b| load_png_bytes(&b));
                 Rc::new(
                     model
@@ -194,6 +199,9 @@ fn vertex_colors(model: &Model, slug_pet: usize) -> Rc<Vec<u32>> {
             .clone()
     })
 }
+
+/// A vertex colour meaning "show the skin texture as it is".
+pub const ORIGINAL: u32 = 0x0100_0000;
 
 /// Where a monster is and what it's doing.
 pub struct MonsterDraw {

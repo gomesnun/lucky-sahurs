@@ -31,6 +31,7 @@ pub fn rarity_glow_color(key: &str) -> Color {
         "absoluto" => (255, 190, 50),
         "primordial" => (255, 110, 40),
         "paradoxo" => (190, 150, 255),
+        "og" => (255, 210, 70),
         _ => (255, 255, 255),
     };
     Color::rgb(r, g, b)

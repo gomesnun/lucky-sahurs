@@ -109,6 +109,10 @@ fn main() {
         online_test(&args[2]);
         return;
     }
+    if args.len() > 2 && args[1] == "--teaservideo" {
+        teaser_video(&args[2]);
+        return;
+    }
     if args.len() > 2 && args[1] == "--battlevideo" {
         battle_video(&args[2]);
         return;
@@ -442,6 +446,32 @@ fn online_test(dir: &str) {
         }
     }
     panic!("the online battle never ended");
+}
+
+/// The 4.0 teaser, frame by frame (30 fps): an existing save opened for the first time on 4.0.
+fn teaser_video(dir: &str) {
+    use core::state::set_fake_time;
+    set_fake_time(Some(1_790_000_000.0));
+    let mut g = game::Game::headless(1422, 800);
+    g.settings.set_bool("tutorial_done", true);
+    g.start_slot(1);
+    for _ in 0..300 {
+        g.state.roll();
+    }
+    g.settings.set_bool(game::teaser::TEASER_SETTING, false);
+    g.on_enter_game();
+    let m = (-100.0, -100.0);
+    let mut i = 0;
+    while g.teaser_active() || i < 20 {
+        g.tick(1.0 / 30.0);
+        g.draw(m);
+        g.apply_glow();
+        save_png(&g.canvas, &std::path::Path::new(dir).join(format!("frame_{:05}.png", i)));
+        i += 1;
+        if i > 30 * 30 {
+            break;
+        }
+    }
 }
 
 /// Plays a whole battle by itself and saves every frame (30 fps, Glow on) as dir/frame_NNNNN.png - for a video.

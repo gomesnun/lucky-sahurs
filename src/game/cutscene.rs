@@ -34,6 +34,7 @@ pub fn cutscene_style(key: &str) -> CutsceneStyle {
         "absoluto" => CutsceneStyle { duration: 4.8, rays: 36, ambient: 60.0, burst: 140, shake: 10.0, label: "ABSOLUTE PET!" },
         "primordial" => CutsceneStyle { duration: 5.4, rays: 40, ambient: 70.0, burst: 170, shake: 13.0, label: "PRIMORDIAL PET!" },
         "paradoxo" => CutsceneStyle { duration: 6.0, rays: 48, ambient: 80.0, burst: 200, shake: 16.0, label: "PARADOX PET!" },
+        "og" => CutsceneStyle { duration: 7.0, rays: 60, ambient: 96.0, burst: 260, shake: 20.0, label: "OG VERITY!" },
         _ => CutsceneStyle { duration: 3.2, rays: 22, ambient: 34.0, burst: 76, shake: 6.0, label: "TRANSCENDENT PET!" },
     }
 }

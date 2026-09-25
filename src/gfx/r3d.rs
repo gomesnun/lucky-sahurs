@@ -498,7 +498,7 @@ impl Band<'_> {
                 let ty = ((a[1] * sh) as i64).clamp(0, sh as i64 - 1) as usize;
                 let texel = skin[ty * skin_w + tx];
                 let (tr, tg, tb) = (ch(texel, 16), ch(texel, 8), ch(texel, 0));
-                let (mut r, mut g, mut b) = if texel >> 24 & 1 == 1 {
+                let (mut r, mut g, mut b) = if texel >> 24 & 1 == 1 || col[0] >> 24 == 1 {
                     (tr, tg, tb)
                 } else {
                     // the skin's shading on the verity's colour (dark colours lifted a little so they still read)
