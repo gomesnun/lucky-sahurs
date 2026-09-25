@@ -739,6 +739,34 @@ impl Game {
                     blit_center(&mut self.canvas, &icon, sell_rect.center());
                 }
             }
+            // v3.0.4: the lock (under the sell button) - a locked verity can't be sold
+            let locked = self.state.is_locked(idx, m);
+            let lock_rect = Rect::new(sell_rect.x, sell_rect.bottom() + 6, sell_size, sell_size);
+            let lock_label = if load_icon("lock", 16).is_some() { "" } else { "L" };
+            self.button(
+                lock_rect,
+                lock_label,
+                &sb,
+                mouse_pos,
+                if locked { accent() } else { Color::rgb(38, 40, 52) },
+                if locked { accent_hover() } else { Color::rgb(62, 66, 84) },
+                WHITE,
+                cb(move |g| g.state.toggle_lock(idx, m)),
+                Bo::r(7),
+            );
+            if let Some(icon) = load_icon("lock", sell_size - 8) {
+                if self.clip_allows(&lock_rect) {
+                    if locked {
+                        blit_center(&mut self.canvas, &icon, lock_rect.center());
+                    } else {
+                        let r = Rect::with_center(icon.w, icon.h, lock_rect.center());
+                        self.canvas.blit_with_alpha(&icon, r.x, r.y, 110);
+                    }
+                }
+            }
+            if locked && self.clip_allows(&crect) {
+                draw::rect(&mut self.canvas, accent(), crect, 2, 12);
+            }
         }
         let rows = (entries.len() as i32 + cols - 1) / cols;
         (top_y + scroll - content.top() as f64) + (rows * (card_h + gap)) as f64 + 10.0

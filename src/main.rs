@@ -478,6 +478,9 @@ fn shots(dir: &str) {
     g.left_panel.update(5.0);
     g.draw(m);
     save(&g, "g_bag");
+    if let Some((li, lm)) = g.inventory_entries().first().copied() {
+        g.state.toggle_lock(li, lm); // v3.0.4: a locked verity
+    }
     g.toggle_bag_view();
     g.draw(m);
     save(&g, "g_bag_inventory");

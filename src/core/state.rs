@@ -125,6 +125,8 @@ pub struct GameState {
     pub auto_rebirth_on: bool,
     /// v3.0.4: Double Rolls from the dice
     pub total_double_rolls: i64,
+    /// v3.0.4: verities locked in the Bag ("<rarity>_<mutation>"): they can't be sold
+    pub locked_pets: std::collections::BTreeSet<String>,
     /// dice, potions and what was bought this period (core/shop.rs)
     pub shop: crate::core::shop::ShopState,
     /// with no bonus roll, the chances are the same for every roll of a frame: the Auto Roller keeps them here
@@ -315,6 +317,7 @@ impl GameState {
             auto_trait_on: true,
             auto_rebirth_on: false,
             total_double_rolls: 0,
+            locked_pets: Default::default(),
             shop: Default::default(),
             probs_cache: None,
             cloud_uid: None,
@@ -1086,6 +1089,19 @@ impl GameState {
         false
     }
 
+    // ---------------- locking (v3.0.4) ----------------
+    pub fn is_locked(&self, rarity_index: usize, m: &str) -> bool {
+        self.locked_pets.contains(&format!("{}_{}", rarity_index, m))
+    }
+
+    pub fn toggle_lock(&mut self, rarity_index: usize, m: &str) {
+        let key = format!("{}_{}", rarity_index, m);
+        if !self.locked_pets.remove(&key) {
+            self.locked_pets.insert(key);
+        }
+        self.dirty = true;
+    }
+
     // ---------------- selling ----------------
     /// What ONE pet sells for: a few seconds of its money/sec (see PET_SELL_SECONDS).
     pub fn sell_price(&self, rarity_index: usize, m: &str) -> f64 {
@@ -1095,6 +1111,9 @@ impl GameState {
     /// Sells 'amount' pets of this kind (asking for more than you have sells them all). If you end up with fewer
     /// than you have equipped, the extra ones are unequipped. Returns (how many were sold, money earned).
     pub fn sell_pets(&mut self, rarity_index: usize, m: &str, amount: i64) -> (i64, f64) {
+        if self.is_locked(rarity_index, m) {
+            return (0, 0.0);
+        }
         let key = format!("{}_{}", rarity_index, m);
         let sold = amount.min(self.count_owned(rarity_index, m)).max(0);
         if sold <= 0 {
@@ -1641,6 +1660,7 @@ impl GameState {
         st.insert("auto_trait_on".into(), json!(self.auto_trait_on));
         st.insert("auto_rebirth_on".into(), json!(self.auto_rebirth_on));
         st.insert("total_double_rolls".into(), json!(self.total_double_rolls));
+        st.insert("locked_pets".into(), json!(self.locked_pets.iter().collect::<Vec<_>>()));
         d.insert("settings".into(), Value::Object(st));
         let mut tr = Map::new();
         tr.insert("charges".into(), json!(self.trait_charges));
@@ -1842,6 +1862,7 @@ impl GameState {
         self.auto_trait_on = st.get("auto_trait_on").map(value_truthy).unwrap_or(true);
         self.auto_rebirth_on = st.get("auto_rebirth_on").map(value_truthy).unwrap_or(false);
         self.total_double_rolls = get_i("total_double_rolls", 0)?.max(0);
+        self.locked_pets = st.get("locked_pets").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
         let ms = self.max_slots().max(0) as usize;
         self.equipped.truncate(ms);
 
@@ -2172,6 +2193,20 @@ mod prestige_tests {
         let mut t = GameState::new();
         t.load_dict(&s.to_dict()).unwrap();
         assert!(t.auto_rebirth_on);
+    }
+
+    #[test]
+    fn a_locked_verity_cant_be_sold() {
+        let mut s = GameState::new();
+        s.owned.insert("3_golden".into(), 5);
+        s.toggle_lock(3, "golden");
+        assert_eq!(s.sell_pets(3, "golden", 5), (0, 0.0));
+        assert_eq!(s.count_owned(3, "golden"), 5);
+        let mut t = GameState::new();
+        t.load_dict(&s.to_dict()).unwrap();
+        assert!(t.is_locked(3, "golden"));
+        t.toggle_lock(3, "golden");
+        assert_eq!(t.sell_pets(3, "golden", 2).0, 2);
     }
 
     #[test]

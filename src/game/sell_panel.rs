@@ -49,6 +49,10 @@ pub fn sell_pet_label(rarity_index: usize, m: &str) -> String {
 impl Game {
     // ---------------------------------------------------------------- open / close
     pub fn open_sell(&mut self, rarity_index: usize, m: &'static str) {
+        if self.state.is_locked(rarity_index, m) {
+            self.show_toast(&tr!("%s is locked! Unlock it (the lock on its card) to sell it.", sell_pet_label(rarity_index, m)), 2.5);
+            return;
+        }
         self.sell.target = Some((rarity_index, m));
         self.sell.field.set_text("");
         self.sell.all = false;
