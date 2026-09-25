@@ -11,6 +11,9 @@ use crate::ui::fonts::wrap_text;
 use std::rc::Rc;
 
 pub const UPDATE_LOG: &[(&str, &str, &[&str])] = &[
+    ("v4.0.1", "2026-09-25", &[
+        "Explore: catching a Verity Pet now fights it, like a normal battle, instead of grabbing it outright. Win to catch it; lose or run and it gets away. (New players with no Verities yet still get an instant catch.)",
+    ]),
     ("v4.0.0", "2026-09-25", &[
         "Verity Battle: the BATTLE button now opens a hub with three modes - Explore, Ranked and Fight a Friend.",
         "Explore: walk Steve through 3D worlds - the Overworld, the Nether, The End, End City and Emerald City - and catch Verity Pets. Walking and catching give XP; levels open the next worlds (better worlds, better pets) and new clothes in the Wardrobe.",

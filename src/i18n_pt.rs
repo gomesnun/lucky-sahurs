@@ -1021,6 +1021,12 @@ pub const PT: &[(&str, &str)] = &[
     ("Every Verity keeps its own look in each phase, and its Monster wears its colours, accessories and glow.", "Cada Verity mantém o seu estilo em cada fase, e o seu Monstro usa as suas cores, acessórios e brilho."),
     ("New players get a quick tutorial (skippable, and you can replay it from Options > Game).", "Os novos jogadores têm um tutorial rápido (dá para saltar e para repetir em Opções > Jogo)."),
     ("After an update, a \"What's new\" window shows what changed.", "Depois de uma atualização, a janela \"Novidades\" mostra o que mudou."),
+    // v4.0.1: catching a Verity Pet fights it first
+    ("Wild", "Selvagem"),
+    ("Caught it!", "Apanhaste-o!"),
+    ("It got away...", "Escapou..."),
+    ("Check your Verity Pets in the Bag.", "Vê os teus Verity Pets na Mochila."),
+    ("Explore: catching a Verity Pet now fights it, like a normal battle, instead of grabbing it outright. Win to catch it; lose or run and it gets away. (New players with no Verities yet still get an instant catch.)", "Explorar: apanhar um Verity Pet agora significa lutar com ele, como numa batalha normal, em vez de o apanhares logo. Ganha para o apanhar; perde ou foge e ele escapa. (Jogadores novos sem Verities ainda continuam a apanhá-lo logo.)"),
     // v4.0: Explore, Verity Pets, the Battle hub
     ("%s opens at level %d", "%s abre no nível %d"),
     ("Caught %s %s  +%s%% %s", "Apanhaste %s %s  +%s%% %s"),
