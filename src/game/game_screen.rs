@@ -96,6 +96,11 @@ impl Game {
             // the battle covers the whole screen: skip drawing the game under it (the 3D arena needs the time)
             self.draw_topbar(mouse_pos);
             self.draw_battle(mouse_pos);
+            // the Pet Index can be opened from Explore too (it's the same verities, just met out there)
+            if self.index_open {
+                self.begin_modal();
+                self.draw_index_page(mouse_pos);
+            }
             if self.update_modal_active() {
                 self.draw_update_modal(mouse_pos);
             }

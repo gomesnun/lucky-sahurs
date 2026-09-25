@@ -1275,6 +1275,49 @@ impl GameState {
         (sold, gain)
     }
 
+    /// Removes up to `qty` total of this pet+mutation, spending whichever phases have it (lowest first,
+    /// skipping locked ones) - trades (and the online wallet they settle against) are phase-independent, the
+    /// same pet+mutation counts however it's split across your phase buckets. Returns how many were removed.
+    pub fn take_owned_any_phase(&mut self, rarity_index: usize, m: &str, qty: i64) -> i64 {
+        let mut left = qty.max(0);
+        let mut removed = 0;
+        for phase in 0..=MAX_PHASE {
+            if left <= 0 {
+                break;
+            }
+            if self.is_locked(rarity_index, m, phase) {
+                continue;
+            }
+            let have = self.count_owned_at(rarity_index, m, phase);
+            if have <= 0 {
+                continue;
+            }
+            let take = have.min(left);
+            let key = owned_key(rarity_index, m, phase);
+            let remain = have - take;
+            if remain > 0 {
+                self.owned.insert(key, remain);
+            } else {
+                self.owned.shift_remove(&key); // stays in the Index anyway (seen_pets)
+            }
+            while self.equipped_count(rarity_index, m, phase) > remain {
+                self.equip_remove_one(rarity_index, m, phase);
+            }
+            left -= take;
+            removed += take;
+        }
+        removed
+    }
+
+    /// Adds `qty` of this pet+mutation as fresh Phase 1 stock (same bucket a roll would land in) - used when a
+    /// trade brings pets in: the trade itself doesn't know or care which phase they end up at.
+    pub fn add_owned_phase1(&mut self, rarity_index: usize, m: &str, qty: i64) {
+        if qty <= 0 {
+            return;
+        }
+        *self.owned.entry(owned_key(rarity_index, m, 0)).or_insert(0) += qty;
+    }
+
     pub fn remove_slot_at(&mut self, index: usize) {
         if index < self.equipped.len() {
             self.equipped.remove(index);

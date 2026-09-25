@@ -46,6 +46,16 @@ pub fn pet_key_label(key: &str) -> String {
     format!("{} {}", prefix, rarities()[idx as usize].pet).trim().to_string()
 }
 
+/// "3_golden" -> (3, "golden") - trade keys (and the wallet they're checked against) never carry a phase.
+fn parse_trade_key(key: &str) -> Option<(usize, &str)> {
+    let (idx_s, m) = key.split_once('_')?;
+    let idx = idx_s.trim().parse::<usize>().ok()?;
+    if idx >= rarities().len() || mutation(m).is_none() {
+        return None;
+    }
+    Some((idx, m))
+}
+
 fn fmt_items(items: &[(String, i64)]) -> String {
     if items.is_empty() {
         return "-".into();
@@ -204,15 +214,18 @@ impl Game {
                 for receipt in receipts {
                     let st = &mut g.state;
                     for (k, q) in &receipt.give {
-                        *st.owned.entry(k.clone()).or_insert(0) += q;
+                        if let Some((idx, m)) = parse_trade_key(k) {
+                            st.add_owned_phase1(idx, m, *q);
+                        }
                         if *q > 0 {
                             st.seen_pets.insert(k.clone());
                             gained.push(k.clone());
                         }
                     }
                     for (k, q) in &receipt.take {
-                        let v = st.owned.get(k).copied().unwrap_or(0);
-                        st.owned.insert(k.clone(), (v - q).max(0));
+                        if let Some((idx, m)) = parse_trade_key(k) {
+                            st.take_owned_any_phase(idx, m, *q);
+                        }
                     }
                     let client = g.client.clone().unwrap();
                     g.worker.run::<()>(move || client.apply_incoming(&receipt), None, Some(Box::new(|_: &mut Game, _| {})));
@@ -266,13 +279,14 @@ impl Game {
         self.trades.their_wallet = None;
     }
 
-    /// [(key, count)] of what you have, by rarity - to pick what you offer.
+    /// [(key, count)] of what you have, by rarity - to pick what you offer. Trades (and the wallet they're
+    /// checked against) are phase-independent - a fused pet still counts, it just doesn't say which phase.
     pub fn my_owned_for_trade(&self) -> Vec<(String, i64)> {
         let mut out = Vec::new();
         for &idx in pet_order() {
             for m in MUT_ORDER {
                 let key = format!("{}_{}", idx, m);
-                let q = self.state.owned.get(&key).copied().unwrap_or(0);
+                let q = self.state.count_owned(idx, m);
                 if q > 0 {
                     out.push((key, q));
                 }
@@ -301,7 +315,8 @@ impl Game {
     /// side: "offer" (what I give) or "request" (what I ask for).
     pub fn set_trade_offer_qty(&mut self, side: &str, key: &str, qty: i64) {
         let cap = if side == "offer" {
-            self.state.owned.get(key).copied().unwrap_or(0)
+            // `key` is phase-independent ("idx_mutation") - `owned` isn't any more, so this counts every phase
+            key.split_once('_').and_then(|(idx_s, m)| idx_s.trim().parse::<usize>().ok().map(|idx| self.state.count_owned(idx, m))).unwrap_or(0)
         } else {
             self.trades.their_wallet.as_ref().and_then(|w| w.get(key).copied()).unwrap_or(0)
         };
@@ -415,7 +430,7 @@ impl Game {
         self.trades.msg = None;
         for (k, q) in &trade.request {
             // what I give
-            let have = self.state.owned.get(k).copied().unwrap_or(0);
+            let have = parse_trade_key(k).map(|(idx, m)| self.state.count_owned(idx, m)).unwrap_or(0);
             if have < *q {
                 // (the save open now is what counts: another slot may have more)
                 self.trades.msg = Some((
@@ -436,11 +451,14 @@ impl Game {
                 g.trades.action = None;
                 if let Some(st) = g.state_by_id(sid) {
                     for (k, q) in &trade.request {
-                        let v = st.owned.get(k).copied().unwrap_or(0);
-                        st.owned.insert(k.clone(), (v - q).max(0));
+                        if let Some((idx, m)) = parse_trade_key(k) {
+                            st.take_owned_any_phase(idx, m, *q);
+                        }
                     }
                     for (k, q) in &trade.offer {
-                        *st.owned.entry(k.clone()).or_insert(0) += q;
+                        if let Some((idx, m)) = parse_trade_key(k) {
+                            st.add_owned_phase1(idx, m, *q);
+                        }
                         if *q > 0 {
                             st.seen_pets.insert(k.clone());
                         }

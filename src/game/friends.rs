@@ -220,7 +220,7 @@ impl Game {
         let mut out = Vec::new();
         for &idx in pet_order() {
             for m in MUT_ORDER {
-                if self.state.owned.get(&format!("{}_{}", idx, m)).copied().unwrap_or(0) > 0 {
+                if self.state.count_owned(idx, m) > 0 {
                     out.push((idx, m));
                 }
             }

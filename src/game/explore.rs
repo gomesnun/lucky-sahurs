@@ -1322,6 +1322,8 @@ impl Game {
         let what = if p.pet.luck { tr("Luck") } else { tr("Money") };
         let gain = catch_xp(&p.pet);
         if self.state.explore.add_pet(p.pet.clone()) {
+            // counts toward the main Index too - it's the same pet, just met out here instead of rolled
+            self.state.seen_pets.insert(format!("{}_normal", p.pet.pet));
             self.show_toast(&tr!("Caught %s %s  +%s%% %s", name, stars(p.pet.stars), format_number(p.pet.boost), what), 2.4);
             let at = v3(self.explore.pos.0, self.explore.y + 2.4, self.explore.pos.1);
             self.explore.pops.push((tr!("+%d XP", gain.round() as i64), at, t, Color::rgb(140, 255, 150)));
@@ -1757,6 +1759,9 @@ impl Game {
         bx -= bw + 8;
         let wr_on = self.explore.overlay == "wardrobe";
         self.button(Rect::new(bx, area.y + 14, bw, 42), &tr("Wardrobe (C)"), &sb, mouse_pos, if wr_on { accent() } else { Color::rgba(10, 12, 22, 200) }, accent_hover(), if wr_on { BLACK } else { WHITE }, cb(|g| g.explore.overlay = if g.explore.overlay == "wardrobe" { "" } else { "wardrobe" }), Bo::r(10));
+        bx -= bw + 8;
+        // which Verity Pet species you've met so far, in Explore or rolled - the same Pet Index as the main game
+        self.button(Rect::new(bx, area.y + 14, bw, 42), &tr("Index"), &sb, mouse_pos, Color::rgba(10, 12, 22, 200), accent_hover(), WHITE, cb(|g| g.toggle_index_page()), Bo::r(10).icon("index"));
         // the equipped pets' boosts
         let (mm, lm) = (st.money_mult(), st.luck_mult());
         let boost = tr!("Pets: +%s%% money  ·  +%s%% luck", format_number(((mm - 1.0) * 100.0).round()), format_number(((lm - 1.0) * 100.0).round()));
