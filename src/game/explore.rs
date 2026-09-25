@@ -1486,23 +1486,13 @@ pub struct Scene<'a> {
     pub cut_front: bool,
 }
 
-/// Draws a world at w x h; returns the frame and its view.
-/// v4.0.1: view-frustum culling - is this face's quad even possibly on screen? A cheap bounding-sphere test
-/// around its center (every face here is one block, ~0.87 across corner to corner, so radius 0.6 covers it with
-/// slack) against the camera's near plane and its left/right/top/bottom planes, at the sphere's own depth.
+/// v4.0.1: view-frustum culling - is this face's quad even possibly on screen? (every face here is one block,
+/// ~0.87 across corner to corner, so a 0.6 radius covers it with slack). See View::quad_in_view.
 fn face_in_view(view: &View, corners: &[V3; 4]) -> bool {
-    const R: f64 = 0.6;
-    const NEAR: f64 = 0.1; // r3d.rs's own NEAR isn't public; this only needs to be a small, safe margin
-    let center = (corners[0] + corners[1] + corners[2] + corners[3]) * 0.25;
-    let c = view.to_cam(center);
-    if c.z + R < NEAR {
-        return false; // entirely behind the camera
-    }
-    let d = c.z.max(NEAR);
-    let (hw, hh) = (view.cx / view.focal, view.cy / view.focal);
-    c.x.abs() <= d * hw + R && c.y.abs() <= d * hh + R
+    view.quad_in_view(corners, 0.6)
 }
 
+/// Draws a world at w x h; returns the frame and its view.
 fn draw_world(sc: &Scene, w: usize, h: usize) -> (Frame, View) {
     let world = world(sc.dim);
     let mut fr = Frame::new(w, h);

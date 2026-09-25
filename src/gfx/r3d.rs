@@ -116,6 +116,19 @@ impl View {
     pub fn ray(&self, sx: f64, sy: f64) -> V3 {
         (self.r * ((sx - self.cx) / self.focal) + self.u * ((self.cy - sy) / self.focal) + self.f).norm()
     }
+    /// view-frustum culling: is this quad even possibly on screen? A cheap bounding-sphere test around its
+    /// center against the near plane and the left/right/top/bottom planes, at the sphere's own depth. `radius`
+    /// should cover the quad's corner-to-center distance with a little slack.
+    pub fn quad_in_view(&self, corners: &[V3; 4], radius: f64) -> bool {
+        let center = (corners[0] + corners[1] + corners[2] + corners[3]) * 0.25;
+        let c = self.to_cam(center);
+        if c.z + radius < NEAR {
+            return false; // entirely behind the camera
+        }
+        let d = c.z.max(NEAR);
+        let (hw, hh) = (self.cx / self.focal, self.cy / self.focal);
+        c.x.abs() <= d * hw + radius && c.y.abs() <= d * hh + radius
+    }
 }
 
 pub struct Frame {

@@ -622,7 +622,11 @@ pub fn draw_arena_3d(st: &Stage, w: usize, h: usize) -> (Surface, Marks) {
             let (view, fog) = (&view, &fog);
             scope.spawn(move || {
                 for f in &wref.faces {
-                    band.quad(view, f.corners, &wref.texes[f.tex], f.light, fog);
+                    // the arena is small, but this still skips redrawing faces that are behind the camera or
+                    // well outside frame - free on a static, mostly-off-camera arena wall
+                    if view.quad_in_view(&f.corners, 0.6) {
+                        band.quad(view, f.corners, &wref.texes[f.tex], f.light, fog);
+                    }
                 }
             });
         }
