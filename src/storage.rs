@@ -98,6 +98,38 @@ pub fn delete_slot(slot: i64) {
     }
 }
 
+/// A timestamped copy of a slot's save (savegame_slot{N}_{label}_backup_{unix time}.json), so something
+/// destructive touching it - a season or personal reset - is never unrecoverable. Kept forever (these are rare
+/// and small); a player who needs one back can rename the file to savegame_slot{N}.json by hand.
+fn backup_path(slot: i64, label: &str) -> PathBuf {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let dir = save_dir();
+    let _ = std::fs::create_dir_all(dir); // never silently skip a backup just because the folder isn't there yet
+    dir.join(format!("savegame_slot{}_{}_backup_{}.json", slot, label, now))
+}
+
+/// Copies a slot's current save file to a backup (see backup_path). Used right before deleting a save file we
+/// haven't parsed into memory (on_season_known's other-slots loop).
+pub fn backup_slot_file(slot: i64, label: &str) {
+    let Ok(data) = std::fs::read(save_slot_path(slot)) else { return };
+    let _ = std::fs::write(backup_path(slot, label), data);
+}
+
+/// Writes a save (already parsed and re-serialized in memory) to a backup file. Used when the save being backed
+/// up is about to be overwritten on disk in the same breath (enforce_season_state) - backup_slot_file would be
+/// too late (it re-reads the file, and by then it may already be the new one).
+pub fn backup_json_file(slot: i64, label: &str, data: &Value) {
+    if let Ok(text) = serde_json::to_string(data) {
+        let _ = std::fs::write(backup_path(slot, label), text);
+    }
+}
+
+/// delete_slot, but backs the file up first (see backup_slot_file).
+pub fn delete_slot_with_backup(slot: i64, label: &str) {
+    backup_slot_file(slot, label);
+    delete_slot(slot);
+}
+
 pub fn settings_path() -> PathBuf {
     save_dir().join("lucky_verities_settings.json")
 }

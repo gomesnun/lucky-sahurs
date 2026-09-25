@@ -1577,4 +1577,39 @@ mod prefs_tests {
         assert!(pc2.settings.get_bool("fullscreen", false)); // fullscreen stays per PC
         let _ = dir;
     }
+
+    /// A season (or personal) reset wipes the save being played, but never irrecoverably: it backs up the exact
+    /// dict it's about to throw away, as a plain JSON file next to the save slots, before it touches anything.
+    #[test]
+    fn a_season_reset_backs_up_the_wiped_save_first() {
+        test_save_dir();
+        // crate::config::save_dir() is itself a process-wide OnceLock: whichever test calls it first (this one,
+        // or an unrelated test that builds a Game before this one runs) decides where it points for every test
+        // in this run. Read it back live instead of trusting test_save_dir()'s own return value, so this test
+        // stays correct regardless of run order.
+        let dir = crate::config::save_dir().to_path_buf();
+        let mut g = Game::headless(1422, 800);
+        g.season.server = Some(1);
+        let mut st = GameState::new();
+        st.slot = Some(55); // a slot number no other test in this file touches
+        st.total_rolls = 12345;
+        st.coins = 6789.0;
+        g.replace_state(st); // triggers enforce_season_state() internally: season 0 < server season 1
+        assert_eq!(g.state.total_rolls, 0); // the wipe still happens
+        // slot 55 is unique to this test, but the test dir is reused across separate `cargo test` runs that land
+        // on the same process id, so old backups from an earlier run can still be sitting there: at least one
+        // backup must exist and match what was just wiped, not necessarily only one.
+        let backups: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().contains("slot55_season_backup_"))
+            .collect();
+        assert!(!backups.is_empty(), "expected at least one backup file for slot 55");
+        let matches = backups.iter().any(|e| {
+            let Ok(text) = std::fs::read_to_string(e.path()) else { return false };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else { return false };
+            v.get("total_rolls").and_then(|x| x.as_i64()) == Some(12345) && v.get("coins").and_then(|x| x.as_f64()) == Some(6789.0)
+        });
+        assert!(matches, "no backup file had the wiped save's data (12345 rolls, 6789 coins)");
+    }
 }

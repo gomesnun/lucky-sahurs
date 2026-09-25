@@ -1961,12 +1961,24 @@ impl FirebaseClient {
             Err(e) if e.code != "not_found" => return Err(e),
             _ => {}
         }
+        self.log_admin_action("reset_player", &format!("uid={} n={}", uid, n));
         Ok(n)
     }
 
     /// Admins only (rules): starts season `n`.
     pub fn set_season(&self, n: i64) -> Res<()> {
-        self.fs("PATCH", "/public/season", Some(json!({"fields": {"season": fs_int(n)}})), &[]).map(|_| ())
+        self.fs("PATCH", "/public/season", Some(json!({"fields": {"season": fs_int(n)}})), &[])?;
+        self.log_admin_action("set_season", &format!("n={}", n));
+        Ok(())
+    }
+
+    /// Best-effort: who did a destructive admin action (a season/player reset) and when, so it can be told apart
+    /// from a bug later. /admin_log/{who}_{when}; never fails the action itself if this can't be written.
+    fn log_admin_action(&self, action: &str, detail: &str) {
+        let who = self.username().or_else(|| self.uid()).unwrap_or_else(|| "?".into());
+        let id = format!("{}_{}", who, now() as i64);
+        let fields = json!({"who": fs_str(&who), "action": fs_str(action), "detail": fs_str(detail)});
+        let _ = self.fs("PATCH", &format!("/admin_log/{}", id), Some(json!({"fields": fields})), &[]);
     }
 
     /// Admins only (rules): empties the leaderboard (every /leaderboard/{uid}). Returns how many were removed.

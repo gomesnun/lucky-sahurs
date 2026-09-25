@@ -160,6 +160,15 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // v4.0.1: quem fez um reset (de temporada ou de um jogador) e quando - para distinguir um clique
+    // acidental de um bug. Só os admins o leem; escrito pelo próprio código (reset_player / set_season),
+    // nunca editado nem apagado depois.
+    match /admin_log/{id} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && request.resource.data.keys().hasOnly(['who', 'action', 'detail']);
+      allow update, delete: if false;
+    }
+
     // Pedidos de amizade. O id é "<uid de destino>__<uid de origem>": assim o mesmo pedido
     // nunca aparece duas vezes e a própria regra confirma quem o está a criar.
     match /friend_requests/{pedido} {

@@ -12,8 +12,8 @@ use crate::config::SAVE_SLOTS;
 use crate::core::state::{GameState, now_ts};
 use crate::gfx::{Color, Rect};
 use crate::i18n::tr;
-use crate::online::cloud_cache::delete_cache;
-use crate::storage::{delete_slot, save_slot_path};
+use crate::online::cloud_cache::{backup_state, delete_cache};
+use crate::storage::{backup_json_file, delete_slot_with_backup, save_slot_path};
 use crate::theme::*;
 use crate::tr;
 use serde_json::Value;
@@ -109,7 +109,7 @@ impl Game {
                 continue; // already handled (and saved) above
             }
             if local_slot_season(slot).is_some_and(|s| s < n) {
-                delete_slot(slot);
+                delete_slot_with_backup(slot, "season");
             }
         }
         self.refresh_slot_info();
@@ -147,6 +147,16 @@ impl Game {
         fresh.save_seq = self.state.save_seq + 1;
         fresh.dirty = true;
         let old = std::mem::replace(&mut self.state, fresh);
+        // back the wiped save up first: a season / personal reset (accidental or not) is never unrecoverable.
+        // this has to happen before self.state.save() below (that overwrites this slot's file with the fresh one)
+        // and before old.obj_id is possibly moved into orphan_states, so grab everything from `old` right now.
+        if let Some(slot) = old.slot {
+            let dict = old.to_dict();
+            backup_json_file(slot, "season", &dict);
+            if let Some(uid) = &old.cloud_uid {
+                backup_state(uid, slot, "season", &dict);
+            }
+        }
         if self.upload_inflight {
             self.orphan_states.insert(old.obj_id, old);
         }
@@ -164,6 +174,7 @@ impl Game {
         }
         self.season.cloud_checked = Some((acc.uid.clone(), n, r));
         let playing = self.state.slot;
+        let uid = acc.uid.clone();
         self.run_job(
             move || {
                 let mut old = Vec::new();
@@ -174,6 +185,8 @@ impl Game {
                     if let Some(doc) = client.get_save(slot)? {
                         let num = |k: &str| doc.data.get(k).and_then(crate::storage::value_i64).unwrap_or(0);
                         if num("season") < n || num("player_reset") < r {
+                            // back it up (a local file, next to the local slots' own backups) before it's gone
+                            backup_state(&uid, slot, "season", &doc.data);
                             client.delete_save(slot)?;
                             old.push(slot);
                         }
