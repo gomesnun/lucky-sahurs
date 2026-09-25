@@ -12,6 +12,7 @@ use std::rc::Rc;
 
 pub const UPDATE_LOG: &[(&str, &str, &[&str])] = &[
     ("v3.0.4", "2026-09-24", &[
+        "From Prestige II there's an Auto Rebirth switch next to the Rebirth button: it rebirths by itself as soon as you can afford it.",
         "Auto Trait Roller: a new trait now shows a \"New trait!\" card in the corner, and if it's better than the one you have equipped, it's equipped by itself.",
         "Upgrades that a Rebirth doesn't reset now show a \"Kept on Rebirth\" badge next to their name (instead of a line in the description).",
         "A reset (new season or an admin reset) no longer takes away your playtime.",

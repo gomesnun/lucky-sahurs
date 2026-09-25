@@ -189,7 +189,7 @@ impl Game {
         self.canvas.blit(&cost_txt, r.x, r.y);
         y += 24;
 
-        let btn_w = 420.min(rect.w - 60);
+        let btn_w = (if self.state.auto_rebirth_unlocked() { 600 } else { 420 }).min(rect.w - 60);
         let (label, color) = if locked {
             (tr!("Locked - do Prestige %s first", next_p), Color::rgb(70, 73, 88))
         } else if self.rebirth_confirm {
@@ -197,8 +197,27 @@ impl Game {
         } else {
             (tr!("Rebirth  (+%.0f%% Money, +%.0f%% Luck)", REBIRTH_MONEY_PER * 100.0, REBIRTH_LUCK_PER * 100.0), if can { accent() } else { Color::rgb(70, 73, 88) })
         };
+        // v3.0.4: from Prestige II the Auto Rebirth switch sits next to the button
+        let auto = self.state.auto_rebirth_unlocked();
+        let auto_w = if auto { 200 } else { 0 };
+        let main_w = if auto { btn_w - auto_w - 10 } else { btn_w };
+        let row_x = rect.centerx() - btn_w / 2;
+        if auto {
+            let on = self.state.auto_rebirth_on;
+            self.button(
+                Rect::new(row_x + main_w + 10, y, auto_w, 50),
+                &tr!("Auto Rebirth: %s", if on { tr("ON") } else { tr("OFF") }),
+                &sb,
+                mouse_pos,
+                if on { Color::rgb(52, 120, 80) } else { panel_light() },
+                panel_lighter(),
+                WHITE,
+                cb(|g| g.state.auto_rebirth_on = !g.state.auto_rebirth_on),
+                Bo::r(10).icon("rebirth"),
+            );
+        }
         self.button(
-            Rect::new(rect.centerx() - btn_w / 2, y, btn_w, 50),
+            Rect::new(row_x, y, main_w, 50),
             &label,
             &sb,
             mouse_pos,

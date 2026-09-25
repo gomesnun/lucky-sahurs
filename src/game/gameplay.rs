@@ -2,7 +2,7 @@
 
 use super::Game;
 use super::audio::AUTO_QUIET_RPS;
-use crate::core::data::{AUTO_TRAIT_EVERY, AUTO_UPGRADE_EVERY, MAX_MANUAL_CPS, TRAIT_POPUP_SECS, TIER_COSMIC, TIER_ETHEREAL, pet_order, rarities};
+use crate::core::data::{AUTO_REBIRTH_EVERY, AUTO_TRAIT_EVERY, AUTO_UPGRADE_EVERY, MAX_MANUAL_CPS, TRAIT_POPUP_SECS, TIER_COSMIC, TIER_ETHEREAL, pet_order, rarities};
 use crate::core::state::now_ts;
 use crate::gfx::Color;
 use crate::ui::cards::rarity_glow_color;
@@ -149,6 +149,23 @@ impl Game {
             if self.settings.get_bool("trait_notifications", true) {
                 self.trait_popup = Some((best, TRAIT_POPUP_SECS, equip));
             }
+        }
+    }
+
+    /// v3.0.4, from Prestige II: rebirths by itself as soon as it can (it stops at each Prestige's goal).
+    pub fn update_auto_rebirth(&mut self, dt: f64) {
+        self.auto_rebirth_timer += dt;
+        if self.auto_rebirth_timer < AUTO_REBIRTH_EVERY {
+            return;
+        }
+        self.auto_rebirth_timer = 0.0;
+        if !(self.state.auto_rebirth_unlocked() && self.state.auto_rebirth_on) || !self.state.rebirth_available() {
+            return;
+        }
+        if self.state.do_rebirth() {
+            self.rebirth_confirm = false;
+            self.play("rebirth", 0.0);
+            self.show_toast(&crate::tr!("Auto Rebirth: Rebirth #%d!", self.state.rebirths), 1.8);
         }
     }
 

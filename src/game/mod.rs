@@ -182,6 +182,7 @@ pub struct Game {
     pub auto_upgrade_timer: f64,
     pub prefs_timer: f64,
     pub auto_trait_timer: f64,
+    pub auto_rebirth_timer: f64,
     /// the Auto Roller rolls faster than the card can show until this time (see draw_too_fast_card)
     pub too_fast_until: f64,
     /// the best pet since it got that fast
@@ -384,6 +385,7 @@ impl Game {
             auto_upgrade_timer: 0.0,
             prefs_timer: 0.0,
             auto_trait_timer: 0.0,
+            auto_rebirth_timer: 0.0,
             too_fast_until: 0.0,
             too_fast_best: None,
             right_rect: Rect::ZERO,
@@ -862,6 +864,7 @@ impl Game {
             self.update_auto(dt);
             self.update_auto_upgrade(dt);
             self.update_auto_trait(dt);
+            self.update_auto_rebirth(dt);
             self.state.tick_potions(dt); // active potions only use up time with the game open
             self.update_cutscenes(dt);
             self.update_roll_rate(dt);

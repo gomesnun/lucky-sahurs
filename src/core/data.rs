@@ -427,6 +427,9 @@ pub const KEEP_ON_REBIRTH: [&str; 5] = ["auto_upgrade_unlock", "auto_trait_unloc
 pub const KEEP_ON_PRESTIGE: [&str; 2] = ["auto_upgrade_unlock", "auto_trait_unlock"];
 /// how often the Auto Trait Roller spends your charges
 pub const AUTO_TRAIT_EVERY: f64 = 1.0;
+/// Auto Rebirth: unlocked at this Prestige, and how often it checks
+pub const AUTO_REBIRTH_PRESTIGE: i64 = 2;
+pub const AUTO_REBIRTH_EVERY: f64 = 1.0;
 /// how long the "New trait!" card stays up
 pub const TRAIT_POPUP_SECS: f64 = 4.5;
 

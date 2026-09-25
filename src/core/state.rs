@@ -121,6 +121,8 @@ pub struct GameState {
     pub auto_upgrade_on: bool,
     /// v3.0: the Auto Trait Roller switch
     pub auto_trait_on: bool,
+    /// v3.0.4: Auto Rebirth (from Prestige II)
+    pub auto_rebirth_on: bool,
     /// dice, potions and what was bought this period (core/shop.rs)
     pub shop: crate::core::shop::ShopState,
     /// with no bonus roll, the chances are the same for every roll of a frame: the Auto Roller keeps them here
@@ -309,6 +311,7 @@ impl GameState {
             auto_equip_best_on: true,
             auto_upgrade_on: true,
             auto_trait_on: true,
+            auto_rebirth_on: false,
             shop: Default::default(),
             probs_cache: None,
             cloud_uid: None,
@@ -1435,6 +1438,11 @@ impl GameState {
         true
     }
 
+    // ---------------- auto rebirth (v3.0.4) ----------------
+    pub fn auto_rebirth_unlocked(&self) -> bool {
+        self.prestige >= AUTO_REBIRTH_PRESTIGE
+    }
+
     // ---------------- auto trait roller ----------------
     pub fn auto_trait_unlocked(&self) -> bool {
         self.upgrade_level("auto_trait_unlock") >= 1
@@ -1628,6 +1636,7 @@ impl GameState {
         st.insert("auto_equip_best_on".into(), json!(self.auto_equip_best_on));
         st.insert("auto_upgrade_on".into(), json!(self.auto_upgrade_on));
         st.insert("auto_trait_on".into(), json!(self.auto_trait_on));
+        st.insert("auto_rebirth_on".into(), json!(self.auto_rebirth_on));
         d.insert("settings".into(), Value::Object(st));
         let mut tr = Map::new();
         tr.insert("charges".into(), json!(self.trait_charges));
@@ -1827,6 +1836,7 @@ impl GameState {
         self.auto_equip_best_on = st.get("auto_equip_best_on").map(value_truthy).unwrap_or(true);
         self.auto_upgrade_on = st.get("auto_upgrade_on").map(value_truthy).unwrap_or(true);
         self.auto_trait_on = st.get("auto_trait_on").map(value_truthy).unwrap_or(true);
+        self.auto_rebirth_on = st.get("auto_rebirth_on").map(value_truthy).unwrap_or(false);
         let ms = self.max_slots().max(0) as usize;
         self.equipped.truncate(ms);
 
@@ -2144,6 +2154,19 @@ mod prestige_tests {
         for k in ["auto_speed", "cyclic_every", "luck"] {
             assert_eq!(s.upgrade_level(k), 0, "{k} should reset");
         }
+    }
+
+    #[test]
+    fn auto_rebirth_needs_prestige_two_and_saves() {
+        let mut s = GameState::new();
+        s.prestige = 1;
+        assert!(!s.auto_rebirth_unlocked());
+        s.prestige = 2;
+        s.auto_rebirth_on = true;
+        assert!(s.auto_rebirth_unlocked());
+        let mut t = GameState::new();
+        t.load_dict(&s.to_dict()).unwrap();
+        assert!(t.auto_rebirth_on);
     }
 
     #[test]

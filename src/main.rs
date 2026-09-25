@@ -561,6 +561,18 @@ fn shots(dir: &str) {
     g.close_rebirth();
     g.draw(m);
     save(&g, "v3_after_prestige");
+    // v3.0.4: Auto Rebirth switch (Prestige II)
+    let p_before = g.state.prestige;
+    g.state.prestige = 2;
+    g.state.rebirths = 3;
+    g.state.auto_rebirth_on = true;
+    g.toggle_rebirth();
+    g.set_rebirth_tab("rebirth");
+    g.draw(m);
+    save(&g, "v3_auto_rebirth");
+    g.close_rebirth();
+    g.state.auto_rebirth_on = false;
+    g.state.prestige = p_before;
     g.state.rebirths = rb_before;
     let roll_c = {
         let c = g.main_card_rect();
