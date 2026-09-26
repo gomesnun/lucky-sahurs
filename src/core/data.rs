@@ -75,11 +75,11 @@ pub const RARITY_TIERS: [Tier; 17] = [
     Tier { key: "absoluto", name: "Absolute", color: Color::rgb(18, 14, 10), color2: Some(Color::rgb(255, 198, 58)), text: WHITE, one_in: 5.0e+17, income: 90000000000.0 },
     Tier { key: "primordial", name: "Primordial", color: Color::rgb(26, 10, 8), color2: Some(Color::rgb(255, 112, 30)), text: WHITE, one_in: 5.0e+19, income: 900000000000.0 },
     Tier { key: "paradoxo", name: "Paradox", color: Color::rgb(246, 246, 250), color2: Some(Color::rgb(14, 14, 20)), text: Color::rgb(120, 60, 220), one_in: 5.0e+21, income: 9000000000000.0 },
-    // v4.0: the original three - Verity (the game's own face), Lovity and Falsity
+    // v4.0: the originals - Verity (the game's own face), Lovity, Falsity, and (v4.1.1) Cruelty
     Tier { key: "og", name: "OG", color: Color::rgb(255, 196, 40), color2: Some(Color::rgb(255, 70, 150)), text: Color::rgb(10, 8, 50), one_in: 5.0e+23, income: 90000000000000.0 },
 ];
 
-pub const PET_DEFS: [(&str, &str); 67] = [
+pub const PET_DEFS: [(&str, &str); 68] = [
     ("comum", "Levity"),
     ("incomum", "Humility"),
     ("raro", "Amity"),
@@ -147,6 +147,8 @@ pub const PET_DEFS: [(&str, &str); 67] = [
     ("og", "Verity"),
     ("og", "Lovity"),
     ("og", "Falsity"),
+    // always last: a pet's place in this list is what saves store
+    ("og", "Cruelty"),
 ];
 
 pub const TIER_SECRET: usize = 7;
@@ -218,7 +220,7 @@ pub fn rarities() -> &'static [Rarity] {
     })
 }
 
-pub const N_PETS: usize = 67;
+pub const N_PETS: usize = 68;
 
 /// PET_ORDER: display order (by tier, then index)
 pub fn pet_order() -> &'static [usize] {

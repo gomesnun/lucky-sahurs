@@ -538,9 +538,9 @@ pub fn draw_rarity_bg(surface: &mut Surface, rect_local: Rect, rarity: &Rarity, 
                 "primordial" => paint_primordial_bg(&mut bg, c1, c2, w, h),
                 "paradoxo" => paint_paradox_bg(&mut bg, c1, c2, w, h),
                 "og" => {
-                    // the three originals: yellow, pink and blue bands
-                    let bands = [Color::rgb(255, 196, 40), Color::rgb(255, 70, 150), Color::rgb(40, 140, 255)];
-                    let bw = w / 3 + 1;
+                    // the four originals: yellow, pink, blue and red bands
+                    let bands = [Color::rgb(255, 196, 40), Color::rgb(255, 70, 150), Color::rgb(40, 140, 255), Color::rgb(222, 30, 38)];
+                    let bw = w / bands.len() as i32 + 1;
                     for (i, c) in bands.iter().enumerate() {
                         let x0 = i as i32 * bw;
                         draw::polygon(&mut bg, *c, &[(x0 - h / 3, h), (x0 + bw - h / 3, h), (x0 + bw + h / 3, 0), (x0 + h / 3, 0)], 0);

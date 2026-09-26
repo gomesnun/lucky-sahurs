@@ -958,6 +958,23 @@ fn shots(dir: &str) {
             g.explore.cam_yaw = std::f64::consts::PI; // looking back the way Steve came from
             g.draw(m);
             save(&g, "n_explore_cam_turned");
+            // the OG verities as 3D balls (their art used to leave a dark stripe across the ball)
+            {
+                let og: Vec<usize> = (0..core::data::rarities().len()).filter(|&i| core::data::rarities()[i].key == "og").collect();
+                let (pets0, eq0) = (g.state.explore.pets.clone(), g.state.explore.equipped.clone());
+                g.state.explore.equipped.clear();
+                for &p in og.iter().skip(1) {
+                    g.state.explore.add_pet(VerityPet { pet: p, dim: 4, stars: 5, luck: true, boost: 100.0 });
+                    let i = g.state.explore.pets.len() - 1;
+                    g.state.explore.toggle_equip(i);
+                }
+                g.explore.cam_yaw = 0.9;
+                g.tick_explore(0.3);
+                g.draw(m);
+                save(&g, "n_explore_og");
+                g.state.explore.pets = pets0;
+                g.state.explore.equipped = eq0;
+            }
             g.explore.cam_yaw = 0.0;
             g.explore.overlay = "wardrobe";
             g.draw(m);

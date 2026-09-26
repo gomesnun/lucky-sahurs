@@ -1038,6 +1038,11 @@ pub const PT: &[(&str, &str)] = &[
     ("Caught it!", "Apanhaste-o!"),
     ("It got away...", "Escapou..."),
     ("Check your Verity Pets in the Bag.", "Vê os teus Verity Pets na Mochila."),
+    ("Fusing works as it should now: 5 Phase 1 make 1 Phase 2, 5 Phase 2 make 1 Phase 3, and 4 Phase 3 make 1 Monster. Having exactly 5 (or 4) is enough. Fuse All goes all the way up and skips locked pets.", "A fusão funciona como deve: 5 Fase 1 fazem 1 Fase 2, 5 Fase 2 fazem 1 Fase 3, e 4 Fase 3 fazem 1 Monstro. Ter exatamente 5 (ou 4) chega. O Fundir Tudo vai até ao fim e não toca nos pets trancados."),
+    ("New OG verity: Cruelty. The OG verities are now round 3D balls like every other verity (no more stripe across them in Explore), and Lovity laughs.", "Novo verity OG: Cruelty. Os verities OG são agora bolas 3D como todos os outros (já não têm aquela risca no Explorar), e o Lovity ri-se."),
+    ("Explore: I turns the camera left and O right. Walls and buildings no longer disappear when you turn it.", "Explorar: o I roda a câmara para a esquerda e o O para a direita. As paredes e os prédios já não desaparecem quando a rodas."),
+    ("Battle picker, trades and the friend photo see all your verities again (they showed none after the last update). Trading locked pets is no longer possible.", "A escolha da equipa, as trocas e a foto de amigo voltam a ver todos os teus verities (não mostravam nenhum depois da última atualização). Já não dá para trocar pets trancados."),
+    ("Opening your account on another device closes it on the old one. Options: Animations is now Potato Mode, and the Cutscenes list folds away.", "Abrir a tua conta noutro dispositivo fecha-a no antigo. Opções: as Animações são agora o Modo Batata, e a lista de Cutscenes fecha-se."),
     ("Explore: catching a Verity Pet now fights it, like a normal battle, instead of grabbing it outright. Win to catch it; lose or run and it gets away. (New players with no Verities yet still get an instant catch.)", "Explorar: apanhar um Verity Pet agora significa lutar com ele, como numa batalha normal, em vez de o apanhares logo. Ganha para o apanhar; perde ou foge e ele escapa. (Jogadores novos sem Verities ainda continuam a apanhá-lo logo.)"),
     // v4.0: Explore, Verity Pets, the Battle hub
     ("%s opens at level %d", "%s abre no nível %d"),

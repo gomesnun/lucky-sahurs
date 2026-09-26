@@ -11,6 +11,13 @@ use crate::ui::fonts::wrap_text;
 use std::rc::Rc;
 
 pub const UPDATE_LOG: &[(&str, &str, &[&str])] = &[
+    ("v4.1.1", "2026-09-26", &[
+        "Fusing works as it should now: 5 Phase 1 make 1 Phase 2, 5 Phase 2 make 1 Phase 3, and 4 Phase 3 make 1 Monster. Having exactly 5 (or 4) is enough. Fuse All goes all the way up and skips locked pets.",
+        "New OG verity: Cruelty. The OG verities are now round 3D balls like every other verity (no more stripe across them in Explore), and Lovity laughs.",
+        "Explore: I turns the camera left and O right. Walls and buildings no longer disappear when you turn it.",
+        "Battle picker, trades and the friend photo see all your verities again (they showed none after the last update). Trading locked pets is no longer possible.",
+        "Opening your account on another device closes it on the old one. Options: Animations is now Potato Mode, and the Cutscenes list folds away.",
+    ]),
     ("v4.0.1", "2026-09-25", &[
         "Explore: catching a Verity Pet now fights it, like a normal battle, instead of grabbing it outright. Win to catch it; lose or run and it gets away. (New players with no Verities yet still get an instant catch.)",
     ]),
