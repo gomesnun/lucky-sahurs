@@ -484,65 +484,77 @@ impl GameState {
         stack_cost(rarities()[rarity_index].tier, phase)
     }
 
-    /// Evolving stacks `cost` extra copies into the pet: you need the cost plus the one that evolves.
+    /// Fusing takes exactly `cost` copies of this phase (5, or 4 into Monster form) and makes ONE copy of the
+    /// next phase.
     pub fn can_evolve(&self, rarity_index: usize, m: &str, phase: usize) -> bool {
-        self.evolve_cost(rarity_index, m, phase).is_some_and(|c| self.count_owned_at(rarity_index, m, phase) > c)
+        self.evolve_cost(rarity_index, m, phase).is_some_and(|c| self.count_owned_at(rarity_index, m, phase) >= c)
     }
 
-    /// Uses up `cost` copies of this exact phase and raises every surviving copy of THAT stack to phase + 1 (they
-    /// join whatever you already had at phase + 1, if anything). Copies equipped at the old phase move up with
-    /// them, up to how many survived; any beyond that get unequipped. Returns the new phase, or None if it
-    /// couldn't evolve. v4.0.1: this only ever touches the one phase bucket you name - a fresh roll of the same
-    /// pet+mutation starts at Phase 1 in its own bucket and is never affected by fusing you've already done.
-    pub fn evolve(&mut self, rarity_index: usize, m: &str, phase: usize) -> Option<usize> {
-        if !self.can_evolve(rarity_index, m, phase) {
-            return None;
-        }
-        let cost = self.evolve_cost(rarity_index, m, phase)?;
+    /// Fuses `times` times at once: `cost x times` copies of this phase become `times` copies of phase + 1 (5 Phase
+    /// 1 -> 1 Phase 2, 5 Phase 2 -> 1 Phase 3, 4 Phase 3 -> 1 Monster). Equipped copies of the old phase that no
+    /// longer exist move up with the fused ones (so a fused pet you had equipped stays equipped), the rest are
+    /// unequipped. Returns how many fusions happened (capped at what you can afford).
+    fn fuse_times(&mut self, rarity_index: usize, m: &str, phase: usize, times: i64) -> i64 {
+        let Some(cost) = self.evolve_cost(rarity_index, m, phase) else { return 0 };
         let m = mut_key(m);
         let n = self.count_owned_at(rarity_index, m, phase);
-        let left = n - cost;
-        self.owned.shift_remove(&owned_key(rarity_index, m, phase));
-        let new_phase = phase + 1;
-        if left > 0 {
-            *self.owned.entry(owned_key(rarity_index, m, new_phase)).or_insert(0) += left;
+        let times = times.min(n / cost);
+        if times <= 0 {
+            return 0;
         }
-        let mut room = left;
+        let left = n - cost * times;
+        let old_key = owned_key(rarity_index, m, phase);
+        if left > 0 {
+            self.owned.insert(old_key, left);
+        } else {
+            self.owned.shift_remove(&old_key);
+        }
+        let new_phase = phase + 1;
+        *self.owned.entry(owned_key(rarity_index, m, new_phase)).or_insert(0) += times;
+        // equipped copies beyond what's left of the old phase: up to `times` of them follow the fusion
+        let mut excess = (self.equipped_count(rarity_index, m, phase) - left).max(0);
+        let mut moved = 0;
         for e in self.equipped.iter_mut() {
-            if e.0 == rarity_index && e.1 == m && e.2 == phase {
-                if room > 0 {
+            if excess > 0 && e.0 == rarity_index && e.1 == m && e.2 == phase {
+                excess -= 1;
+                if moved < times {
                     e.2 = new_phase;
-                    room -= 1;
+                    moved += 1;
                 } else {
-                    e.2 = usize::MAX; // no survivor left for it: mark for removal below
+                    e.2 = usize::MAX; // mark for removal below
                 }
             }
         }
         self.equipped.retain(|e| e.2 != usize::MAX);
-        // the online wallet (trades) loses the stacked copies too (see tick_wallet); it isn't phase-specific, and
-        // evolving always removes exactly `cost` copies from the total you have of this pet+mutation
-        *self.wallet_pending.entry(format!("{}_{}", rarity_index, m)).or_insert(0) -= cost;
+        // the online wallet (trades) counts copies whatever their phase: each fusion turns `cost` copies into 1
+        *self.wallet_pending.entry(format!("{}_{}", rarity_index, m)).or_insert(0) -= (cost - 1) * times;
         self.dirty = true;
-        Some(new_phase)
+        times
     }
 
-    /// v4.0.1: evolves every pet you can afford to, as many times as it can afford (a pet stacked into Phase 2
-    /// with enough copies for Phase 3 too goes straight there). Returns how many evolutions happened.
+    /// One fusion (the Evolve page's button). Returns the new phase, or None if it couldn't.
+    pub fn evolve(&mut self, rarity_index: usize, m: &str, phase: usize) -> Option<usize> {
+        (self.fuse_times(rarity_index, m, phase, 1) == 1).then_some(phase + 1)
+    }
+
+    /// Fuse All: every stack as many times as it can, Phase 1 up to Monster (what one phase makes can fuse again
+    /// at the next). Locked stacks are left alone. Returns how many fusions happened.
     pub fn evolve_all(&mut self) -> i64 {
-        let mut n = 0;
-        // each evolve() can make another one affordable (more copies freed up, or the same bucket eligible again
-        // at its new phase), so keep going until nothing's left; capped well above what any real inventory can
-        // reach (67 pets x 4 mutations x 3 evolutions each = 804) so a bug here can never hang the game.
-        for _ in 0..5000 {
-            let next = self.owned.keys().find_map(|k| {
-                let (idx, m, phase) = parse_owned_key(k)?;
-                self.can_evolve(idx, m, phase).then_some((idx, m, phase))
-            });
-            let Some((idx, m, phase)) = next else { break };
-            if self.evolve(idx, m, phase).is_none() {
-                break; // can_evolve just said yes; this is only a safety net
+        let mut pairs: Vec<(usize, &'static str)> = Vec::new();
+        for k in self.owned.keys() {
+            if let Some((idx, m, _)) = parse_owned_key(k) {
+                if !pairs.contains(&(idx, m)) {
+                    pairs.push((idx, m));
+                }
             }
-            n += 1;
+        }
+        let mut n = 0;
+        for (idx, m) in pairs {
+            for phase in 0..MAX_PHASE {
+                if !self.is_locked(idx, m, phase) {
+                    n += self.fuse_times(idx, m, phase, i64::MAX);
+                }
+            }
         }
         n
     }
@@ -2524,40 +2536,42 @@ mod phase_tests {
     #[test]
     fn stacking_evolves_up_to_monster() {
         let mut s = GameState::new();
-        // v4.0.1: always 5 to fuse, except into Monster form which is always 4
-        s.owned.insert(owned_key(0, "normal", 0), 6);
+        // 5 Phase 1 -> 1 Phase 2, 5 Phase 2 -> 1 Phase 3, 4 Phase 3 -> 1 Monster
+        s.owned.insert(owned_key(0, "normal", 0), 5);
         s.equipped = vec![(0, "normal", 0); 3];
         let base = s.pet_income(0, "normal", 0);
         assert_eq!((s.best_phase(0, "normal"), s.evolve_cost(0, "normal", 0)), (0, Some(5)));
+        assert!(s.can_evolve(0, "normal", 0)); // exactly 5 is enough
         assert_eq!(s.evolve(0, "normal", 0), Some(1));
-        // 5 copies used up, the one left evolved (moved to the Phase 2 bucket); the extra equipped copies, which
-        // had nowhere to go, are gone - but the one that did survive stays equipped, now at the new phase
-        assert_eq!(s.count_owned(0, "normal"), 1);
+        // all 5 used up, ONE Phase 2 made; one equipped copy follows it, the other two had nothing left to point at
+        assert_eq!(s.count_owned_at(0, "normal", 0), 0);
+        assert_eq!(s.count_owned_at(0, "normal", 1), 1);
         assert_eq!(s.equipped, vec![(0, "normal", 1)]);
-        assert_eq!(s.wallet_pending.get("0_normal"), Some(&-5));
+        assert_eq!(s.wallet_pending.get("0_normal"), Some(&-4));
         assert!((s.pet_income(0, "normal", 1) / base - 2.0).abs() < 1e-9);
-        // not enough for the next one (5 + the one that evolves) - this is a FRESH Phase 1 stack (a roll), so it
-        // doesn't touch the Phase 2 copy already sitting in its own bucket
-        s.owned.insert(owned_key(0, "normal", 0), 5);
+        // 4 isn't enough
+        s.owned.insert(owned_key(0, "normal", 0), 4);
         assert!(!s.can_evolve(0, "normal", 0));
         assert_eq!(s.evolve(0, "normal", 0), None);
-        assert_eq!(s.best_phase(0, "normal"), 1); // still Phase 2 - the fresh Phase 1 copies didn't inherit it
-        s.owned.insert(owned_key(0, "normal", 1), 100); // now stack the Phase 2 bucket itself all the way up
-        assert_eq!(s.evolve(0, "normal", 1), Some(2));
-        assert_eq!(s.evolve(0, "normal", 2), Some(3));
-        assert_eq!(s.count_owned_at(0, "normal", 3), 100 - 5 - 4);
-        assert_eq!(s.count_owned_at(0, "normal", 0), 5); // the fresh Phase 1 stock is still just sitting there
-        assert_eq!(s.evolve_cost(0, "normal", 3), None); // a Monster doesn't evolve further
-        assert_eq!(s.evolve(0, "normal", 3), None);
-        assert!((s.pet_income(0, "normal", 3) / base - 10.0).abs() < 1e-9);
+        // a bigger stack only fuses one at a time, and the rest stay where they are
+        s.owned.insert(owned_key(0, "normal", 0), 12);
+        assert_eq!(s.evolve(0, "normal", 0), Some(1));
+        assert_eq!(s.count_owned_at(0, "normal", 0), 7);
+        assert_eq!(s.count_owned_at(0, "normal", 1), 2);
+        // 100 Phase 1 copies are exactly one Monster (5 x 5 x 4)
+        let mut t = GameState::new();
+        t.owned.insert(owned_key(3, "golden", 0), 100);
+        assert_eq!(t.evolve_all(), 20 + 4 + 1);
+        assert_eq!(t.count_owned_at(3, "golden", MAX_PHASE), 1);
+        assert_eq!(t.count_owned(3, "golden"), 1);
+        assert_eq!(t.evolve_cost(3, "golden", MAX_PHASE), None); // a Monster doesn't evolve further
+        assert!((t.pet_income(3, "golden", MAX_PHASE) / t.pet_income(3, "golden", 0) - 10.0).abs() < 1e-9);
         // other mutations have their own phase
         assert_eq!(s.best_phase(0, "golden"), 0);
         // saved and loaded
-        let d = s.to_dict();
-        let mut t = GameState::new();
-        t.load_dict(&d).unwrap();
-        assert_eq!(t.best_phase(0, "normal"), MAX_PHASE);
-        assert_eq!(t.count_owned_at(0, "normal", 0), 5);
+        let mut u = GameState::new();
+        u.load_dict(&t.to_dict()).unwrap();
+        assert_eq!(u.best_phase(3, "golden"), MAX_PHASE);
     }
 
     /// A pre-4.0.2 save (owned keyed "{idx}_{mutation}", a separate "phases" dict, equipped as 2-tuples) loads
@@ -2629,13 +2643,20 @@ mod phase_tests {
     #[test]
     fn fuse_all_evolves_everything_it_can_afford() {
         let mut s = GameState::new();
-        s.owned.insert(owned_key(0, "normal", 0), 100); // enough for all 3 evolutions (5 + 5 + 4 = 14)
-        s.owned.insert(owned_key(1, "normal", 0), 6); // exactly enough for one evolution, no more (needs cost + 1)
-        s.owned.insert(owned_key(2, "normal", 0), 3); // never enough
-        assert_eq!(s.evolve_all(), 4); // 3 for pet 0, 1 for pet 1
-        assert_eq!(s.best_phase(0, "normal"), MAX_PHASE);
+        // the reported case: 41 copies used to make 27 Monsters. Now: 8 Phase 2 (1 left), 1 Phase 3 (3 left), no Monster
+        s.owned.insert(owned_key(0, "normal", 0), 41);
+        s.owned.insert(owned_key(1, "normal", 0), 5); // exactly one fusion
+        s.owned.insert(owned_key(2, "normal", 0), 4); // never enough
+        s.owned.insert(owned_key(3, "normal", 0), 50);
+        s.toggle_lock(3, "normal", 0); // locked stacks are left alone
+        assert_eq!(s.evolve_all(), 8 + 1 + 1);
+        assert_eq!(s.count_owned_at(0, "normal", 0), 1);
+        assert_eq!(s.count_owned_at(0, "normal", 1), 3);
+        assert_eq!(s.count_owned_at(0, "normal", 2), 1);
+        assert_eq!(s.count_owned_at(0, "normal", MAX_PHASE), 0);
         assert_eq!(s.best_phase(1, "normal"), 1);
         assert_eq!(s.best_phase(2, "normal"), 0);
+        assert_eq!(s.count_owned_at(3, "normal", 0), 50);
         assert_eq!(s.evolve_all(), 0); // nothing left to fuse
     }
 

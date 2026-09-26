@@ -43,7 +43,10 @@ impl Game {
     pub fn press_evolve(&mut self) {
         let Some((r, m, phase)) = self.evolve.target else { return };
         let Some(new_phase) = self.state.evolve(r, m, phase) else { return };
-        self.evolve.target = Some((r, m, new_phase));
+        // stay on this stack while it still has copies (to keep fusing them), else follow the new one
+        if self.state.count_owned_at(r, m, phase) <= 0 {
+            self.evolve.target = Some((r, m, new_phase));
+        }
         let phase = new_phase;
         if self.state.auto_equip_unlocked() && self.state.auto_equip_best_on {
             self.state.equip_best();
@@ -141,7 +144,7 @@ impl Game {
             Some(c) => {
                 let next_income = income_now * PHASES[phase + 1].mult / PHASES[phase].mult;
                 rows.push((tr("Phase"), format!("{}  >  {}", tr(PHASES[phase].name), tr(PHASES[phase + 1].name)), PHASES[phase + 1].color));
-                rows.push((tr("Copies to stack"), tr!("%s (you have %s)", format_number(c as f64), format_number(owned as f64)), if owned > c { GOOD } else { BAD }));
+                rows.push((tr("Copies to stack"), tr!("%s (you have %s)", format_number(c as f64), format_number(owned as f64)), if owned >= c { GOOD } else { BAD }));
                 rows.push((tr("Income each"), format!("+{}/s  >  +{}/s", format_number(income_now), format_number(next_income)), GOOD));
             }
             None => {
@@ -158,7 +161,7 @@ impl Game {
             y += 34;
         }
         let hint = match cost {
-            Some(_) => tr("Stacking uses up the copies. The one that evolves stays, and every copy of this pet you get from now on has the new phase."),
+            Some(c) => tr!("Uses up %d copies of this phase to make 1 at the next. New copies you roll start at Phase 1.", c as i64),
             None => tr("Fully evolved: this is its Monster form."),
         };
         for line in wrap_text(&hint, &tiny, w) {
@@ -170,12 +173,12 @@ impl Game {
         // ---- Evolve ----
         let btn = Rect::new(x0, rect.bottom() - 24 - 50, w, 50);
         match cost {
-            Some(c) if owned > c => {
-                let label = if phase + 1 == MAX_PHASE { tr!("Become a Monster (stack %s)", format_number(c as f64)) } else { tr!("Evolve (stack %s)", format_number(c as f64)) };
+            Some(c) if owned >= c => {
+                let label = if phase + 1 == MAX_PHASE { tr!("Become a Monster (uses %s)", format_number(c as f64)) } else { tr!("Evolve (uses %s)", format_number(c as f64)) };
                 self.button(btn, &label, &med, mouse_pos, PHASES[phase + 1].color, accent_hover(), BLACK, cb(|g| g.press_evolve()), Bo::r(12).icon("evolve").sfx(Some("milestone")));
             }
             Some(c) => {
-                let label = tr!("Need %s more", format_number((c + 1 - owned) as f64));
+                let label = tr!("Need %s more", format_number((c - owned) as f64));
                 self.button(btn, &label, &med, mouse_pos, panel_light(), panel_light(), grey(), None, Bo::r(12).enabled(false));
             }
             None => {
