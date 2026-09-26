@@ -77,7 +77,7 @@ pub const PT: &[(&str, &str)] = &[
     ("Main Menu", "Menu Principal"),
     ("Quit Game", "Sair"),
     ("Options are shared by all saves.", "As opções são partilhadas por todos os saves."),
-    ("Turning animations off removes the particles and the card effect — the game gets much lighter. Progress is saved automatically every 10 seconds.", "Desligar as animações remove as partículas e o efeito das cartas — o jogo fica muito mais leve. O progresso é guardado automaticamente de 10 em 10 segundos."),
+    ("Potato Mode turns off particles, the card effect and button shine — the game gets much lighter. Progress is saved automatically every 10 seconds.", "O Modo Batata desliga as partículas, o efeito das cartas e o brilho dos botões — o jogo fica muito mais leve. O progresso é guardado sozinho a cada 10 segundos."),
     ("Gameplay", "Jogabilidade"),
     ("Interface", "Interface"),
     ("Game", "Jogo"),

@@ -1078,6 +1078,13 @@ fn shots(dir: &str) {
         g.whats_new_open = false;
         g.settings.set_str("last_update_seen", game::tutorial::latest_update());
         g.toggle_options();
+        g.options_tab = "gameplay";
+        g.draw(m);
+        save(&g, "n_options_gameplay");
+        g.options_cutscenes_open = true;
+        g.draw(m);
+        save(&g, "n_options_gameplay_cutscenes");
+        g.options_cutscenes_open = false;
         g.options_tab = "game";
         g.draw(m);
         save(&g, "n_options_game");

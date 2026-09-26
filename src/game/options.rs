@@ -203,10 +203,15 @@ impl Game {
         );
         y += 54;
 
-        let header = sb.render(&(tr("Cutscenes (catching Secret+)") + ":"), grey());
-        self.canvas.blit(&header, x0, y);
-        y += 22;
-
+        // the per-rarity cutscene switches fold away behind one button (they didn't fit the page)
+        let open = self.options_cutscenes_open;
+        let on_count = CUTSCENE_RARITIES.iter().filter(|k| self.settings.get_bool(&format!("cutscenes_{}", k), true)).count();
+        let label = format!("{} {}  ({}/{})", if open { "v" } else { ">" }, tr("Cutscenes (catching Secret+)"), on_count, CUTSCENE_RARITIES.len());
+        self.button(Rect::new(x0, y, w, 44), &label, &med, mouse_pos, panel_light(), panel_lighter(), WHITE, cb(|g| g.options_cutscenes_open = !g.options_cutscenes_open), Bo::r(10));
+        y += 54;
+        if !open {
+            return;
+        }
         // with the v2.7+ rarities there are 9: 3 per row
         let cols = if CUTSCENE_RARITIES.len() > 4 { 3 } else { 2 };
         let col_w = (w - 8 * (cols - 1)) / cols;
@@ -319,7 +324,14 @@ impl Game {
 
         let in_game = self.screen_mode == "game";
         let panel_w = 460;
-        let panel_h = 72 + TAB_H + 14 + CONTENT_H + 14 + 60;
+        // Gameplay with the Cutscenes list open needs more room: the window grows instead of overlapping
+        let content_h = if self.options_tab == "gameplay" && self.options_cutscenes_open {
+            let rows = (CUTSCENE_RARITIES.len() as i32 + 2) / 3;
+            CONTENT_H.max(3 * 54 + rows * ROW_H)
+        } else {
+            CONTENT_H
+        };
+        let panel_h = 72 + TAB_H + 14 + content_h + 14 + 60;
         let top = 8.max(VIRTUAL_H / 2 - panel_h / 2);
         let rect = Rect::new(self.vw / 2 - panel_w / 2, top, panel_w, panel_h);
         draw_panel(&mut self.canvas, rect, Some(panel()), 16, true, None);
@@ -355,7 +367,7 @@ impl Game {
         }
 
         let content_top = tab_y + TAB_H + 14;
-        let content_box = Rect::new(x0, content_top, btn_w, CONTENT_H);
+        let content_box = Rect::new(x0, content_top, btn_w, content_h);
         match self.options_tab {
             "gameplay" => self.draw_options_gameplay_tab(content_box, mouse_pos),
             "interface" => self.draw_options_interface_tab(content_box, mouse_pos),
@@ -364,9 +376,9 @@ impl Game {
             _ => self.draw_options_game_tab(content_box, mouse_pos, in_game),
         }
 
-        let mut y = content_top + CONTENT_H + 14;
+        let mut y = content_top + content_h + 14;
         let note = if in_game {
-            tr("Turning animations off removes the particles and the card effect — the game gets much lighter. Progress is saved automatically every 10 seconds.")
+            tr("Potato Mode turns off particles, the card effect and button shine — the game gets much lighter. Progress is saved automatically every 10 seconds.")
         } else {
             tr("Options are shared by all saves.")
         };

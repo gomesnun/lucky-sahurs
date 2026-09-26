@@ -152,6 +152,8 @@ pub struct Game {
     pub slider_bars: HashMap<&'static str, Rect>,
     pub slider_hits: IndexMap<&'static str, Rect>,
     pub options_tab: &'static str,
+    /// Options > Gameplay: the per-rarity Cutscenes list is expanded
+    pub options_cutscenes_open: bool,
 
     pub cutscene_active: Option<(usize, &'static str)>,
     pub cutscene_elapsed: f64,
@@ -372,6 +374,7 @@ impl Game {
             slider_bars: HashMap::new(),
             slider_hits: IndexMap::new(),
             options_tab: "gameplay",
+            options_cutscenes_open: false,
             cutscene_active: None,
             cutscene_elapsed: 0.0,
             cutscene_queue: Vec::new(),
