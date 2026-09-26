@@ -607,6 +607,20 @@ impl Game {
             if k == "fullscreen" || k.starts_with("slot_name_") || !self.settings.map.contains_key(&k) {
                 continue;
             }
+            // "already seen" flags only ever move forward: an older save (another slot, or the cloud copy from
+            // before) must not bring back the 4.0 teaser, the tutorial or "What's new" on every join
+            if k == teaser::TEASER_SETTING || k == "tutorial_done" {
+                if self.settings.get_bool(&k, false) {
+                    continue;
+                }
+            }
+            if k == "last_update_seen" {
+                let ver = |s: &str| crate::online::updater::parse_version(s);
+                let mine = self.settings.get_str("last_update_seen", "");
+                if ver(&mine).is_some() && v.as_str().is_none_or(|theirs| ver(theirs) <= ver(&mine)) {
+                    continue;
+                }
+            }
             if self.settings.map.get(&k) != Some(&v) {
                 self.settings.map.insert(k, v);
                 changed = true;
@@ -1586,6 +1600,33 @@ mod prefs_tests {
         assert!(!pc2.settings.get_bool("animations", true));
         assert!(!pc2.settings.get_bool("cutscenes_secreto", true));
         assert!(pc2.settings.get_bool("fullscreen", false)); // fullscreen stays per PC
+        let _ = dir;
+    }
+
+    /// Opening an older save (another slot, a stale cloud copy) must never bring back the 4.0 teaser, the
+    /// tutorial or "What's new" the player already went through - they used to come back on every join.
+    #[test]
+    fn seen_flags_never_go_back_from_an_older_save() {
+        let dir = test_save_dir();
+        let mut old = Game::headless(1422, 800);
+        old.settings.set_bool(teaser::TEASER_SETTING, false);
+        old.settings.set_bool("tutorial_done", false);
+        old.settings.set_str("last_update_seen", "v3.0.0");
+        old.settings.set_bool("animations", false);
+        old.store_save_prefs();
+        let save = old.state.to_dict();
+        let mut g = Game::headless(1422, 800);
+        g.settings.set_bool(teaser::TEASER_SETTING, true);
+        g.settings.set_bool("tutorial_done", true);
+        g.settings.set_str("last_update_seen", tutorial::latest_update());
+        let mut st = GameState::new();
+        st.load_dict(&save).unwrap();
+        g.replace_state(st);
+        assert!(g.settings.get_bool(teaser::TEASER_SETTING, false));
+        assert!(g.settings.get_bool("tutorial_done", false));
+        assert_eq!(g.settings.get_str("last_update_seen", ""), tutorial::latest_update());
+        assert!(g.unseen_updates().is_empty());
+        assert!(!g.settings.get_bool("animations", true)); // normal settings still follow the save
         let _ = dir;
     }
 
