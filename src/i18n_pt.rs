@@ -1049,6 +1049,7 @@ pub const PT: &[(&str, &str)] = &[
     ("Caught %s %s  +%s%% %s", "Apanhaste %s %s  +%s%% %s"),
     ("+%d XP", "+%d XP"),
     ("Your Verity Pets are full (%d). Release some in the Bag.", "Os teus Verity Pets estão cheios (%d). Liberta alguns na Mochila."),
+    ("You need a Verity to battle with. Roll one first!", "Precisas de uma Verity para lutar. Rola uma primeiro!"),
     ("Level %d! %s is open", "Nível %d! %s está aberto"),
     ("Level %d! New clothes in the Wardrobe", "Nível %d! Roupa nova no Guarda-roupa"),
     ("Level %d!", "Nível %d!"),
