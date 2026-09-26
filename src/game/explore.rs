@@ -636,10 +636,12 @@ fn build_world(dim: usize) -> World {
             }
         }
     }
-    // the faces where a block meets something see-through
+    // the faces where a block meets something see-through - every side, now that the camera turns (north
+    // faces used to be skipped: the camera always sat south of Steve, so they were never seen - once it could
+    // turn, walls and buildings went see-through). Faces turned away from the camera are skipped when drawing.
     let mut faces = Vec::new();
     let mut lights = Vec::new();
-    let dirs: [(i64, i64, i64); 4] = [(0, 1, 0), (1, 0, 0), (-1, 0, 0), (0, 0, 1)];
+    let dirs: [(i64, i64, i64); 5] = [(0, 1, 0), (1, 0, 0), (-1, 0, 0), (0, 0, 1), (0, 0, -1)];
     for y in 0..H {
         for z in 0..N {
             for x in 0..N {
@@ -1137,11 +1139,12 @@ impl Game {
             // turn the camera around Steve (left/right only - never pitch) so you can see what's behind
             // you without it changing where WASD walks you
             const CAM_ROT_SPEED: f64 = 2.4;
+            // (a bigger cam_yaw swings the view to the left: the camera goes round to Steve's right)
             if held(&[S::LeftBracket, S::Q, S::I]) {
-                self.explore.cam_yaw -= CAM_ROT_SPEED * dt;
+                self.explore.cam_yaw += CAM_ROT_SPEED * dt;
             }
             if held(&[S::RightBracket, S::R, S::O]) {
-                self.explore.cam_yaw += CAM_ROT_SPEED * dt;
+                self.explore.cam_yaw -= CAM_ROT_SPEED * dt;
             }
         }
         if dir != (0.0, 0.0) {
@@ -1527,6 +1530,9 @@ fn draw_world(sc: &Scene, w: usize, h: usize) -> (Frame, View) {
         .faces
         .iter()
         .filter(|f| (f.x - sx).abs() <= 20 && (f.z - sz).abs() <= 20)
+        // back faces: the side of a block turned away from the camera never shows (checked once here rather
+        // than again on every thread's band)
+        .filter(|f| (f.corners[1] - f.corners[0]).cross(f.corners[2] - f.corners[0]).dot(view.pos - f.corners[0]) > 0.0)
         .filter(|f| face_in_view(&view, &f.corners))
         .filter(|f| !(sc.cut_front && f.leafy && (f.x - sx) as f64 * cam_dx + (f.z - sz) as f64 * cam_dz > -2.0 && f.corners[0].y.min(f.corners[1].y) >= cut))
         .collect();
@@ -1792,14 +1798,6 @@ impl Game {
         if self.explore.overlay.is_empty() && self.explore_nearest().is_some() {
             let r = Rect::new(area.right() - 16 - 170, by - 70, 170, 56);
             self.button(r, &tr("Catch!"), &self.f.med.clone(), mouse_pos, GOOD, Color::rgb(140, 245, 160), BLACK, cb(|g| g.explore_catch_nearest()), Bo::r(12).sfx(None));
-        }
-        // turn-camera buttons (mouse / touch): tap to swing the view a quarter turn around Steve
-        if self.explore.overlay.is_empty() {
-            let cy = area.centery();
-            let l = Rect::new(area.x + 16, cy - 26, 52, 52);
-            self.button(l, "<", &self.f.big.clone(), mouse_pos, Color::rgba(10, 12, 22, 170), Color::rgba(30, 34, 52, 200), WHITE, cb(|g| g.explore.cam_yaw -= std::f64::consts::FRAC_PI_2), Bo::r(26).sfx(Some("click")));
-            let r = Rect::new(area.right() - 16 - 52, cy - 26, 52, 52);
-            self.button(r, ">", &self.f.big.clone(), mouse_pos, Color::rgba(10, 12, 22, 170), Color::rgba(30, 34, 52, 200), WHITE, cb(|g| g.explore.cam_yaw += std::f64::consts::FRAC_PI_2), Bo::r(26).sfx(Some("click")));
         }
     }
 
