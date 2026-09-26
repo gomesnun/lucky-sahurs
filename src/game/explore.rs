@@ -9,7 +9,7 @@ use super::battle3d::{Shown, draw_pet_ball, hash, tex_from};
 use super::{Game, KeyEv, cb};
 use crate::config::{TOPBAR_H, VIRTUAL_H};
 use crate::core::data::rarities;
-use crate::core::explore::{DIMENSIONS, HATS, MAX_EQUIPPED, MAX_PETS, PANTS, SHIRTS, VerityPet, xp_for_level};
+use crate::core::explore::{DEX_MILESTONES, DEX_STARS, DIMENSIONS, HATS, MAX_EQUIPPED, MAX_PETS, PANTS, SHIRTS, VerityPet, dex_total, xp_for_level};
 use crate::core::formatting::format_number;
 use crate::core::state::rand_random;
 use crate::gfx::r3d::{Camera, Fog, Frame, Tex, UP, V3, View, v3};
@@ -973,10 +973,12 @@ pub struct ExploreUi {
     walked: f64,
     /// travelling to another world: (to, since)
     travel: Option<(usize, f64)>,
-    /// "", "wardrobe" or "pets"
+    /// "", "wardrobe", "pets" or "dex" (the Explore Index)
     pub overlay: &'static str,
     pub pets_scroll: f64,
     pub pets_max_scroll: f64,
+    pub dex_scroll: f64,
+    pub dex_max_scroll: f64,
     /// the pet asked to be released (click again to confirm) and until when
     pub release_confirm: Option<(usize, f64)>,
     /// floating texts: text, world position, since, colour
@@ -1007,6 +1009,8 @@ impl ExploreUi {
             overlay: "",
             pets_scroll: 0.0,
             pets_max_scroll: 0.0,
+            dex_scroll: 0.0,
+            dex_max_scroll: 0.0,
             release_confirm: None,
             pops: Vec::new(),
             view_rect: Rect::new(0, 0, 1, 1),
@@ -1067,6 +1071,7 @@ impl Game {
 
     pub fn enter_world(&mut self, dim: usize) {
         let w = world(dim);
+        let luck = self.state.explore.explore_luck();
         let e = &mut self.explore;
         e.dim = dim;
         e.pos = w.spawn;
@@ -1079,7 +1084,7 @@ impl Game {
         e.pops.clear();
         for _ in 0..DIMENSIONS[dim].pets {
             let pos = w.random_spot(e.pos, 7.0);
-            e.wild.push(Wild { pet: VerityPet::roll(dim, [rand_random(), rand_random(), rand_random(), rand_random()]), pos, to: pos, think: 0.0, seed: rand_random() * 100.0, caught: None });
+            e.wild.push(Wild { pet: VerityPet::roll_lucky(dim, [rand_random(), rand_random(), rand_random(), rand_random()], luck), pos, to: pos, think: 0.0, seed: rand_random() * 100.0, caught: None });
         }
         self.state.explore.dim = dim;
     }
@@ -1257,11 +1262,12 @@ impl Game {
         }
         // new pets show up (away from Steve)
         let dim = self.explore.dim;
+        let luck = self.state.explore.explore_luck();
         let before = self.explore.respawn.len();
         self.explore.respawn.retain(|at| *at > t);
         for _ in 0..before - self.explore.respawn.len() {
             let pos = w.random_spot(self.explore.pos, 8.0);
-            self.explore.wild.push(Wild { pet: VerityPet::roll(dim, [rand_random(), rand_random(), rand_random(), rand_random()]), pos, to: pos, think: 0.0, seed: rand_random() * 100.0, caught: None });
+            self.explore.wild.push(Wild { pet: VerityPet::roll_lucky(dim, [rand_random(), rand_random(), rand_random(), rand_random()], luck), pos, to: pos, think: 0.0, seed: rand_random() * 100.0, caught: None });
         }
         self.explore.pops.retain(|p| t - p.2 < 1.4);
         if let Some((_, until)) = self.explore.release_confirm {
@@ -1324,26 +1330,53 @@ impl Game {
         let name = rarities()[p.pet.pet].pet;
         let what = if p.pet.luck { tr("Luck") } else { tr("Money") };
         let gain = catch_xp(&p.pet);
-        if self.state.explore.add_pet(p.pet.clone()) {
-            // counts toward the main Index too - it's the same pet, just met out here instead of rolled
-            self.state.seen_pets.insert(format!("{}_normal", p.pet.pet));
-            self.show_toast(&tr!("Caught %s %s  +%s%% %s", name, stars(p.pet.stars), format_number(p.pet.boost), what), 2.4);
-            let at = v3(self.explore.pos.0, self.explore.y + 2.4, self.explore.pos.1);
-            self.explore.pops.push((tr!("+%d XP", gain.round() as i64), at, t, Color::rgb(140, 255, 150)));
-            self.play("equip", 0.0);
-            self.explore_add_xp(gain);
-            Some(gain)
-        } else {
+        let st = &mut self.state.explore;
+        let is_new = !st.in_dex(p.pet.pet, p.pet.stars);
+        let keep = st.keeps(is_new);
+        if keep && st.pets.len() >= MAX_PETS && st.auto_release == "off" {
             self.show_toast(&tr!("Your Verity Pets are full (%d). Release some in the Bag.", MAX_PETS as i64), 2.6);
-            None
+            return None;
         }
+        // kept, or (auto-release, or kept but the Bag is full) let go straight away - caught either way: the XP
+        // and the Explore Index count it
+        let kept = keep && st.add_pet(p.pet.clone());
+        if !kept {
+            st.caught += 1;
+        }
+        let bonus_before = st.dex_luck_bonus();
+        st.record_dex(&p.pet);
+        let bonus_after = st.dex_luck_bonus();
+        let found = st.dex_count();
+        // counts toward the main Index too - it's the same pet, just met out here instead of rolled
+        self.state.seen_pets.insert(format!("{}_normal", p.pet.pet));
+        let mut msg = tr!("Caught %s %s  +%s%% %s", name, stars(p.pet.stars), format_number(p.pet.boost), what);
+        if is_new {
+            msg += &format!("  ·  {}", tr("NEW in the Index!"));
+        }
+        if !kept {
+            msg += &format!("  ·  {}", tr("released"));
+        }
+        self.show_toast(&msg, 2.4);
+        let at = v3(self.explore.pos.0, self.explore.y + 2.4, self.explore.pos.1);
+        self.explore.pops.push((tr!("+%d XP", gain.round() as i64), at, t, Color::rgb(140, 255, 150)));
+        if is_new {
+            self.explore.pops.push((tr("NEW!"), at + v3(0.0, 0.6, 0.0), t, accent()));
+        }
+        self.play("equip", 0.0);
+        self.explore_add_xp(gain);
+        if bonus_after > bonus_before {
+            self.show_toast(&tr!("Explore Index: %d found! Explore luck is now +%s%%", found as i64, format_number(bonus_after)), 3.5);
+            self.play("milestone", 0.0);
+        }
+        Some(gain)
     }
 
     /// E / the Catch! button / clicking a pet in reach: it fights back - win the battle to catch it. Only brand new
     /// players (never rolled) catch it outright. Gated on total_rolls, not on owned pets: selling the Bag down to
     /// zero must not turn every wild pet into a free catch.
     pub fn explore_catch(&mut self, i: usize) {
-        if self.state.explore.pets.len() >= MAX_PETS {
+        // (with auto-release on, a full Bag doesn't stop you: what you catch can always be let go)
+        if self.state.explore.pets.len() >= MAX_PETS && self.state.explore.auto_release == "off" {
             self.show_toast(&tr!("Your Verity Pets are full (%d). Release some in the Bag.", MAX_PETS as i64), 2.6);
             return;
         }
@@ -1474,7 +1507,14 @@ impl Game {
     }
 
     pub fn explore_scroll(&mut self, step: f64) -> bool {
-        if !self.explore.open || self.explore.overlay != "pets" || self.index_open {
+        if !self.explore.open || self.index_open {
+            return false;
+        }
+        if self.explore.overlay == "dex" {
+            self.explore.dex_scroll = (self.explore.dex_scroll + step).clamp(0.0, self.explore.dex_max_scroll);
+            return true;
+        }
+        if self.explore.overlay != "pets" {
             return false;
         }
         self.explore.pets_scroll = (self.explore.pets_scroll + step).clamp(0.0, self.explore.pets_max_scroll);
@@ -1730,6 +1770,7 @@ impl Game {
         match self.explore.overlay {
             "wardrobe" => self.draw_explore_wardrobe(mouse_pos),
             "pets" => self.draw_explore_pets(mouse_pos),
+            "dex" => self.draw_explore_dex(mouse_pos),
             _ => {}
         }
         // travelling: a portal's purple swirl out and back in
@@ -1780,8 +1821,9 @@ impl Game {
         let wr_on = self.explore.overlay == "wardrobe";
         self.button(Rect::new(bx, area.y + 14, bw, 42), &tr("Wardrobe (C)"), &sb, mouse_pos, if wr_on { accent() } else { Color::rgba(10, 12, 22, 200) }, accent_hover(), if wr_on { BLACK } else { WHITE }, cb(|g| g.explore.overlay = if g.explore.overlay == "wardrobe" { "" } else { "wardrobe" }), Bo::r(10));
         bx -= bw + 8;
-        // which Verity Pet species you've met so far, in Explore or rolled - the same Pet Index as the main game
-        self.button(Rect::new(bx, area.y + 14, bw, 42), &tr("Index"), &sb, mouse_pos, Color::rgba(10, 12, 22, 200), accent_hover(), WHITE, cb(|g| g.toggle_index_page()), Bo::r(10).icon("index"));
+        // the Explore Index: every pet at every star count you've caught, and the luck it gives
+        let dex_on = self.explore.overlay == "dex";
+        self.button(Rect::new(bx, area.y + 14, bw, 42), &tr("Index"), &sb, mouse_pos, if dex_on { accent() } else { Color::rgba(10, 12, 22, 200) }, accent_hover(), if dex_on { BLACK } else { WHITE }, cb(|g| g.explore.overlay = if g.explore.overlay == "dex" { "" } else { "dex" }), Bo::r(10).icon("index"));
         // the equipped pets' boosts
         let (mm, lm) = (st.money_mult(), st.luck_mult());
         let boost = tr!("Pets: +%s%% money  ·  +%s%% luck", format_number(((mm - 1.0) * 100.0).round()), format_number(((lm - 1.0) * 100.0).round()));
@@ -1910,11 +1952,117 @@ impl Game {
         let title = self.f.big.render(&tr("Verity Pets"), WHITE);
         self.canvas.blit(&title, rect.x + 24, rect.y + 18);
         self.button(Rect::new(rect.right() - 48, rect.y + 20, 30, 30), "X", &sb, mouse_pos, panel_light(), BAD, WHITE, cb(|g| g.explore.overlay = ""), Bo::r(8));
+        self.draw_auto_release_button(Rect::new(rect.right() - 48 - 12 - 300, rect.y + 18, 300, 34), mouse_pos);
         let content = Rect::new(rect.x + 10, rect.y + 70, rect.w - 20, rect.h - 80);
         let scroll = self.explore.pets_scroll;
         let h = self.draw_verity_pets(content, scroll, mouse_pos, false);
         self.explore.pets_max_scroll = (h - content.h as f64).max(0.0);
         self.explore.pets_scroll = self.explore.pets_scroll.min(self.explore.pets_max_scroll);
+    }
+
+    /// Auto-release: keep what you catch / let everything go (XP and the Index only) / keep only new Index entries.
+    fn draw_auto_release_button(&mut self, r: Rect, mouse_pos: (f64, f64)) {
+        let mode = self.state.explore.auto_release;
+        let label = match mode {
+            "all" => tr("Auto-release: everything"),
+            "dupes" => tr("Auto-release: all but new"),
+            _ => tr("Auto-release: off"),
+        };
+        let on = mode != "off";
+        let sb = self.f.small_b.clone();
+        self.button(
+            r,
+            &label,
+            &sb,
+            mouse_pos,
+            if on { Color::rgb(150, 60, 60) } else { panel_light() },
+            if on { Color::rgb(190, 80, 80) } else { panel_lighter() },
+            WHITE,
+            cb(|g| {
+                g.state.explore.cycle_auto_release();
+                let t = match g.state.explore.auto_release {
+                    "all" => tr("Everything you catch is released: you still get the XP and the Index."),
+                    "dupes" => tr("You keep only pets that are new in the Index; the rest are released."),
+                    _ => tr("You keep everything you catch."),
+                };
+                g.show_toast(&t, 2.6);
+            }),
+            Bo::r(9),
+        );
+    }
+
+    /// The Explore Index: every Verity Pet, with a star for each star count you've caught it at, and the Explore
+    /// luck it gives.
+    fn draw_explore_dex(&mut self, mouse_pos: (f64, f64)) {
+        let ov = dim_overlay(self.vw, VIRTUAL_H, 120);
+        self.canvas.blit(&ov, 0, 0);
+        let rect = Rect::with_center(1000.min(self.vw - 40), 620.min(VIRTUAL_H - TOPBAR_H - 30), (self.vw / 2, (VIRTUAL_H + TOPBAR_H) / 2));
+        draw_panel(&mut self.canvas, rect, Some(panel()), 16, true, None);
+        self.register_blocker(rect);
+        let sb = self.f.small_b.clone();
+        let small = self.f.small.clone();
+        let tiny = self.f.tiny.clone();
+        let title = self.f.big.render(&tr("Explore Index"), WHITE);
+        self.canvas.blit(&title, rect.x + 24, rect.y + 16);
+        self.button(Rect::new(rect.right() - 48, rect.y + 20, 30, 30), "X", &sb, mouse_pos, panel_light(), BAD, WHITE, cb(|g| g.explore.overlay = ""), Bo::r(8));
+        self.draw_auto_release_button(Rect::new(rect.right() - 48 - 12 - 300, rect.y + 18, 300, 34), mouse_pos);
+        let st = self.state.explore.clone();
+        let (found, total) = (st.dex_count(), dex_total());
+        // progress: found / total, the luck now and the next milestone
+        let mut info = tr!("%d/%d found  ·  Explore luck +%s%%", found as i64, total as i64, format_number(st.dex_luck_bonus()));
+        if let Some((need, bonus)) = st.next_dex_milestone() {
+            info += &format!("  ·  {}", tr!("next: +%s%% at %d", format_number(bonus), need as i64));
+        }
+        let it = small.render(&info, grey());
+        self.canvas.blit(&it, rect.x + 24, rect.y + 20 + title.h);
+        let bar = Rect::new(rect.x + 24, rect.y + 26 + title.h + it.h, rect.w - 48, 10);
+        draw::rect(&mut self.canvas, Color::rgb(40, 44, 60), bar, 0, 5);
+        draw::rect(&mut self.canvas, accent(), Rect::new(bar.x, bar.y, ((bar.w as f64) * found as f64 / total.max(1) as f64) as i32, bar.h), 0, 5);
+        for (need, _) in DEX_MILESTONES {
+            let x = bar.x + ((bar.w as f64) * need as f64 / total.max(1) as f64) as i32;
+            draw::rect(&mut self.canvas, if found >= need { WHITE } else { grey_dim() }, Rect::new(x - 1, bar.y - 3, 2, bar.h + 6), 0, 0);
+        }
+        let hint = tiny.render(&tr("Each pet counts once per star count (1 to 5 stars). Explore luck makes rarer pets and more stars show up."), grey_dim());
+        self.canvas.blit(&hint, rect.x + 24, bar.bottom() + 6);
+        // the grid
+        let content = Rect::new(rect.x + 10, bar.bottom() + 12 + hint.h, rect.w - 20, rect.bottom() - 12 - (bar.bottom() + 12 + hint.h));
+        let scroll = self.explore.dex_scroll;
+        self.push_clip(content);
+        let (pad, gap, cw, ch) = (14, 10, 140, 146);
+        let cols = ((content.w - pad * 2 + gap) / (cw + gap)).max(1);
+        let cw = (content.w - pad * 2 - gap * (cols - 1)) / cols;
+        let order = crate::core::data::pet_order();
+        for (k, &pet) in order.iter().enumerate() {
+            let r = Rect::new(content.x + pad + (k as i32 % cols) * (cw + gap), content.y - scroll as i32 + 4 + (k as i32 / cols) * (ch + gap), cw, ch);
+            if r.bottom() < content.y || r.y > content.bottom() {
+                continue;
+            }
+            let rar = &rarities()[pet];
+            let got: Vec<bool> = (1..=DEX_STARS as u8).map(|n| st.in_dex(pet, n)).collect();
+            let any = got.iter().any(|g| *g);
+            draw::rect(&mut self.canvas, panel_light(), r, 0, 12);
+            draw::rect(&mut self.canvas, if got.iter().all(|g| *g) { accent() } else if any { rar.color } else { panel_lighter() }, r, 2, 12);
+            if let Some(img) = load_pet_image(rar.pet, 72, !any) {
+                self.canvas.blit(&img, r.centerx() - img.w / 2, r.y + 6);
+            }
+            let name = sb.render(if any { rar.pet } else { "???" }, if any { WHITE } else { grey_dim() });
+            self.canvas.blit(&name, r.centerx() - name.w / 2, r.y + 80);
+            let tier = tiny.render(&tr(rar.name), rar.color);
+            self.canvas.blit(&tier, r.centerx() - tier.w / 2, r.y + 80 + name.h);
+            // one star per star count: lit if caught at it
+            let star_w = 16;
+            let x0 = r.centerx() - star_w * DEX_STARS as i32 / 2;
+            for (n, g) in got.iter().enumerate() {
+                let t = sb.render("*", if *g { Color::rgb(255, 205, 60) } else { Color::rgb(80, 84, 104) });
+                self.canvas.blit(&t, x0 + n as i32 * star_w + (star_w - t.w) / 2, r.bottom() - 26);
+            }
+        }
+        self.pop_clip();
+        let rows = (order.len() as i32 + cols - 1) / cols;
+        let h = (8 + rows * (ch + gap)) as f64;
+        self.explore.dex_max_scroll = (h - content.h as f64).max(0.0);
+        self.explore.dex_scroll = self.explore.dex_scroll.min(self.explore.dex_max_scroll);
+        self.draw_scrollbar(content, self.explore.dex_scroll, h, None, Some(mouse_pos));
     }
 
     /// The Verity Pets: a header (how many, the boosts, Equip Best) and a card per pet (equip / release).

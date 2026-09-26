@@ -5,6 +5,7 @@
 
 use crate::core::data::rarities;
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 
 pub struct Dimension {
     pub key: &'static str,
@@ -35,6 +36,19 @@ pub const OG_CHANCE: f64 = 0.03;
 pub const MAX_PETS: usize = 60;
 pub const MAX_EQUIPPED: usize = 3;
 pub const MAX_LEVEL: i64 = 99;
+
+/// The Explore Index: every Verity Pet at every star count (1-5) you've caught. Reaching these counts makes wild
+/// pets luckier for good (rarer ones and more stars): (entries found, extra Explore luck in %).
+pub const DEX_MILESTONES: [(usize, f64); 8] = [(10, 5.0), (25, 10.0), (50, 15.0), (100, 25.0), (150, 35.0), (200, 50.0), (275, 75.0), (340, 100.0)];
+pub const DEX_STARS: usize = 5;
+
+/// What happens to a pet you catch: kept ("off"), let go right away ("all" - for the XP and the Index only), or
+/// kept only if it's new in the Index ("dupes").
+pub const AUTO_RELEASE_MODES: [&str; 3] = ["off", "all", "dupes"];
+
+pub fn dex_total() -> usize {
+    rarities().len() * DEX_STARS
+}
 
 /// Total XP needed to reach a level (level 1 = 0 XP).
 pub fn xp_for_level(level: i64) -> f64 {
@@ -82,18 +96,28 @@ pub struct VerityPet {
 impl VerityPet {
     /// A new pet for a dimension: the rarity, the stars and the boost from rolls r0..r3 (0-1).
     pub fn roll(dim: usize, r: [f64; 4]) -> VerityPet {
+        VerityPet::roll_lucky(dim, r, 1.0)
+    }
+
+    /// The same with Explore luck (1 = none, 2 = the full Index's +100%): the rarer tiers of the world, the OG
+    /// verities and more stars all come up more often.
+    pub fn roll_lucky(dim: usize, r: [f64; 4], luck: f64) -> VerityPet {
+        let luck = luck.max(1.0);
         let d = &DIMENSIONS[dim.min(DIMENSIONS.len() - 1)];
-        let og = d.key == "emerald_city" && r[0] < OG_CHANCE;
+        let og_chance = (OG_CHANCE * luck).min(0.1);
+        let og = d.key == "emerald_city" && r[0] < og_chance;
         let tier = if og {
             OG_TIER
         } else {
-            // the rarer tiers of a world are less common: weights 1, 1/2, 1/4...
+            // the rarer tiers of a world are less common: weights 1, 1/2, 1/4... (luck flattens that out)
             let n = d.tiers.1 - d.tiers.0 + 1;
-            let total: f64 = (0..n).map(|i| 0.5f64.powi(i as i32)).sum();
-            let mut x = ((r[0] - if d.key == "emerald_city" { OG_CHANCE } else { 0.0 }).max(0.0) / (1.0 - if d.key == "emerald_city" { OG_CHANCE } else { 0.0 })) * total;
+            let weight = |i: usize| 0.5f64.powf(i as f64 / luck);
+            let total: f64 = (0..n).map(weight).sum();
+            let og_cut = if d.key == "emerald_city" { og_chance } else { 0.0 };
+            let mut x = ((r[0] - og_cut).max(0.0) / (1.0 - og_cut)) * total;
             let mut t = d.tiers.0;
             for i in 0..n {
-                let w = 0.5f64.powi(i as i32);
+                let w = weight(i);
                 if x < w {
                     t = d.tiers.0 + i;
                     break;
@@ -105,8 +129,8 @@ impl VerityPet {
         };
         let options: Vec<usize> = rarities().iter().enumerate().filter(|(_, r)| r.tier == tier).map(|(i, _)| i).collect();
         let pet = options.get(((r[1] * options.len() as f64) as usize).min(options.len().saturating_sub(1))).copied().unwrap_or(0);
-        // stars: 1 (common) .. 5 (rare)
-        let stars = match r[2] {
+        // stars: 1 (common) .. 5 (rare); luck pushes the roll up
+        let stars = match r[2].clamp(0.0, 1.0).powf(1.0 / luck) {
             x if x < 0.45 => 1,
             x if x < 0.72 => 2,
             x if x < 0.88 => 3,
@@ -153,12 +177,20 @@ pub struct ExploreState {
     /// the world you were last in
     pub dim: usize,
     pub caught: i64,
+    /// the Explore Index: "Name:stars" for every pet + star count ever caught
+    pub dex: BTreeSet<String>,
+    /// AUTO_RELEASE_MODES
+    pub auto_release: &'static str,
 }
 
 impl Default for ExploreState {
     fn default() -> Self {
-        ExploreState { xp: 0.0, pets: Vec::new(), equipped: Vec::new(), shirt: 0, pants: 0, hat: 0, dim: 0, caught: 0 }
+        ExploreState { xp: 0.0, pets: Vec::new(), equipped: Vec::new(), shirt: 0, pants: 0, hat: 0, dim: 0, caught: 0, dex: BTreeSet::new(), auto_release: "off" }
     }
+}
+
+fn dex_key(pet: usize, stars: u8) -> String {
+    format!("{}:{}", rarities()[pet].pet, stars)
 }
 
 impl ExploreState {
@@ -213,6 +245,50 @@ impl ExploreState {
         true
     }
 
+    pub fn in_dex(&self, pet: usize, stars: u8) -> bool {
+        self.dex.contains(&dex_key(pet, stars))
+    }
+
+    /// Records a catch in the Explore Index. True if it's a new entry.
+    pub fn record_dex(&mut self, p: &VerityPet) -> bool {
+        self.dex.insert(dex_key(p.pet, p.stars))
+    }
+
+    pub fn dex_count(&self) -> usize {
+        self.dex.len()
+    }
+
+    /// The extra Explore luck the Index gives right now, in %.
+    pub fn dex_luck_bonus(&self) -> f64 {
+        let n = self.dex_count();
+        DEX_MILESTONES.iter().filter(|(need, _)| n >= *need).map(|(_, b)| *b).fold(0.0, f64::max)
+    }
+
+    /// The next milestone: (entries needed, the bonus it gives).
+    pub fn next_dex_milestone(&self) -> Option<(usize, f64)> {
+        let n = self.dex_count();
+        DEX_MILESTONES.iter().copied().find(|(need, _)| n < *need)
+    }
+
+    /// Luck for rolling wild pets: 1 + the Index bonus.
+    pub fn explore_luck(&self) -> f64 {
+        1.0 + self.dex_luck_bonus() / 100.0
+    }
+
+    pub fn cycle_auto_release(&mut self) {
+        let i = AUTO_RELEASE_MODES.iter().position(|m| *m == self.auto_release).unwrap_or(0);
+        self.auto_release = AUTO_RELEASE_MODES[(i + 1) % AUTO_RELEASE_MODES.len()];
+    }
+
+    /// Whether a pet just caught gets kept (see auto_release). `is_new`: new in the Index.
+    pub fn keeps(&self, is_new: bool) -> bool {
+        match self.auto_release {
+            "all" => false,
+            "dupes" => is_new,
+            _ => true,
+        }
+    }
+
     /// Lets a pet go (the equipped indexes after it move down by one).
     pub fn release(&mut self, i: usize) {
         if i >= self.pets.len() {
@@ -246,6 +322,8 @@ impl ExploreState {
             "outfit": [self.shirt, self.pants, self.hat],
             "dim": self.dim,
             "caught": self.caught,
+            "dex": self.dex.iter().collect::<Vec<_>>(),
+            "auto_release": self.auto_release,
         })
     }
 
@@ -270,6 +348,25 @@ impl ExploreState {
         s.hat = outfit.get(2).copied().filter(|&i| i < HATS.len() && HATS[i].1 <= lvl).unwrap_or(0);
         s.dim = v.get("dim").and_then(|x| x.as_u64()).map(|x| x as usize).filter(|&d| d < DIMENSIONS.len() && s.unlocked(d)).unwrap_or(0);
         s.caught = v.get("caught").and_then(|x| x.as_i64()).unwrap_or(0).max(0);
+        match v.get("dex").and_then(|x| x.as_array()) {
+            Some(a) => {
+                for k in a.iter().filter_map(|x| x.as_str()) {
+                    // only real "Name:stars" entries (a hand-edited save can't fill it with junk)
+                    let ok = k.rsplit_once(':').is_some_and(|(name, st)| rarities().iter().any(|r| r.pet == name) && st.parse::<usize>().is_ok_and(|n| (1..=DEX_STARS).contains(&n)));
+                    if ok {
+                        s.dex.insert(k.to_string());
+                    }
+                }
+            }
+            // a save from before the Index: the pets you still have count
+            None => {
+                for p in s.pets.clone() {
+                    s.record_dex(&p);
+                }
+            }
+        }
+        let mode = v.get("auto_release").and_then(|x| x.as_str()).unwrap_or("off");
+        s.auto_release = AUTO_RELEASE_MODES.iter().copied().find(|m| *m == mode).unwrap_or("off");
         s
     }
 }
@@ -301,6 +398,48 @@ mod tests {
         }
         // the OG ones are there, rarely
         assert_eq!(rarities()[VerityPet::roll(4, [0.0, 0.0, 0.0, 0.0]).pet].tier, OG_TIER);
+    }
+
+    #[test]
+    fn the_index_counts_every_star_and_makes_explore_luckier() {
+        let mut s = ExploreState::default();
+        assert_eq!(dex_total(), rarities().len() * 5);
+        let p = VerityPet::roll(0, [0.1, 0.1, 0.1, 0.8]);
+        assert!(s.record_dex(&p));
+        assert!(!s.record_dex(&p)); // the same pet at the same stars counts once
+        let mut q = p.clone();
+        q.stars = if p.stars == 5 { 4 } else { p.stars + 1 };
+        assert!(s.record_dex(&q)); // ...but every star count is its own entry
+        assert_eq!(s.dex_luck_bonus(), 0.0);
+        for pet in 0..10 {
+            s.record_dex(&VerityPet { pet, dim: 0, stars: 1, luck: true, boost: 1.0 });
+        }
+        assert!(s.dex_count() >= 10);
+        assert_eq!(s.dex_luck_bonus(), 5.0);
+        assert_eq!(s.next_dex_milestone().map(|m| m.0), Some(25));
+        assert!((s.explore_luck() - 1.05).abs() < 1e-9);
+        // luck really shifts the odds: more stars and rarer tiers from the same random numbers
+        let (plain, lucky) = (VerityPet::roll_lucky(2, [0.6, 0.5, 0.8, 0.5], 1.0), VerityPet::roll_lucky(2, [0.6, 0.5, 0.8, 0.5], 2.0));
+        assert!(lucky.stars >= plain.stars && rarities()[lucky.pet].tier >= rarities()[plain.pet].tier);
+        assert!(lucky.stars > plain.stars || rarities()[lucky.pet].tier > rarities()[plain.pet].tier);
+        // saved and loaded, auto-release too
+        s.cycle_auto_release();
+        let back = ExploreState::from_value(&s.to_value());
+        assert_eq!(back.dex, s.dex);
+        assert_eq!(back.auto_release, "all");
+        assert!(!back.keeps(true));
+        let mut d = back.clone();
+        d.cycle_auto_release();
+        assert!(d.keeps(true) && !d.keeps(false)); // "dupes": only new Index entries are kept
+        // a save from before the Index counts the pets it has
+        let mut old = s.to_value();
+        old.as_object_mut().unwrap().remove("dex");
+        let mut with_pets = ExploreState::from_value(&old);
+        assert!(with_pets.dex.is_empty() || with_pets.pets.is_empty());
+        with_pets.add_pet(p.clone());
+        let mut v = with_pets.to_value();
+        v.as_object_mut().unwrap().remove("dex");
+        assert!(ExploreState::from_value(&v).in_dex(p.pet, p.stars));
     }
 
     #[test]

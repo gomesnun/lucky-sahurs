@@ -990,6 +990,13 @@ fn shots(dir: &str) {
             g.explore.overlay = "pets";
             g.draw(m);
             save(&g, "n_explore_pets");
+            // the Explore Index: a few pets at a few star counts
+            for (pet, st) in [(0usize, 1u8), (0, 2), (0, 5), (1, 3), (9, 1), (22, 4), (4, 2)] {
+                g.state.explore.record_dex(&VerityPet { pet, dim: 0, stars: st, luck: true, boost: 1.0 });
+            }
+            g.explore.overlay = "dex";
+            g.draw(m);
+            save(&g, "n_explore_dex");
             g.explore.overlay = "";
             // E on a wild pet: it fights back now, instead of an instant catch
             g.state.owned.insert(core::data::owned_key(8, "normal", 0), 1);
