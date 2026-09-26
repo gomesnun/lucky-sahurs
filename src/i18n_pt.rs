@@ -62,6 +62,7 @@ pub const PT: &[(&str, &str)] = &[
     ("Dark", "Escuro"),
     ("Light", "Claro"),
     ("Potato Mode: %s", "Modo Batata: %s"),
+    ("FPS counter: %s", "Contador de FPS: %s"),
     ("Potato Mode off", "Modo Batata desligado"),
     ("Potato Mode on - lighter, same text", "Modo Batata ligado - mais leve, o texto fica igual"),
     ("Trait notifications: %s", "Avisos de atributos: %s"),

@@ -154,6 +154,10 @@ pub struct Game {
     pub options_tab: &'static str,
     /// Options > Gameplay: the per-rarity Cutscenes list is expanded
     pub options_cutscenes_open: bool,
+    /// FPS counter (bottom left): frames and time since it was last updated, and what it shows
+    pub fps_frames: u32,
+    pub fps_time: f64,
+    pub fps_shown: f64,
 
     pub cutscene_active: Option<(usize, &'static str)>,
     pub cutscene_elapsed: f64,
@@ -375,6 +379,9 @@ impl Game {
             slider_hits: IndexMap::new(),
             options_tab: "gameplay",
             options_cutscenes_open: false,
+            fps_frames: 0,
+            fps_time: 0.0,
+            fps_shown: 0.0,
             cutscene_active: None,
             cutscene_elapsed: 0.0,
             cutscene_queue: Vec::new(),
@@ -991,8 +998,10 @@ impl Game {
                 std::thread::sleep(frame - elapsed);
             }
             let now = std::time::Instant::now();
-            let dt = now.duration_since(last).as_secs_f64().min(0.1);
+            let raw = now.duration_since(last).as_secs_f64();
+            let dt = raw.min(0.1);
             last = now;
+            self.note_frame(raw);
             self.poll_worker();
             self.tick_updater(); // now and then checks GitHub for a new version
             self.tick_ban(now_ts()); // was this account banned? (see admin.rs)
@@ -1423,10 +1432,37 @@ impl Game {
             // banned account: on top of everything, it can only log out or quit
             self.draw_ban_screen(mouse_pos);
         }
+        self.draw_fps();
         if self.update_modal_active() {
             // "New version available": on top of EVERYTHING, blocks the rest
             self.draw_update_modal(mouse_pos);
         }
+    }
+
+    /// The real frame time (not the 0.1 s the game logic is capped at), for the FPS counter.
+    pub fn note_frame(&mut self, secs: f64) {
+        self.fps_frames += 1;
+        self.fps_time += secs;
+        if self.fps_time >= 0.5 {
+            self.fps_shown = self.fps_frames as f64 / self.fps_time;
+            self.fps_frames = 0;
+            self.fps_time = 0.0;
+        }
+    }
+
+    /// Frames per second in the bottom left corner (Options > Interface turns it off): green 50+, yellow 30+,
+    /// red below that.
+    fn draw_fps(&mut self) {
+        if self.fps_shown <= 0.0 || !self.settings.get_bool("show_fps", true) {
+            return;
+        }
+        let fps = self.fps_shown.round() as i64;
+        let color = if fps >= 50 { crate::theme::GOOD } else if fps >= 30 { crate::gfx::Color::rgb(255, 205, 60) } else { crate::theme::BAD };
+        let font = self.f.tiny_b.clone();
+        let t = font.render(&format!("{} FPS", fps), color);
+        let r = Rect::new(8, VIRTUAL_H - 8 - t.h - 6, t.w + 12, t.h + 6);
+        crate::gfx::draw::rect(&mut self.canvas, crate::gfx::Color::rgba(0, 0, 0, 150), r, 0, 6);
+        self.canvas.blit(&t, r.x + 6, r.y + 3);
     }
 
     /// Scales the canvas to the window (linear filtering with animations on, like smoothscale; nearest

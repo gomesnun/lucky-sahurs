@@ -270,6 +270,23 @@ impl Game {
             }),
             Bo::r(10),
         );
+        y += 54;
+        let fps = self.settings.get_bool("show_fps", true);
+        self.button(
+            Rect::new(x0, y, w, 44),
+            &tr!("FPS counter: %s", on_off(fps)),
+            &med,
+            mouse_pos,
+            if fps { panel_light() } else { OFF_COLOR },
+            panel_lighter(),
+            WHITE,
+            cb(|g| {
+                let on = !g.settings.get_bool("show_fps", true);
+                g.settings.set_bool("show_fps", on);
+                save_settings(&g.settings);
+            }),
+            Bo::r(10),
+        );
     }
 
     fn draw_options_game_tab(&mut self, bx: Rect, mouse_pos: (f64, f64), in_game: bool) {

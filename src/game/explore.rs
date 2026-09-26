@@ -85,8 +85,6 @@ struct Face {
     /// the block's column (for culling around Steve)
     x: i64,
     z: i64,
-    /// leaves: left out when they'd hide Steve
-    leafy: bool,
 }
 
 pub struct World {
@@ -657,7 +655,9 @@ fn build_world(dim: usize) -> World {
                 }
                 for (dx, dy, dz) in dirs {
                     let nb = bl.get(x + dx, y + dy, z + dz);
-                    if !nb.clear() || (nb == b && b != B::Leaves) {
+                    // two of the same block side by side hide that face from every angle - leaves too (they're
+                    // drawn solid, so the faces between two leaf blocks are buried inside the canopy)
+                    if !nb.clear() || nb == b {
                         continue;
                     }
                     // the ground's sides at the world's edge only show in the void worlds
@@ -677,7 +677,7 @@ fn build_world(dim: usize) -> World {
                             _ => 0.66,
                         }
                     };
-                    faces.push(Face { corners, tex: tex_of(b, dy), light, x, z, leafy: matches!(b, B::Leaves | B::Log) });
+                    faces.push(Face { corners, tex: tex_of(b, dy), light, x, z });
                 }
             }
         }
@@ -1497,8 +1497,6 @@ pub struct Scene<'a> {
     pub equipped: Vec<Shown>,
     pub wild: &'a [(Shown, V3, f64)],
     pub cam: Camera,
-    /// leave out the tall blocks between the camera and Steve
-    pub cut_front: bool,
 }
 
 /// v4.0.1: view-frustum culling - is this face's quad even possibly on screen? (every face here is one block,
@@ -1524,13 +1522,9 @@ fn draw_world(sc: &Scene, w: usize, h: usize) -> (Frame, View) {
     // the blocks near Steve, on all the cores. Steve's box is a cheap first reject (a face further than the fog
     // could ever draw is never worth even frustum-testing); it's symmetric in every direction now that the
     // camera can turn around Steve - a fixed box behind-vs-ahead would go wrong the moment you looked backward.
+    // (nothing is cut away: every face is drawn from every side; where something hides Steve he shows through,
+    // see below, and the camera never ends up inside a block - see explore_cam)
     let (sx, sz) = (sc.steve.x.floor() as i64, sc.steve.z.floor() as i64);
-    // (tree tops between the camera and Steve are left out; behind anything else he shows through, see below)
-    let cut = sc.steve.y + 2.2;
-    // which side of Steve the camera is actually on - not always +z any more, now that it can turn around him
-    let (cd0, cd1) = (sc.cam.pos.x - sc.steve.x, sc.cam.pos.z - sc.steve.z);
-    let cam_len = (cd0 * cd0 + cd1 * cd1).sqrt().max(1e-6);
-    let (cam_dx, cam_dz) = (cd0 / cam_len, cd1 / cam_len);
     let faces: Vec<&Face> = world
         .faces
         .iter()
@@ -1539,7 +1533,6 @@ fn draw_world(sc: &Scene, w: usize, h: usize) -> (Frame, View) {
         // than again on every thread's band)
         .filter(|f| (f.corners[1] - f.corners[0]).cross(f.corners[2] - f.corners[0]).dot(view.pos - f.corners[0]) > 0.0)
         .filter(|f| face_in_view(&view, &f.corners))
-        .filter(|f| !(sc.cut_front && f.leafy && (f.x - sx) as f64 * cam_dx + (f.z - sz) as f64 * cam_dz > -2.0 && f.corners[0].y.min(f.corners[1].y) >= cut))
         .collect();
     let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1).clamp(1, 8);
     let texes: &Vec<Tex> = &world.texes;
@@ -1614,6 +1607,26 @@ fn draw_world(sc: &Scene, w: usize, h: usize) -> (Frame, View) {
     (fr, view)
 }
 
+/// follow_cam, but never inside a block: Emerald City's towers are taller than the camera is high, so next to one
+/// the camera used to end up inside it - and from in there you saw straight through the building. If a block is
+/// in the way between Steve's head and the camera, the camera comes in closer to him, in front of it.
+fn explore_cam(w: &World, steve: V3, cam_yaw: f64) -> Camera {
+    let mut cam = follow_cam(steve, cam_yaw);
+    let eye = steve + v3(0.0, 1.6, 0.0);
+    let d = cam.pos - eye;
+    const STEPS: usize = 48;
+    for i in 1..=STEPS {
+        let t = i as f64 / STEPS as f64;
+        let p = eye + d * t;
+        if w.ground(p.x, p.z) > p.y - 0.3 {
+            // back off a little from the block, but never right on top of Steve
+            cam.pos = eye + d * ((i as f64 - 1.5) / STEPS as f64).max(0.3);
+            break;
+        }
+    }
+    cam
+}
+
 /// The camera: above and behind Steve, orbited around him by `cam_yaw` (0 = the usual view, straight behind).
 fn follow_cam(steve: V3, cam_yaw: f64) -> Camera {
     let (s, c) = cam_yaw.sin_cos();
@@ -1652,8 +1665,7 @@ impl Game {
             t: e.t,
             equipped,
             wild: &[],
-            cam: follow_cam(steve, e.cam_yaw),
-            cut_front: true,
+            cam: explore_cam(&w, steve, e.cam_yaw),
         };
         (sc, wild)
     }
@@ -2044,6 +2056,31 @@ pub fn debug_place_wild(g: &mut Game, pet: VerityPet) {
     g.explore.wild = vec![Wild { pet, pos: at, to: at, think: 99.0, seed: 0.0, caught: None }];
 }
 
+/// For the screenshot tool: stands Steve next to the tallest block he can reach, with the camera swung round to
+/// that side (so it would be inside the building if nothing stopped it).
+pub fn debug_stand_by_tallest(g: &mut Game) {
+    let w = world(g.explore.dim);
+    let mut best: Option<(i64, i64, i64, (i64, i64))> = None;
+    for x in 1..N - 1 {
+        for z in 1..N - 1 {
+            if !w.reach[col(x, z)] {
+                continue;
+            }
+            for (dx, dz) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                let rise = w.top[col(x + dx, z + dz)] - w.top[col(x, z)];
+                if best.is_none_or(|b| rise > b.2) {
+                    best = Some((x, z, rise, (dx, dz)));
+                }
+            }
+        }
+    }
+    if let Some((x, z, _, (dx, dz))) = best {
+        g.explore.pos = (x as f64 + 0.5, z as f64 + 0.5);
+        g.explore.y = w.ground(g.explore.pos.0, g.explore.pos.1);
+        g.explore.cam_yaw = (dx as f64).atan2(dz as f64);
+    }
+}
+
 /// A still of Explore for the Battle hub's button: Steve and his pets in the Overworld.
 pub fn explore_preview(look: SteveLook, equipped: Vec<Shown>, t: f64, w: usize, h: usize) -> Surface {
     let wd = world(0);
@@ -2054,7 +2091,7 @@ pub fn explore_preview(look: SteveLook, equipped: Vec<Shown>, t: f64, w: usize, 
     let a = t * 0.25;
     let cam = Camera { pos: steve + v3(a.sin() * 5.0, 5.5, a.cos() * 5.0 + 2.0), target: steve + v3(0.4, 0.8, -0.4), fov: 50.0 };
     let equipped = if equipped.is_empty() { vec![Shown { pet: 2, m: "normal", phase: 0 }, Shown { pet: 12, m: "normal", phase: 0 }] } else { equipped };
-    let sc = Scene { dim: 0, steve, yaw: 0.6, stride: 0.0, moving: 0.0, wave: if (t % 5.0) > 3.8 { t } else { 0.0 }, look, t, equipped, wild: &wild, cam, cut_front: false };
+    let sc = Scene { dim: 0, steve, yaw: 0.6, stride: 0.0, moving: 0.0, wave: if (t % 5.0) > 3.8 { t } else { 0.0 }, look, t, equipped, wild: &wild, cam };
     draw_world(&sc, w, h).0.to_surface()
 }
 

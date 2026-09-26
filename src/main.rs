@@ -958,6 +958,14 @@ fn shots(dir: &str) {
             g.explore.cam_yaw = std::f64::consts::PI; // looking back the way Steve came from
             g.draw(m);
             save(&g, "n_explore_cam_turned");
+            // right next to Emerald City's tallest tower, camera swung round to it: the camera must stay outside
+            // the building (it used to end up inside and see straight through it)
+            g.enter_world(4);
+            game::explore::debug_stand_by_tallest(&mut g);
+            g.draw(m);
+            save(&g, "n_explore_tower");
+            g.explore.cam_yaw = 0.0;
+            g.enter_world(0);
             // the OG verities as 3D balls (their art used to leave a dark stripe across the ball)
             {
                 let og: Vec<usize> = (0..core::data::rarities().len()).filter(|&i| core::data::rarities()[i].key == "og").collect();

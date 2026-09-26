@@ -159,6 +159,7 @@ impl Settings {
         m.insert("animations".into(), json!(true));
         m.insert("fullscreen".into(), json!(true));
         m.insert("trait_notifications".into(), json!(true));
+        m.insert("show_fps".into(), json!(true));
         m.insert("buy_mode".into(), json!(1));
         m.insert("music_on".into(), json!(true));
         m.insert("music_volume".into(), json!(0.5));
