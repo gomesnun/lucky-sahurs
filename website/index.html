@@ -341,7 +341,7 @@
     <section id="stats" aria-label="Game numbers">
       <div class="stat-strip">
         <div class="stat"><strong data-count="17">0</strong><span data-i18n="stats.tiers">Rarity tiers</span></div>
-        <div class="stat"><strong data-count="67">0</strong><span data-i18n="stats.pets">Collectible verities</span></div>
+        <div class="stat"><strong data-count="68">0</strong><span data-i18n="stats.pets">Collectible verities</span></div>
         <div class="stat"><strong data-count="17">0</strong><span data-i18n="stats.traits">Traits</span></div>
         <div class="stat"><strong data-count="15">0</strong><span data-i18n="stats.milestones">Milestone tracks</span></div>
         <div class="stat"><strong data-suffix="Sx" data-count="500">0</strong><span data-i18n="stats.odds">Rarest odds (1-in-500 sextillion)</span></div>
@@ -830,9 +830,10 @@ var PETS = [
   {tierKey:'paradoxo', name:'Absurdity', income:13500000000000, weight:5.333333333333334e-23},
   {tierKey:'paradoxo', name:'Parity', income:20250000000000, weight:2.666666666666667e-23},
   {tierKey:'paradoxo', name:'Impossibility', income:30375000000000, weight:1.3333333333333334e-23},
-  {tierKey:'og', name:'Verity', income:90000000000000, weight:1.1428571428571429e-24},
-  {tierKey:'og', name:'Lovity', income:135000000000000, weight:5.7142857142857145e-25},
-  {tierKey:'og', name:'Falsity', income:202500000000000, weight:2.8571428571428573e-25},
+  {tierKey:'og', name:'Verity', income:90000000000000, weight:1.0666666666666666e-24},
+  {tierKey:'og', name:'Lovity', income:135000000000000, weight:5.333333333333333e-25},
+  {tierKey:'og', name:'Falsity', income:202500000000000, weight:2.6666666666666665e-25},
+  {tierKey:'og', name:'Cruelty', income:303750000000000, weight:1.3333333333333332e-25},
 ];
 PETS.forEach(function(p){ p.tierIdx = TIER_INDEX[p.tierKey]; p.tier = TIERS[p.tierIdx]; p.isSecond = false; });
 var TOTAL_WEIGHT = PETS.reduce(function(s,p){ return s + p.weight; }, 0);
@@ -901,7 +902,7 @@ var I18N = {
     'roll.best.label':'All-time best:',
     'roll.income':'income/sec','roll.chance':'chance',
     'features.title':"What's in the box",'features.sub':'A full idle-game loop, built in Rust to run fast on any PC.',
-    'features.gacha.title':'Verity gacha','features.gacha.body':'17 rarity tiers and 67 Verities, from a 1-in-2 Common up to the 1-in-500-sextillion OG Verities. Golden (×3), Diamond (×9) and Rainbow (×27) mutations, plus Golden / Diamond / Rainbow Rolls.',
+    'features.gacha.title':'Verity gacha','features.gacha.body':'17 rarity tiers and 68 Verities, from a 1-in-2 Common up to the 1-in-500-sextillion OG Verities. Golden (×3), Diamond (×9) and Rainbow (×27) mutations, plus Golden / Diamond / Rainbow Rolls.',
     'features.rebirth.title':'Rebirths & Prestige','features.rebirth.body':'Rebirth for permanent money and luck, then Prestige at 10, 15, 20, 30 and 40 Rebirths for up to ×200 money and ×60 luck — keeping one Verity of your choice.',
     'features.upgrades.title':'Upgrade tree','features.upgrades.body':'48 upgrades for luck on every tier, money, mutations, bonus rolls and the Auto Roller — and an Auto Upgrader that buys them for you.',
     'features.traits.title':'Traits','features.traits.body':'17 equippable traits, from a common Lucky to the rarest ones, reshaping money, luck and mutation odds. The Auto Trait Roller spends your charges for you.',
@@ -969,7 +970,7 @@ var I18N = {
     'roll.best.label':'Melhor de sempre:',
     'roll.income':'rendimento/seg','roll.chance':'chance',
     'features.title':'O que o jogo tem','features.sub':'Um loop idle completo, feito em Rust para correr rápido em qualquer PC.',
-    'features.gacha.title':'Gacha de verities','features.gacha.body':'17 raridades e 67 Verities, de um Comum (1 em 2) aos Verities OG (1 em 500 mil triliões). Mutações Dourada (×3), Diamante (×9) e Arco-íris (×27), e ainda os Rolls Dourado / Diamante / Arco-íris.',
+    'features.gacha.title':'Gacha de verities','features.gacha.body':'17 raridades e 68 Verities, de um Comum (1 em 2) aos Verities OG (1 em 500 mil triliões). Mutações Dourada (×3), Diamante (×9) e Arco-íris (×27), e ainda os Rolls Dourado / Diamante / Arco-íris.',
     'features.rebirth.title':'Renascimentos e Prestígio','features.rebirth.body':'Renasce para ganhar dinheiro e sorte para sempre, e faz Prestígio aos 10, 15, 20, 30 e 40 Renascimentos para até ×200 dinheiro e ×60 sorte — ficando com um Verity à escolha.',
     'features.upgrades.title':'Árvore de melhorias','features.upgrades.body':'48 melhorias de sorte para cada raridade, dinheiro, mutações, rolls bónus e o Auto Roller — e um Auto Melhorador que as compra por ti.',
     'features.traits.title':'Atributos','features.traits.body':'17 atributos equipáveis, do comum Lucky aos mais raros, que mudam dinheiro, sorte e chances de mutação. O Auto Rolador de Traits gasta as cargas por ti.',
