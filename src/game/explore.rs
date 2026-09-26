@@ -1336,8 +1336,9 @@ impl Game {
         }
     }
 
-    /// E / the Catch! button / clicking a pet in reach: with at least one Verity to send out, it fights back -
-    /// win the battle to catch it. Brand new players (no Verities at all yet) just catch it outright.
+    /// E / the Catch! button / clicking a pet in reach: it fights back - win the battle to catch it. Only brand new
+    /// players (never rolled) catch it outright. Gated on total_rolls, not on owned pets: selling the Bag down to
+    /// zero must not turn every wild pet into a free catch.
     pub fn explore_catch(&mut self, i: usize) {
         if self.state.explore.pets.len() >= MAX_PETS {
             self.show_toast(&tr!("Your Verity Pets are full (%d). Release some in the Bag.", MAX_PETS as i64), 2.6);
@@ -1347,12 +1348,16 @@ impl Game {
         if p.caught.is_some() {
             return;
         }
-        if self.battle_choices().is_empty() {
-            // nothing to fight with yet: catch it outright, like before
+        if self.state.total_rolls == 0 {
+            // never rolled, so nothing to fight with yet: catch it outright, like before
             if let Some(p) = self.explore.wild.get_mut(i) {
                 p.caught = Some(self.explore.t);
             }
             self.play("click", 0.0);
+            return;
+        }
+        if self.battle_choices().is_empty() {
+            self.show_toast(&tr("You need a Verity to battle with. Roll one first!"), 2.4);
             return;
         }
         self.start_wild_battle(i);
@@ -2075,6 +2080,7 @@ mod tests {
     #[test]
     fn wild_battle_catches_on_win() {
         let mut g = Game::headless(1200, 700);
+        g.state.total_rolls = 1;
         // a high-tier team so the fight is a lopsided, quick win regardless of RNG
         g.state.owned.insert(crate::core::data::owned_key(8, "normal", 0), 1);
         g.open_explore();
@@ -2110,5 +2116,41 @@ mod tests {
         g.battle_wild_continue();
         assert!(g.battle.wild.is_none());
         assert!(g.explore.open);
+    }
+
+    fn wild_at_player(g: &mut Game) {
+        let at = g.explore.pos;
+        g.explore.wild = vec![Wild { pet: VerityPet::roll(0, [0.9, 0.05, 0.0, 0.0]), pos: at, to: at, think: 99.0, seed: 0.0, caught: None }];
+    }
+
+    /// Selling every Verity must not unlock free catches: anyone who has ever rolled has to fight (or roll first).
+    #[test]
+    fn emptied_bag_is_not_a_free_catch() {
+        let mut g = Game::headless(1200, 700);
+        g.state.total_rolls = 50;
+        g.state.owned.clear();
+        g.open_explore();
+        wild_at_player(&mut g);
+        g.explore_catch(0);
+        assert!(g.explore.wild[0].caught.is_none(), "an emptied Bag must not instant-catch");
+        assert!(g.battle.wild.is_none());
+        // with a Verity again it's the win-to-catch battle - still never an instant catch
+        g.state.owned.insert(crate::core::data::owned_key(8, "normal", 0), 1);
+        g.explore_catch(0);
+        assert!(g.explore.wild[0].caught.is_none());
+        assert!(g.battle.wild.is_some());
+    }
+
+    /// Brand new accounts (never rolled) still catch outright.
+    #[test]
+    fn brand_new_player_instant_catches() {
+        let mut g = Game::headless(1200, 700);
+        g.state.total_rolls = 0;
+        g.state.owned.clear();
+        g.open_explore();
+        wild_at_player(&mut g);
+        g.explore_catch(0);
+        assert!(g.explore.wild[0].caught.is_some());
+        assert!(g.battle.wild.is_none());
     }
 }
