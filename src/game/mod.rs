@@ -853,6 +853,10 @@ impl Game {
     }
 
     pub fn close_overlays(&mut self) {
+        // the Battle hub is a page like the others (a fight or Explore is not: those stay)
+        if self.battle_hub_page() {
+            self.close_battle();
+        }
         if self.sell.target.is_some() {
             self.close_sell();
         }
@@ -885,7 +889,9 @@ impl Game {
     }
 
     pub fn close_overlay_on_outside_click(&mut self) {
-        if self.sell.target.is_some() {
+        if self.battle_hub_page() {
+            self.close_battle();
+        } else if self.sell.target.is_some() {
             self.close_sell();
         } else if self.evolve.target.is_some() {
             self.close_evolve();
@@ -1416,7 +1422,9 @@ impl Game {
             self.begin_modal();
             self.draw_evolve_page(mouse_pos);
         }
-        if self.battle.open {
+        if self.battle.open && self.tutorial_active() {
+            // (otherwise draw_game_screen already drew it - drawing it here too rendered every fight and Explore
+            // frame twice)
             self.draw_battle(mouse_pos);
         }
         if self.whats_new_open && !self.tutorial_active() {
@@ -1636,6 +1644,26 @@ mod prefs_tests {
         assert!(!pc2.settings.get_bool("animations", true));
         assert!(!pc2.settings.get_bool("cutscenes_secreto", true));
         assert!(pc2.settings.get_bool("fullscreen", false)); // fullscreen stays per PC
+        let _ = dir;
+    }
+
+    /// The Battle hub is a page like Traits: opening another page (or a side button) swaps to it. A fight or
+    /// Explore is never closed that way.
+    #[test]
+    fn the_battle_hub_is_a_page_but_a_fight_is_not() {
+        let dir = test_save_dir();
+        let mut g = Game::headless(1422, 800);
+        g.state.total_rolls = 1;
+        g.open_battle();
+        assert!(g.battle_hub_page() && !g.battle_fullscreen());
+        g.toggle_traits();
+        assert!(g.traits_open && !g.battle.open, "Traits replaces the hub");
+        g.toggle_battle();
+        assert!(g.battle.open && !g.traits_open);
+        g.open_explore();
+        assert!(g.battle_fullscreen() && !g.battle_hub_page());
+        g.close_overlays();
+        assert!(g.explore.open && g.battle.open, "Explore stays open");
         let _ = dir;
     }
 

@@ -92,7 +92,7 @@ impl Game {
             self.canvas.blit(&veil, 0, 0);
             return;
         }
-        if self.battle.open && !self.tutorial_active() {
+        if self.battle_fullscreen() && !self.tutorial_active() {
             // the battle covers the whole screen: skip drawing the game under it (the 3D arena needs the time)
             self.draw_topbar(mouse_pos);
             self.draw_battle(mouse_pos);
@@ -145,6 +145,10 @@ impl Game {
         if self.index_open {
             self.begin_modal();
             self.draw_index_page(mouse_pos);
+        }
+        if self.battle_hub_page() && !self.tutorial_active() {
+            self.begin_modal();
+            self.draw_battle(mouse_pos);
         }
         if self.shop.open {
             self.begin_modal();

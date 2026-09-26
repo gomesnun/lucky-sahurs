@@ -211,6 +211,16 @@ fn hp_color(frac: f64) -> Color {
 
 impl Game {
     // ---------------------------------------------------------------- open / close
+    /// A fight or Explore covers the whole screen; the hub (picking a mode) is a page like Traits, with the game
+    /// and its side buttons still there around it.
+    pub fn battle_fullscreen(&self) -> bool {
+        self.battle.open && (self.battle.stage != "hub" || self.explore.open)
+    }
+
+    pub fn battle_hub_page(&self) -> bool {
+        self.battle.open && !self.battle_fullscreen()
+    }
+
     pub fn open_battle(&mut self) {
         self.close_overlays();
         self.left_panel.close();
@@ -635,8 +645,10 @@ impl Game {
         if self.battle.stage == "hub" {
             if ev.key == K::Escape {
                 self.close_battle();
+                return true;
             }
-            return true;
+            // it's a page like the others: the usual shortcuts (U, I, M, B...) still work and close it
+            return false;
         }
         match ev.key {
             K::Return | K::KpEnter | K::Space => {
@@ -670,6 +682,13 @@ impl Game {
             self.draw_explore(mouse_pos);
             return;
         }
+        if self.battle_hub_page() {
+            // the hub is a page over the game, like Traits: the side buttons stay clickable (they're nav buttons)
+            let ov = crate::ui::drawing::dim_overlay(self.vw, VIRTUAL_H, 170);
+            self.canvas.blit(&ov, 0, 0);
+            self.draw_battle_hub(mouse_pos);
+            return;
+        }
         // the game isn't drawn under the battle (see draw_game_screen): a plain dark backdrop is enough, and cheap
         draw::rect(&mut self.canvas, Color::rgb(12, 13, 22), Rect::new(0, crate::config::TOPBAR_H, self.vw, VIRTUAL_H - crate::config::TOPBAR_H), 0, 0);
         // nothing behind the battle can be clicked
@@ -690,6 +709,7 @@ impl Game {
         let h = 660.min(VIRTUAL_H - crate::config::TOPBAR_H - 30);
         let rect = Rect::with_center(w, h, (self.vw / 2, (VIRTUAL_H + crate::config::TOPBAR_H) / 2));
         draw_panel(&mut self.canvas, rect, Some(panel()), 16, true, None);
+        self.register_button(rect, Rc::new(|_: &mut Game| {}), None); // clicks inside don't close it
         let pad = 24;
         let sb = self.f.small_b.clone();
         let small = self.f.small.clone();

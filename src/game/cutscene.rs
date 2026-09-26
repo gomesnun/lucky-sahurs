@@ -53,7 +53,7 @@ impl Game {
         }
         // nothing to show while Battle/Explore covers the whole screen - don't spend CPU animating particles
         // nobody can see (and don't queue it either: catching up on it later, well after the roll, would be odd)
-        if self.battle.open {
+        if self.battle_fullscreen() {
             return;
         }
         if self.cutscene_active.is_none() && self.cutscene_queue.is_empty() {
